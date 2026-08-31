@@ -1,0 +1,3153 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B2B1팀 재고 관리 대시보드</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#FFFFFF;
+    --surface:#FFFFFF;
+    --surface-alt:#F7F4EE;
+    --ink:#221F1A;
+    --muted:#7A7368;
+    --line:#E5DFD0;
+    --line-strong:#E5DFD0;
+    --brand:#212A2E;
+    --brand-ink:#FAF8F4;
+    --brand-dim:#3A362D;
+    --accent:#BE5570;
+    --accent-ink:#FFFFFF;
+    --accent-soft:#F8E7EB;
+    --safe:#5F8250;
+    --safe-bg:#E7F0E1;
+    --caution:#B2813A;
+    --caution-bg:#F4E7D2;
+    --danger:#B5443F;
+    --danger-bg:#F5E1DE;
+    --none:#948C7D;
+    --none-bg:#EEEAE0;
+    --cat-product:#BE5570;
+    --cat-warehouse:#5E7FA0;
+    --cat-incoming:#B2813A;
+    --cat-alt:#84688E;
+    --cat-download:#AD6039;
+    --cat-expiry:#546C82;
+    --cat-master:#657449;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(34,31,26,0.04), 0 12px 28px -18px rgba(34,31,26,0.18);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:'Pretendard','Inter',system-ui,sans-serif;font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.display{font-family:'Pretendard','Inter',system-ui,sans-serif;letter-spacing:-0.02em;font-weight:900;}
+  .mono{font-family:'IBM Plex Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;}
+  #app{max-width:1360px;margin:0 auto;padding:0 28px;}
+
+  /* Header */
+  .page-header{padding:30px 0 0 0;}
+  .eyebrow{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;}
+  .page-header h1{font-size:29px;font-weight:900;letter-spacing:-0.025em;margin:0 0 8px 0;color:var(--ink);}
+  .meta-line{font-size:12.5px;color:var(--muted);margin-bottom:18px;}
+  .header-actions{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;}
+  .header-actions .spacer{flex:1;}
+  .tab-nav{display:flex;gap:24px;border-bottom:1.5px solid var(--line);margin-bottom:26px;overflow-x:auto;}
+  .tab-nav button{all:unset;cursor:pointer;padding:9px 1px 13px 1px;font-size:13.5px;font-weight:700;color:var(--muted);border-bottom:2.5px solid transparent;white-space:nowrap;transition:color .12s,border-color .12s;}
+  .tab-nav button:hover{color:var(--ink);}
+  .tab-nav button.active{color:var(--ink);border-bottom-color:var(--accent);}
+
+  /* Main */
+  main{padding:0 0 60px 0;}
+  .sync-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--safe);flex:0 0 8px;}
+  .dot.loading{background:var(--caution);animation:pulse 1s infinite;}
+  .dot.err{background:var(--danger);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .btn{all:unset;cursor:pointer;padding:9px 16px;border-radius:10px;background:var(--accent);color:var(--accent-ink);font-size:12.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;box-shadow:0 6px 16px -8px rgba(190,85,112,0.5);transition:background .12s,transform .08s;}
+  .btn:hover{background:#A64A62;}
+  .btn:active{transform:translateY(1px);}
+  .btn.ghost{background:var(--surface);color:var(--ink);border:1.5px solid var(--line);box-shadow:none;}
+  .btn.ghost:hover{background:var(--surface-alt);border-color:var(--accent);}
+  .view{padding:0;display:none;}
+  .view.active{display:block;}
+
+  .banner{padding:14px 18px;border-radius:var(--radius);margin-bottom:18px;font-size:13px;display:flex;gap:10px;align-items:flex-start;}
+  .banner.err{background:var(--danger-bg);color:var(--danger);border:1px solid #e6bcb7;}
+  .banner.info{background:var(--accent-soft);color:#8C4054;border:1px solid #ecc9d1;}
+
+  /* Signature signal bar */
+  .signal-wrap{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-bottom:20px;box-shadow:var(--shadow);}
+  .signal-wrap .label-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px;}
+  .signal-wrap .label-row h3{margin:0;font-size:13.5px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;}
+  .signal-bar{display:flex;height:34px;border-radius:8px;overflow:hidden;border:1px solid var(--line);}
+  .signal-seg{display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono';font-size:12px;font-weight:600;color:#fff;min-width:2px;transition:width .4s;}
+  .signal-legend{display:flex;gap:22px;margin-top:12px;flex-wrap:wrap;}
+  .signal-legend .item{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);}
+  .signal-legend .sw{width:10px;height:10px;border-radius:3px;}
+
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+  .card{position:relative;background:var(--surface);border:2px solid var(--line-strong);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);transition:box-shadow .15s,border-color .15s;}
+  .card:hover{border-color:var(--accent);box-shadow:0 2px 4px rgba(34,31,26,0.05), 0 16px 32px -18px rgba(190,85,112,0.28);}
+  .card .card-dot{position:absolute;top:17px;right:17px;width:8px;height:8px;border-radius:50%;}
+  .card .k{font-size:12px;color:var(--ink);opacity:.72;text-transform:uppercase;letter-spacing:.03em;font-weight:600;margin-bottom:8px;}
+  .card .v{font-family:'Pretendard','Inter';font-size:28px;font-weight:700;letter-spacing:-0.01em;}
+
+  .panel{position:relative;background:var(--surface);border:2px solid var(--line-strong);border-radius:var(--radius);padding:22px 24px;margin-bottom:22px;box-shadow:var(--shadow);}
+  .panel::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent);opacity:.5;border-radius:var(--radius) var(--radius) 0 0;}
+  .panel h3{margin:0 0 16px 0;font-size:15.5px;letter-spacing:-0.01em;}
+  .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .filters select, .filters input{font-family:inherit;font-size:12.5px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);}
+  .filters select:focus, .filters input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
+  .filters input{min-width:180px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{text-align:left;padding:10px 10px;color:var(--ink);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-bottom:2px solid var(--line);white-space:nowrap;background:var(--surface-alt);}
+  tbody td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  tbody tr:nth-child(even){background:rgba(0,0,0,0.012);}
+  tbody tr:hover{background:var(--surface-alt);}
+  tr.forecast-row:hover{background:var(--accent-soft);}
+  tr.detail-row:hover{background:var(--surface-alt);}
+  tr.wh-row.picked{background:var(--accent-soft);}
+  tr.wh-row:hover{background:var(--accent-soft);}
+  .product-pick.active{background:var(--accent-soft);}
+  td.num,th.num{text-align:right;font-family:'IBM Plex Mono';}
+  .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.01em;border:1px solid transparent;}
+  .badge.safe{background:var(--safe-bg);color:var(--safe);border-color:rgba(95,130,80,0.25);}
+  .badge.caution{background:var(--caution-bg);color:var(--caution);border-color:rgba(178,129,58,0.25);}
+  .badge.danger{background:var(--danger-bg);color:var(--danger);border-color:rgba(181,68,63,0.25);}
+  .badge.pending{background:var(--caution-bg);color:var(--cat-incoming);border-color:rgba(178,129,58,0.25);}
+  .badge.none{background:var(--none-bg);color:var(--none);border-color:rgba(148,140,125,0.25);}
+  .bar-cell{display:flex;align-items:center;gap:8px;}
+  .bar-track{flex:1;height:6px;background:var(--surface-alt);border-radius:4px;overflow:hidden;min-width:60px;}
+  .bar-fill{height:100%;border-radius:4px;}
+  .more-row{text-align:center;padding-top:14px;}
+  .empty{padding:36px 20px;text-align:center;color:var(--muted);font-size:13px;background:var(--surface-alt);border-radius:10px;border:1px dashed var(--line);}
+
+  .lookup-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px;}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field label{font-size:11.5px;color:var(--muted);font-weight:600;}
+  .field input{padding:9px 11px;border-radius:8px;border:1.5px solid var(--line);font-size:13px;min-width:220px;}
+  .field input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent);}
+  .candidates{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+  .cand{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border:1.5px solid var(--line);border-radius:9px;cursor:pointer;background:var(--surface);}
+  .cand:hover{border-color:var(--accent);background:var(--accent-soft);}
+  .cand .l{font-size:13px;}
+  .cand .r{font-size:11px;color:var(--muted);}
+  .result-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;margin-top:18px;}
+  @media(max-width:980px){.result-grid{grid-template-columns:1fr;}}
+
+  .lookup-layout{display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start;margin-top:16px;}
+  @media(max-width:960px){.lookup-layout{grid-template-columns:1fr;}}
+  .main-box{display:flex;flex-direction:column;gap:16px;}
+  .alt-boxes{display:flex;flex-direction:column;gap:10px;}
+  .alt-card{background:var(--surface);border:2px solid var(--line-strong);border-radius:var(--radius);padding:13px 15px;box-shadow:var(--shadow);}
+  .alt-card table{font-size:12px;}
+  .alt-card thead th{padding:5px 6px;font-size:10.5px;}
+  .alt-card tbody td{padding:5px 6px;}
+  .info-line{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px dashed var(--line);font-size:13px;}
+  .info-line span:first-child{color:var(--muted);}
+  .incoming-chip{display:inline-flex;flex-direction:column;padding:12px 14px;border-radius:9px;background:var(--surface-alt);border:1.5px solid var(--line);margin-right:10px;margin-bottom:10px;min-width:120px;}
+  .incoming-chip:hover{border-color:var(--cat-incoming);background:var(--caution-bg);}
+  .incoming-chip.picked{border-color:var(--cat-incoming);background:var(--caution-bg);}
+  .incoming-chip .m{font-size:11px;color:var(--muted);font-weight:600;}
+  .incoming-chip .d{font-size:12.5px;margin-top:2px;}
+  .incoming-chip .q{font-family:'IBM Plex Mono';font-size:16px;font-weight:600;margin-top:3px;color:var(--cat-incoming);}
+  .section-title{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:var(--accent);margin:0 0 10px 0;display:flex;align-items:center;gap:6px;}
+  .section-title::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex:0 0 6px;}
+  .section-title.t-product{color:var(--cat-product);}
+  .section-title.t-warehouse{color:var(--cat-warehouse);}
+  .section-title.t-incoming{color:var(--cat-incoming);}
+  .section-title.t-alt{color:var(--cat-alt);}
+  .section-title.t-download{color:var(--cat-download);}
+  .section-title.t-expiry{color:var(--cat-expiry);}
+  .section-title.t-master{color:var(--cat-master);}
+  code.pn{font-family:'IBM Plex Mono';background:var(--surface-alt);padding:2px 6px;border-radius:5px;font-size:12px;}
+
+  .dropzone{border:2px dashed var(--line);border-radius:var(--radius);padding:40px 20px;text-align:center;cursor:pointer;background:var(--surface-alt);transition:border-color .15s,background .15s;}
+  .dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
+
+  .msel{position:relative;display:inline-block;}
+  .msel-trigger{font-size:12.5px;}
+  .msel-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:20;background:var(--surface);border:1.5px solid var(--line);border-radius:10px;box-shadow:0 12px 32px -10px rgba(20,21,30,0.25);width:360px;max-width:min(360px, 88vw);padding:12px;}
+  .msel-search{width:100%;padding:8px 10px;border-radius:7px;border:1.5px solid var(--line);font-size:12.5px;margin-bottom:8px;font-family:inherit;box-sizing:border-box;}
+  .msel-actionrow{display:flex;justify-content:flex-end;margin-bottom:6px;}
+  .msel-actionrow button{all:unset;cursor:pointer;font-size:11px;color:var(--accent);font-weight:600;}
+  .msel-actionrow button:hover{text-decoration:underline;}
+  .msel-list{max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;}
+  #skuStatusResults .msel-list{max-height:480px;}
+  #skuStatusResults{max-height:520px;overflow-y:auto;}
+  .msel-list label{display:flex;align-items:flex-start;gap:8px;padding:4px 8px;border-radius:6px;font-size:12.5px;cursor:pointer;white-space:normal;line-height:1.25;}
+  .msel-list label input[type="checkbox"]{flex:0 0 auto;width:13px;height:13px;margin-top:1px;}
+  .msel-list label span{flex:1;min-width:0;}
+  .msel-list label:hover{background:var(--surface-alt);}
+  .msel-list .msel-empty{padding:10px 6px;color:var(--muted);font-size:12px;}
+  .msel-list .msel-more{padding:6px 8px;color:var(--muted);font-size:11px;}
+  .msel-list .msel-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 9px;border-radius:6px;font-size:12.5px;cursor:pointer;line-height:1.25;}
+  .msel-list .msel-row:hover{background:var(--surface-alt);}
+  .msel-list .msel-row.selected{background:var(--accent-soft);color:var(--accent);font-weight:600;}
+  .msel-list .msel-row .chk{flex:0 0 auto;font-size:11px;color:var(--accent);font-weight:800;}
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+  .chip-row:empty{margin-bottom:0;}
+  .chip{display:inline-flex;align-items:center;gap:5px;background:var(--accent-soft);color:var(--accent);padding:4px 9px;border-radius:14px;font-size:11.5px;font-weight:700;font-family:'IBM Plex Mono';}
+  .chip .x{cursor:pointer;font-weight:800;font-family:'Pretendard','Inter';border-radius:50%;transition:background .1s;}
+  .chip .x:hover{background:rgba(190,85,112,0.2);}
+  .brand-toggle{display:flex;gap:6px;}
+  .brand-chip{all:unset;cursor:pointer;padding:7px 13px;border-radius:20px;font-size:12px;font-weight:700;border:1.5px solid var(--line);color:var(--muted);background:var(--surface);transition:background .12s,border-color .12s,color .12s;}
+  .brand-chip:hover{border-color:var(--accent);}
+  .dropzone .dz-icon{font-size:28px;color:var(--accent);font-family:'Space Grotesk';margin-bottom:8px;}
+  .dropzone .dz-text{font-size:13px;color:var(--muted);}
+  .file-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border:1px solid var(--line);border-radius:9px;margin-top:10px;background:var(--surface);flex-wrap:wrap;}
+  .file-row .fn{font-size:12.8px;font-family:'IBM Plex Mono';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px;}
+  .file-row select{font-family:inherit;font-size:12px;padding:5px 8px;border-radius:6px;border:1px solid var(--line);}
+  .file-row .tag{font-size:11px;padding:3px 8px;border-radius:12px;font-weight:600;}
+  .file-row .tag.ok{background:var(--safe-bg);color:var(--safe);}
+  .file-row .tag.warn{background:var(--caution-bg);color:var(--caution);}
+  .upload-actions{margin-top:16px;display:flex;align-items:center;gap:12px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="page-header">
+    <div class="eyebrow">B2B1팀 · INVENTORY INTELLIGENCE</div>
+    <h1>재고 관리 대시보드</h1>
+    <div class="meta-line" id="metaLine">파일을 업로드해주세요.</div>
+    <div class="header-actions">
+      <div class="brand-toggle" id="brandToggle"></div>
+      <div class="spacer"></div>
+      <button class="btn ghost" type="button" id="refreshSheetBtn" title="연결된 구글시트에서 최신 데이터 다시 가져오기">🔄 새로고침</button>
+      <div class="sync-status"><span class="dot" id="syncDot"></span><span id="syncText">업로드된 데이터 없음</span></div>
+    </div>
+    <nav class="tab-nav" id="nav">
+      <button data-view="overview">전체 개요</button>
+      <button data-view="customer">거래처별 판매실적</button>
+      <button data-view="skustatus">품목별 판매현황</button>
+      <button data-view="forecast">발주 예측</button>
+      <button data-view="lookup">바코드 · 거래처 조회</button>
+      <button data-view="data" class="active">CSV / 엑셀 업로드</button>
+    </nav>
+  </header>
+
+  <main>
+    <div id="bannerZone"></div>
+
+    <!-- DATA IMPORT -->
+    <section class="view active" id="view-data">
+      <div class="panel">
+        <h3>구글시트 자동 연결</h3>
+        <p style="color:var(--muted);font-size:12.8px;line-height:1.7;">
+          Apps Script를 웹 앱으로 배포해두면, 헤더의 <b>🔄 새로고침</b> 버튼 한 번으로 그 웹앱을 통해 최신 데이터를 바로 가져옵니다. 아래 파일 업로드는 이 방법 대신 쓰거나, 이 방법이 안 될 때 백업용으로 쓰시면 됩니다.
+        </p>
+        <div class="filters" style="align-items:flex-end;">
+          <div class="field" style="min-width:420px;">
+            <label>Apps Script 웹앱 URL</label>
+            <input type="text" id="googleSheetIdInput" placeholder="예: https://script.google.com/macros/s/AKfycb.../exec" value="https://script.google.com/macros/s/AKfycbxmJubs9jojbYbmq9Xt5-Y3jRB9Yd8TKlKCnjQyKhSPwb-celdCZ5AKqhyzjMj1dv8lIQ/exec" style="width:100%;padding:9px 11px;border-radius:8px;border:1.5px solid var(--line);font-size:13px;font-family:inherit;box-sizing:border-box;">
+          </div>
+          <button class="btn" type="button" id="refreshSheetBtnInline">🔄 지금 가져오기</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Apps Script에서 "배포 → 새 배포 → 웹 앱 (액세스 권한: 모든 사용자)"로 배포하면 생기는 주소입니다.</div>
+        <div id="googleSheetStatus" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="panel">
+        <h3>CSV / 엑셀 업로드 (백업용 수동 업로드)</h3>
+        <p style="color:var(--muted);font-size:12.8px;line-height:1.7;">
+          구글 시트에서 CSV로 각 탭을 내려받아 올리거나, <b>엑셀 파일(.xlsx)을 통째로 다운받아 올려도</b> 됩니다 — 엑셀 파일 안에 시트가 여러 개 있어도 자동으로 각 시트를 인식합니다.<br>
+          파일 이름과 상관없이 <b>내용을 보고 자동으로 어떤 탭인지 인식</b>합니다 (가용재고조회 / 제품일정표 / 일자별판매실적분석 / 유통기한(선택) / 상품마스터(선택)).<br>
+          <b>한 번 데이터를 올린 뒤에는, 바뀐 파일만 다시 올리면 됩니다</b> — 예를 들어 가용재고조회만 새로 올리면 나머지(제품일정표, 판매실적 등)는 이전에 올린 데이터가 그대로 유지됩니다.
+        </p>
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls" style="display:none">
+          <div class="dz-icon">＋</div>
+          <div class="dz-text">CSV 또는 엑셀 파일을 여기로 끌어다 놓거나 클릭해서 선택하세요</div>
+        </div>
+        <div id="uploadStatus"></div>
+      </div>
+
+    </section>
+
+    <!-- OVERVIEW -->
+    <section class="view" id="view-overview">
+      <div class="signal-wrap">
+        <div class="label-row">
+          <h3>재고 신호등 — 전체 품목 발주 상태</h3>
+          <span class="mono" style="font-size:11.5px;color:var(--muted);" id="signalTotal">품목 0개</span>
+        </div>
+        <div id="signalCircles" style="display:flex;gap:36px;justify-content:center;flex-wrap:wrap;padding:14px 0 4px 0;"></div>
+      </div>
+
+      <div class="cards" id="overviewCards"></div>
+    </section>
+
+    <!-- CUSTOMER -->
+    <section class="view" id="view-customer">
+      <div class="panel">
+        <h3>거래처별 · 분기별 판매실적</h3>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">품목을 행으로, 분기를 열로 나열한 표입니다. 거래처/품번을 여러 개 선택해서 비교할 수 있습니다.</div>
+        <div class="filters" style="align-items:flex-start;position:relative;">
+          <div class="msel" id="custMsel">
+            <button type="button" class="btn ghost msel-trigger" id="custMselTrigger">거래처 전체 ▾</button>
+            <div class="msel-panel" id="custMselPanel" hidden>
+              <input type="text" class="msel-search" id="custMselSearch" placeholder="거래처 검색">
+              <div class="msel-actionrow"><button type="button" data-action="msel-clear" data-which="cust">선택 해제</button></div>
+              <div class="msel-list" id="custMselList"></div>
+            </div>
+          </div>
+          <div class="msel" id="pnMsel">
+            <button type="button" class="btn ghost msel-trigger" id="pnMselTrigger">품번 전체 ▾</button>
+            <div class="msel-panel" id="pnMselPanel" hidden>
+              <div class="chip-row" id="pnChipRow"></div>
+              <input type="text" class="msel-search" id="pnMselSearch" placeholder="품번 입력 후 Enter (예: SB1344, 여러 개 가능)">
+              <div class="msel-actionrow"><button type="button" data-action="msel-clear" data-which="pn">선택 해제</button></div>
+              <div class="msel-list" id="pnMselList"></div>
+            </div>
+          </div>
+          <input type="text" id="customerPnSearch" placeholder="품번 / 품명 검색" style="font-family:inherit;font-size:12.5px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--line);min-width:180px;">
+        </div>
+        <div id="customerTable"></div>
+        <div class="more-row" id="customerMoreWrap"></div>
+      </div>
+    </section>
+
+    <!-- SKU STATUS -->
+    <section class="view" id="view-skustatus">
+      <div class="panel">
+        <h3>품목별 판매현황</h3>
+        <p style="color:var(--muted);font-size:12.5px;margin-top:-8px;">품번(SKU)이나 품명을 검색해서 선택하면, 그 품목(들)을 거래처별·월별로 얼마나 팔았는지 표로 보여줍니다. 여러 품번을 줄바꿈이나 쉼표로 구분해서 붙여넣고 <b>Enter</b>를 누르면 검색된 품번이 모두 합산되어 바로 선택됩니다. (여러 줄을 입력만 하고 싶을 땐 Shift+Enter)</p>
+        <div class="msel" style="display:block;max-width:480px;">
+          <textarea id="skuStatusSearch" rows="2" placeholder="품번 또는 품명 검색 (여러 개는 줄바꿈/쉼표로 구분)" autocomplete="off" style="width:100%;padding:9px 11px;border-radius:8px;border:1.5px solid var(--line);font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical;min-height:40px;"></textarea>
+          <div id="skuStatusResults" class="msel-panel" style="display:none;position:absolute;width:480px;max-width:88vw;"></div>
+        </div>
+        <div id="skuStatusSelectedInfo"></div>
+        <div id="skuStatusTableWrap"></div>
+      </div>
+    </section>
+
+    <!-- FORECAST -->
+    <section class="view" id="view-forecast">
+      <div class="panel">
+        <h3>분기별 발주 예측 (거래처별 발주 패턴 기반)</h3>
+        <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;margin:-4px 0 12px 0;cursor:pointer;">
+          <input type="checkbox" id="forecastShowNoSales"> 최근 6개월 판매 이력 없는 품목도 보기
+        </label>
+        <div class="filters" style="align-items:flex-start;">
+          <select id="gradeSelect">
+            <option value="">등급 전체</option>
+            <option value="위험">위험</option>
+            <option value="주의">주의</option>
+            <option value="안전(입고예정)">안전(입고예정)</option>
+            <option value="안전">안전</option>
+            <option value="과잉재고">과잉재고</option>
+          </select>
+          <select id="forecastCustomer">
+            <option value="">거래처 전체</option>
+          </select>
+          <input id="forecastSearch" placeholder="품번 / 품명 검색">
+          <div class="field" style="min-width:240px;">
+            <input type="text" id="forecastPnInput" placeholder="품번 입력 후 Enter (여러 개 가능)">
+            <div class="chip-row" id="forecastPnChipRow" style="margin-top:6px;margin-bottom:0;"></div>
+          </div>
+        </div>
+        <div id="forecastOverstockScope"></div>
+        <div id="forecastSelectPanel"></div>
+        <div id="forecastTable"></div>
+        <div class="more-row" id="forecastMoreWrap"></div>
+      </div>
+    </section>
+
+    <!-- LOOKUP -->
+    <section class="view" id="view-lookup">
+      <div class="panel">
+        <h3>바코드 · 품명 · 거래처로 품번 / 재고 / 입고예정 조회</h3>
+        <p style="color:var(--muted);font-size:12.5px;margin-top:-8px;">PO에 찍힌 바코드나 대략적인 품명을 입력하면, 해당 거래처에 실제로 출고했던 품번·품명과 현재 창고별 가용재고, 입고예정 일정을 함께 보여줍니다. 바코드/품명 둘 다 여러 개를 한 번에 넣을 수 있습니다. (성분에디터/밀크터치/마미케어 품번만 검색됩니다)</p>
+        <form class="lookup-form" id="lookupForm">
+          <div class="field" style="flex:1;min-width:220px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <label>바코드 / 품번 (여러 개는 줄바꿈 또는 쉼표로 구분)</label>
+              <span data-action="clear-lookup-barcode" style="cursor:pointer;font-size:11px;color:var(--accent);font-weight:700;">지우기</span>
+            </div>
+            <textarea id="lookupBarcode" rows="2" placeholder="예: SB1344 500&#10;8800253026947, SB1344&#10;(줄바꿈으로 여러 개, 뒤에 숫자를 붙이면 필요수량으로 인식)" style="padding:9px 11px;border-radius:8px;border:1px solid var(--line);font-size:13px;font-family:inherit;resize:vertical;min-height:40px;"></textarea>
+          </div>
+          <div class="field" style="flex:1;min-width:220px;">
+            <label>품명 검색 (부분 일치, 여러 개 가능)</label>
+            <textarea id="lookupNameQuery" rows="2" placeholder="예: 크림인세럼, 틴트글로우&#10;정확한 전체 품명 아니어도 됩니다" style="padding:9px 11px;border-radius:8px;border:1px solid var(--line);font-size:13px;font-family:inherit;resize:vertical;min-height:40px;"></textarea>
+          </div>
+          <div class="field">
+            <label>거래처 (전체에 동일 적용)</label>
+            <input id="lookupCustomer" list="customerList" placeholder="예: UNLOCKT BRANDS INC">
+            <datalist id="customerList"></datalist>
+          </div>
+          <button class="btn" type="submit">조회</button>
+        </form>
+        <div id="exportPanel"></div>
+        <div id="lookupResults"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const nf = new Intl.NumberFormat('ko-KR');
+const fmt = n => nf.format(Math.round(n||0));
+const fmtDec = (n, digits) => nf.format(Math.round((n||0)*Math.pow(10,digits))/Math.pow(10,digits));
+
+const state = {
+  loaded: false,
+  inventory: [], schedule: [], sales: [], expiry: [], productMaster: [],
+  expiryByProduct: new Map(),
+  masterByProduct: new Map(),
+  invByProduct: new Map(), schByProduct: new Map(),
+  salesByProduct: new Map(), custQuarterProduct: new Map(),
+  forecast: [], customers: [], quarters: [],
+  lastSync: null, loading: false, error: null, fetchMode: null,
+};
+const ui = {
+  forecastPage: 50, customerPage: 50,
+  forecastExpanded: new Set(),
+  forecastSelected: new Set(),
+  forecastVisiblePns: [],
+  forecastPnChips: new Set(),
+  forecastCustomer: '',
+  forecastOverstockScope: 'all', // 'all' | 'b2b1' | 'emp'
+  skuStatusSearch: '',
+  skuStatusSelected: new Set(), // 품번들 (여러 개 선택 가능)
+  skuStatusLastMatches: [], // 최근 검색 결과 품번 목록 (전체추가 버튼용)
+  forecastShowNoSales: false,
+  brandSelected: new Set(), // 비어있으면 전체 — 바코드 조회 제외 전역 적용
+  forecastGrade: '', forecastSearch: '',
+  custId: '', custSelected: new Set(), pnSelected: new Set(),
+  custMselSearch: '', pnMselSearch: '', customerPnSearch: '',
+  lookupItems: [], // {barcode, status:'resolved'|'ambiguous'|'notfound', row, candidates}
+  activeBatchIdx: null,
+  collapsedItems: new Set(), // batchIdx들 — 선택완료로 접힌 항목
+  masterInfoExpanded: new Set(), // 품번들 — 아웃박스·인박스·중량 정보 펼친 상태
+  autoSelectIncludeAlternatives: false, // 추천 선택 시 동일 바코드 다른 품번(대체품목)도 포함할지
+  showPltPackingDetail: false, // 혼적모드 PLT 구성 상세보기 토글
+  neededQty: new Map(), // 품번 -> 필요 수량
+  exportPltByProduct: new Map(), // 품번 -> 예상 PLT (다운로드 목록의 PLT계산 버튼으로 채워짐)
+  exportPltDetail: new Map(), // 품번 -> {boxesPerPallet, totalWeightKg, weightPerPltKg}
+  exportPltTareKg: 20, // 빈 PLT 자체 무게(kg)
+  exportPltBaseHeightCm: 15, // 파레트 밑판 두께(cm) — 최대높이에서 빼고 적재층수 계산
+  exportPltPacking: [], // 혼적모드 PLT별 배정 결과 [{index, items:[{pn,품명,frac}], used}]
+  exportPltNumbersByProduct: new Map(), // 혼적모드: 품번 -> 소속된 PLT 번호 배열
+  exportPltRepWeightByProduct: new Map(), // 혼적모드: 품번 -> 대표로 표시할 PLT 실제중량 배열 (중복 계산 방지)
+  exportPltRepDimsByProduct: new Map(), // 혼적모드: 품번 -> 대표로 표시할 PLT 실제규격 배열
+  manualBoxInfo: new Map(), // 품번 -> {아웃W,아웃D,아웃H,아웃무게g,아웃입수} (상품마스터에 없을 때 직접 입력)
+  pltMixMode: 'X', // 'O'(혼적) | 'X'(품목별 개별)
+  exportPltMixedTotal: null,
+  exportList: [], // {key, 품번, 품명, 바코드, 창고, 가용재고, 거래처}
+  incomingList: [], // {key, 품번, 품명, 바코드, 거래처, 월, 날짜, 수량}
+  expiryList: [], // {key, 품번, 품명, 바코드, 거래처, LOT, 유통기한, 가용재고수량}
+};
+
+/* ---------------- Sheet type signatures for auto-detection (CSV/엑셀 업로드) ---------------- */
+const SHEET_SIGNATURES = [
+  {key:'inventory', label:'가용재고조회', must:['창고','품번','품명','바코드'], required:true},
+  {key:'schedule',  label:'제품일정표',   must:['품번','거래처','바코드','8월 입고일정'], required:true},
+  {key:'sales',     label:'일자별판매실적분석', must:['실적번호','거래처','품번','수량'], required:true},
+  {key:'expiry',    label:'유통기한', must:['상품코드','LOT','유통기한','가용재고수량'], required:false},
+  {key:'productMaster', label:'상품마스터', must:['상품코드','아웃무게g','인무게g','제품무게g'], required:false},
+];
+// pending upload slots, keyed by sheet type -> {fileName, rows}
+const pendingFiles = {inventory:null, schedule:null, sales:null, expiry:null, productMaster:null};
+const unresolvedFiles = []; // {fileName, rows, chosenKey}
+
+function findHeaderRow(rows, mustContain){
+  for(let i=0;i<Math.min(rows.length,12);i++){
+    const row = (rows[i]||[]).map(c=>(c||'').toString().trim());
+    if(mustContain.every(m=>row.includes(m))) return {idx:i, header:row};
+  }
+  return null;
+}
+function colIdx(header,name){ return header.indexOf(name); }
+function num(v){
+  if(v===null||v===undefined) return 0;
+  const s = String(v).replace(/,/g,'').trim();
+  if(s==='') return 0;
+  const n = Number(s);
+  return isNaN(n)?0:n;
+}
+function parseDateStr(v){
+  if(!v) return null;
+  const s = String(v).trim();
+  if(!s) return null;
+  const norm = s.replace(/[./]/g, '-');
+  // YYYY-MM-DD (or with trailing time) — 로컬 타임존 기준으로 직접 생성 (UTC 파싱으로 인한 하루 밀림 방지)
+  let m = norm.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m){
+    const d = new Date(parseInt(m[1],10), parseInt(m[2],10)-1, parseInt(m[3],10));
+    if(!isNaN(d.getTime())) return d;
+  }
+  // MM-DD-YYYY (미국식 내보내기 대비)
+  m = norm.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if(m){
+    const mm = parseInt(m[1],10), dd = parseInt(m[2],10), yyyy = parseInt(m[3],10);
+    if(mm>=1 && mm<=12 && dd>=1 && dd<=31){
+      const d = new Date(yyyy, mm-1, dd);
+      if(!isNaN(d.getTime())) return d;
+    }
+  }
+  // 마지막 수단: 브라우저 기본 파서
+  const d2 = new Date(s);
+  return isNaN(d2.getTime()) ? null : d2;
+}
+
+function parseInventory(rows){
+  const hit = findHeaderRow(rows, ['창고','품번','품명','바코드']);
+  if(!hit) return [];
+  const {idx,header} = hit;
+  const c = {
+    창고:colIdx(header,'창고'), 가용재고:colIdx(header,'가용재고'), 품번:colIdx(header,'품번'),
+    품명:colIdx(header,'품명'), 바코드:colIdx(header,'바코드'), 규격:colIdx(header,'규격'),
+    현재고:colIdx(header,'현재고'), 안전재고:colIdx(header,'안전재고'),
+  };
+  const iIdx = header.indexOf('입고예정'); const oIdx = header.indexOf('출고예정');
+  const out = [];
+  for(let i=idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r) continue;
+    const pn = (r[c.품번]||'').toString().trim();
+    const wh = (r[c.창고]||'').toString().trim();
+    if(!pn || !wh) continue;
+    out.push({
+      창고:wh, 가용재고:num(r[c.가용재고]), 품번:pn, 품명:(r[c.품명]||'').toString().trim(),
+      바코드:(r[c.바코드]||'').toString().trim(), 규격:(r[c.규격]||'').toString().trim(),
+      현재고:num(r[c.현재고]), 입고예정:num(r[iIdx]), 출고예정:num(r[oIdx]),
+      안전재고:num(r[c.안전재고]),
+    });
+  }
+  return out;
+}
+
+function parseSchedule(rows){
+  const hit = findHeaderRow(rows, ['품번','거래처','바코드','8월 입고일정']);
+  if(!hit) return [];
+  const {idx,header} = hit;
+  const c = {
+    품번:colIdx(header,'품번'), 품명:colIdx(header,'품명'), 거래처:colIdx(header,'거래처'),
+    바코드:colIdx(header,'바코드'), 품목상태:colIdx(header,'품목상태'),
+    가용재고:colIdx(header,'가용재고'), 재고합계:colIdx(header,'재고합계'),
+    aug_d:colIdx(header,'8월 입고일정'), aug_q:colIdx(header,'8월 입고수량'),
+    sep_d:colIdx(header,'9월 입고일정'), sep_q:colIdx(header,'9월 입고수량'),
+    oct_d:colIdx(header,'10월 입고일정'), oct_q:colIdx(header,'10월 입고수량'),
+  };
+  const out = [];
+  for(let i=idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r) continue;
+    const pn = (r[c.품번]||'').toString().trim();
+    if(!pn) continue;
+    out.push({
+      품번:pn, 품명:(r[c.품명]||'').toString().trim(), 거래처:(r[c.거래처]||'').toString().trim(),
+      바코드:(r[c.바코드]||'').toString().trim(), 품목상태:(r[c.품목상태]||'').toString().trim(),
+      가용재고:num(r[c.가용재고]), 재고합계:num(r[c.재고합계]),
+      aug_d:(r[c.aug_d]||'').toString().trim(), aug_q:num(r[c.aug_q]),
+      sep_d:(r[c.sep_d]||'').toString().trim(), sep_q:num(r[c.sep_q]),
+      oct_d:(r[c.oct_d]||'').toString().trim(), oct_q:num(r[c.oct_q]),
+    });
+  }
+  return out;
+}
+
+function parseSales(rows){
+  const hit = findHeaderRow(rows, ['실적번호','거래처','품번','수량']);
+  if(!hit) return [];
+  const {idx,header} = hit;
+  const c = {
+    구분:colIdx(header,'구분'), 실적번호:colIdx(header,'실적번호'), 실적일자:colIdx(header,'실적일자'),
+    거래처:colIdx(header,'거래처'), 품명:colIdx(header,'품명'), 품번:colIdx(header,'품번'),
+    수량:colIdx(header,'수량'), 원화판매금액계:colIdx(header,'원화판매금액계'),
+  };
+  const out = [];
+  for(let i=idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r) continue;
+    const rn = (r[c.실적번호]||'').toString().trim();
+    const gubun = (r[c.구분]||'').toString().trim();
+    if(!rn || gubun==='TOTAL') continue;
+    const d = parseDateStr(r[c.실적일자]);
+    if(!d) continue;
+    out.push({
+      거래처:(r[c.거래처]||'').toString().trim(), 품번:(r[c.품번]||'').toString().trim(),
+      품명:(r[c.품명]||'').toString().trim(), 수량:num(r[c.수량]),
+      실적일자:d, 금액:num(r[c.원화판매금액계]),
+    });
+  }
+  return out;
+}
+
+function parseExpiry(rows){
+  const hit = findHeaderRow(rows, ['상품코드','LOT','유통기한','가용재고수량']);
+  if(!hit) return [];
+  const {idx,header} = hit;
+  const c = {
+    품번:colIdx(header,'상품코드'), 품명:colIdx(header,'상품명'), 바코드:colIdx(header,'바코드'),
+    창고명:colIdx(header,'창고명'), LOT:colIdx(header,'LOT'), 유통기한:colIdx(header,'유통기한'),
+    재고수량:colIdx(header,'재고수량'), 가용재고수량:colIdx(header,'가용재고수량'),
+  };
+  const out = [];
+  for(let i=idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r) continue;
+    const pn = (r[c.품번]||'').toString().trim();
+    if(!pn || pn==='TOTAL') continue;
+    const d = parseDateStr(r[c.유통기한]);
+    out.push({
+      품번:pn, 품명:(r[c.품명]||'').toString().trim(), 바코드:(r[c.바코드]||'').toString().trim(),
+      창고명:(r[c.창고명]||'').toString().trim(), LOT:(r[c.LOT]||'').toString().trim(),
+      유통기한: d, 유통기한Str:(r[c.유통기한]||'').toString().trim(),
+      재고수량:num(r[c.재고수량]), 가용재고수량:num(r[c.가용재고수량]),
+    });
+  }
+  return out;
+}
+
+function parseProductMaster(rows){
+  const hit = findHeaderRow(rows, ['상품코드','아웃무게g','인무게g','제품무게g']);
+  if(!hit) return [];
+  const {idx,header} = hit;
+  const c = {
+    품번:colIdx(header,'상품코드'), 품명:colIdx(header,'상품명'), 바코드:colIdx(header,'바코드'),
+    아웃W:colIdx(header,'아웃W'), 아웃D:colIdx(header,'아웃D'), 아웃H:colIdx(header,'아웃H'), 아웃무게g:colIdx(header,'아웃무게g'), 아웃입수:colIdx(header,'아웃입수'),
+    인W:colIdx(header,'인W'), 인D:colIdx(header,'인D'), 인H:colIdx(header,'인H'), 인무게g:colIdx(header,'인무게g'), 인입수:colIdx(header,'인입수'),
+    제품W:colIdx(header,'제품W'), 제품D:colIdx(header,'제품D'), 제품H:colIdx(header,'제품H'), 제품무게g:colIdx(header,'제품무게g'),
+    PLT1단:colIdx(header,'PLT1단'), PLT단수:colIdx(header,'PLT단수'), PLT총높이cm:colIdx(header,'PLT총높이cm'),
+    PLT박스수:colIdx(header,'PLT박스수'), PLT입수:colIdx(header,'PLT입수'), PLT무게kg:colIdx(header,'PLT무게kg'),
+    입고PLT종류:colIdx(header,'입고PLT종류'),
+  };
+  const out = [];
+  for(let i=idx+1;i<rows.length;i++){
+    const r = rows[i]; if(!r) continue;
+    const pn = (r[c.품번]||'').toString().trim();
+    if(!pn) continue;
+    out.push({
+      품번:pn, 품명:(r[c.품명]||'').toString().trim(), 바코드:(r[c.바코드]||'').toString().trim(),
+      아웃W:num(r[c.아웃W]), 아웃D:num(r[c.아웃D]), 아웃H:num(r[c.아웃H]), 아웃무게g:num(r[c.아웃무게g]), 아웃입수:num(r[c.아웃입수]),
+      인W:num(r[c.인W]), 인D:num(r[c.인D]), 인H:num(r[c.인H]), 인무게g:num(r[c.인무게g]), 인입수:num(r[c.인입수]),
+      제품W:num(r[c.제품W]), 제품D:num(r[c.제품D]), 제품H:num(r[c.제품H]), 제품무게g:num(r[c.제품무게g]),
+      PLT1단:num(r[c.PLT1단]), PLT단수:num(r[c.PLT단수]), PLT총높이cm:num(r[c.PLT총높이cm]),
+      PLT박스수:num(r[c.PLT박스수]), PLT입수:num(r[c.PLT입수]), PLT무게kg:num(r[c.PLT무게kg]),
+      입고PLT종류:(r[c.입고PLT종류]||'').toString().trim(),
+    });
+  }
+  return out;
+}
+
+/* ---------------- Derived computations ---------------- */
+function quarterLabel(d){ return `${d.getFullYear()} Q${Math.ceil((d.getMonth()+1)/3)}`; }
+
+const BRAND_MAP = { SB:'성분에디터', MT:'밀크터치', MC:'마미케어' };
+const BRAND_COLORS = { '성분에디터':'#C15B72', '밀크터치':'#6E88A6', '마미케어':'#6F8F5E' };
+function brandOf(pn){
+  const p = String(pn||'').trim().toUpperCase();
+  if(p.startsWith('SB')) return BRAND_MAP.SB;
+  if(p.startsWith('MT')) return BRAND_MAP.MT;
+  if(p.startsWith('MC')) return BRAND_MAP.MC;
+  return null;
+}
+function brandBadge(brand){
+  if(!brand) return '';
+  const c = BRAND_COLORS[brand] || 'var(--muted)';
+  return `<span class="badge" style="background:${c}1a;color:${c};">${brand}</span>`;
+}
+function brandPasses(brand){
+  return ui.brandSelected.size===0 || ui.brandSelected.has(brand);
+}
+
+function isUsableWarehouse(name){
+  const n = String(name||'');
+  return n.includes('B2B1팀') || n.includes('EMP');
+}
+function usableAvailable(inv){
+  if(!inv) return 0;
+  return inv.rows.filter(r=>isUsableWarehouse(r.창고)).reduce((s,r)=>s+r.가용재고, 0);
+}
+const OVERSTOCK_MULTIPLIER = 2; // 예상 분기수요의 몇 배 이상이면 과잉재고로 볼지
+function scopedAvailable(pn, scope){
+  const inv = state.invByProduct.get(pn);
+  if(!inv) return 0;
+  if(scope==='b2b1') return inv.rows.filter(r=>String(r.창고||'').includes('B2B1팀')).reduce((s,r)=>s+r.가용재고,0);
+  if(scope==='emp') return inv.rows.filter(r=>String(r.창고||'').includes('EMP')).reduce((s,r)=>s+r.가용재고,0);
+  return usableAvailable(inv);
+}
+function salesDetailFor(pn){
+  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-6);
+  return state.sales.filter(s=>s.품번===pn && s.실적일자>=cutoff).sort((a,b)=>b.실적일자-a.실적일자);
+}
+
+const QUARTER_DAYS = 91.25;
+function computeOrderPattern(pn){
+  const cutoff = new Date(); cutoff.setFullYear(cutoff.getFullYear()-1); // 최근 12개월 기준
+  const rows = (state.salesRowsByProduct.get(pn)||[]).filter(r=>r.실적일자>=cutoff);
+  const byCust = new Map(); // 거래처 -> {dates:[], totalQty}
+  rows.forEach(r=>{
+    if(!byCust.has(r.거래처)) byCust.set(r.거래처, {dates:[], totalQty:0});
+    const e = byCust.get(r.거래처);
+    e.dates.push(r.실적일자);
+    e.totalQty += r.수량;
+  });
+  let totalQuarterly = 0;
+  const result = new Map();
+  byCust.forEach((e, cust)=>{
+    const dates = e.dates.slice().sort((a,b)=>a-b);
+    const n = dates.length;
+    const avgQtyPerOrder = e.totalQty / n;
+    let avgCycleDays = null;
+    let quarterlyContribution;
+    if(n>=2){
+      const spanDays = (dates[n-1]-dates[0]) / (1000*60*60*24);
+      if(spanDays>0){
+        avgCycleDays = spanDays/(n-1);
+        quarterlyContribution = avgQtyPerOrder * (QUARTER_DAYS/avgCycleDays);
+      } else {
+        // 같은 날 여러 건: 관측 기간(최대 365일) 대비로 환산
+        quarterlyContribution = e.totalQty * (QUARTER_DAYS/365);
+      }
+    } else {
+      // 주문 1건뿐: 관측 기간 대비로 환산 (과대추정 방지)
+      quarterlyContribution = e.totalQty * (QUARTER_DAYS/365);
+    }
+    totalQuarterly += quarterlyContribution;
+    result.set(cust, {
+      거래처:cust, 주문횟수:n, 총수량:e.totalQty, 평균발주수량:avgQtyPerOrder,
+      평균발주주기:avgCycleDays, 최근발주일:dates[n-1], 분기환산수량:quarterlyContribution
+    });
+  });
+  return {byCustomer:result, totalQuarterly};
+}
+
+function computeDerived(){
+  state._productListCache = null;
+  const custSel = document.getElementById('forecastCustomer');
+  if(custSel) custSel.dataset.synced = '0'; // 새 데이터 로드 시 거래처 목록 다시 채우기
+  // inventory by product
+  const invByProduct = new Map();
+  state.inventory.forEach(r=>{
+    if(!invByProduct.has(r.품번)) invByProduct.set(r.품번,{total:0, rows:[]});
+    const e = invByProduct.get(r.품번);
+    e.total += r.가용재고; e.rows.push(r);
+  });
+
+  // expiry (LOT) by product
+  const expiryByProduct = new Map();
+  state.expiry.forEach(r=>{
+    if(!expiryByProduct.has(r.품번)) expiryByProduct.set(r.품번, []);
+    expiryByProduct.get(r.품번).push(r);
+  });
+  state.expiryByProduct = expiryByProduct;
+  state.invByProduct = invByProduct;
+
+  // product master (박스/중량 상세) by product
+  const masterByProduct = new Map();
+  state.productMaster.forEach(r=>{ masterByProduct.set(r.품번, r); });
+  state.masterByProduct = masterByProduct;
+
+  // schedule by product (also by barcode for lookup)
+  const schByProduct = new Map();
+  state.schedule.forEach(r=>{ if(!schByProduct.has(r.품번)) schByProduct.set(r.품번, r); });
+  state.schByProduct = schByProduct;
+
+  // sales aggregations
+  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-6);
+  const salesByProduct = new Map();
+  const salesRowsByProduct = new Map(); // 품번 -> raw sales rows (발주 패턴 분석용)
+  const custQuarterProduct = new Map(); // 거래처 -> quarter -> Map(품번 -> {품명,qty})
+  const customersSet = new Set();
+  const quartersSet = new Set();
+
+  state.sales.forEach(r=>{
+    customersSet.add(r.거래처);
+    const q = quarterLabel(r.실적일자);
+    quartersSet.add(q);
+
+    if(!salesByProduct.has(r.품번)) salesByProduct.set(r.품번,{sum6mo:0, totalAll:0, 품명:r.품명});
+    const p = salesByProduct.get(r.품번);
+    p.totalAll += r.수량;
+    if(!p.품명 && r.품명) p.품명 = r.품명;
+    if(r.실적일자 >= cutoff) p.sum6mo += r.수량;
+
+    if(!salesRowsByProduct.has(r.품번)) salesRowsByProduct.set(r.품번, []);
+    salesRowsByProduct.get(r.품번).push(r);
+
+    if(!custQuarterProduct.has(r.거래처)) custQuarterProduct.set(r.거래처, new Map());
+    const custMap = custQuarterProduct.get(r.거래처);
+    if(!custMap.has(q)) custMap.set(q, new Map());
+    const qMap = custMap.get(q);
+    if(!qMap.has(r.품번)) qMap.set(r.품번, {품명:r.품명, qty:0});
+    qMap.get(r.품번).qty += r.수량;
+  });
+  state.salesByProduct = salesByProduct;
+  state.salesRowsByProduct = salesRowsByProduct;
+  state.custQuarterProduct = custQuarterProduct;
+  state.customers = Array.from(customersSet).filter(Boolean).sort((a,b)=>a.localeCompare(b,'ko'));
+  state.quarters = Array.from(quartersSet).sort().reverse();
+
+  // forecast list (union of product codes across all 3 sheets)
+  // 운영 종료: SB(성분에디터)/MT(밀크터치)/MC(마미케어) 이외 품번은 완전히 제외
+  const codes = new Set([...schByProduct.keys(), ...invByProduct.keys(), ...salesByProduct.keys()]);
+  const forecast = [];
+  codes.forEach(code=>{
+    if(!code) return;
+    const brand = brandOf(code);
+    if(!brand) return; // 나머지 품번 삭제
+    const sched = schByProduct.get(code);
+    const inv = invByProduct.get(code);
+    const sinfo = salesByProduct.get(code);
+    const 품명 = (sched && sched.품명) || (inv && inv.rows[0] && inv.rows[0].품명) || (sinfo && sinfo.품명) || '';
+    const 바코드 = (sched && sched.바코드) || (inv && inv.rows[0] && inv.rows[0].바코드) || '';
+    const available = usableAvailable(inv);
+    const sold6 = sinfo ? sinfo.sum6mo : 0;
+    const pattern = computeOrderPattern(code);
+    const avgQuarterly = pattern.totalQuarterly;
+    const incoming = sched ? (sched.aug_q + sched.sep_q + sched.oct_q) : 0;
+    const orderQty = Math.max(0, Math.round(avgQuarterly - available - incoming));
+    let grade, ratio=null;
+    if(avgQuarterly > 0){
+      ratio = (available/avgQuarterly)*100;
+      if(ratio >= 100){
+        grade = '안전';
+      } else if(available + incoming >= avgQuarterly){
+        grade = '안전(입고예정)'; // 현재고만으론 부족하지만 입고예정 물량으로 충당됨
+      } else {
+        grade = ratio < 50 ? '위험' : '주의';
+      }
+    } else {
+      grade = '데이터부족';
+    }
+    forecast.push({품번:code, 품명, 바코드, brand, available, sold6, avgQuarterly, incoming, orderQty, ratio, grade, sched, orderPattern:pattern.byCustomer});
+  });
+  forecast.sort((a,b)=>{
+    const order = {'위험':0,'주의':1,'안전(입고예정)':2,'안전':3,'데이터부족':4};
+    if(order[a.grade]!==order[b.grade]) return order[a.grade]-order[b.grade];
+    return (b.sold6)-(a.sold6);
+  });
+  state.forecast = forecast;
+}
+
+/* ---------------- Rendering ---------------- */
+function gradeBadge(g){
+  const map = {'위험':'danger','주의':'caution','안전':'safe','안전(입고예정)':'pending','데이터부족':'none'};
+  return `<span class="badge ${map[g]||'none'}">${g}</span>`;
+}
+function barColor(g){
+  if(g==='위험') return 'var(--danger)';
+  if(g==='주의') return 'var(--caution)';
+  if(g==='안전(입고예정)') return 'var(--cat-incoming)';
+  if(g==='안전') return 'var(--safe)';
+  return 'var(--none)';
+}
+
+function renderSyncStatus(){
+  const dot = document.getElementById('syncDot');
+  const text = document.getElementById('syncText');
+  dot.className = 'dot' + (state.error?' err':'');
+  if(state.error){
+    text.textContent = '파일 처리 오류';
+  } else if(state.lastSync){
+    const label = state.fetchMode==='googlesheet' ? '구글시트 새로고침' : '마지막 업로드';
+    text.textContent = label + ' ' + state.lastSync.toLocaleTimeString('ko-KR');
+  } else {
+    text.textContent = '업로드된 데이터 없음';
+  }
+}
+
+function renderMetaLine(){
+  const el = document.getElementById('metaLine');
+  if(!state.loaded){ el.textContent = '파일을 업로드해주세요.'; return; }
+  const pnCount = state.forecast.length;
+  const custCount = state.customers.length;
+  const salesCount = state.sales.length;
+  const ts = state.lastSync ? state.lastSync.toLocaleString('ko-KR') : '-';
+  el.textContent = `품목 ${fmt(pnCount)}개 · 거래처 ${fmt(custCount)}곳 · 판매실적 ${fmt(salesCount)}건 · 마지막 업로드 ${ts}`;
+}
+
+function renderBanner(){
+  const zone = document.getElementById('bannerZone');
+  if(!state.error){ zone.innerHTML=''; return; }
+  zone.innerHTML = `<div class="banner err"><div>
+    <strong>파일을 처리하지 못했습니다.</strong> (${state.error})<br>
+    파일이 맞는지, 손상되지 않았는지 확인 후 다시 올려주세요.
+  </div></div>`;
+}
+function renderEmptyState(){
+  return `<div class="empty">아직 데이터가 없습니다. 'CSV / 엑셀 업로드' 탭에서 파일을 올려주세요.</div>`;
+}
+
+function donutSvg(pct, color, size, stroke){
+  size = size||96; stroke = stroke||11;
+  const r = (size-stroke)/2;
+  const c = 2*Math.PI*r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const offset = c*(1-clamped/100);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(-90deg);">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="var(--surface-alt)" stroke-width="${stroke}"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none" stroke="${color}" stroke-width="${stroke}" stroke-dasharray="${c}" stroke-dashoffset="${offset}" stroke-linecap="round"/>
+  </svg>`;
+}
+function renderOverview(){
+  if(!state.loaded){
+    document.getElementById('signalTotal').textContent = '';
+    document.getElementById('signalCircles').innerHTML = '';
+    document.getElementById('overviewCards').innerHTML = '';
+    return;
+  }
+  const f = state.forecast.filter(x=>brandPasses(x.brand));
+  const counts = {위험:0,주의:0,'안전(입고예정)':0,안전:0,데이터부족:0};
+  f.forEach(x=>counts[x.grade]++);
+  const safeCombined = counts.안전 + counts['안전(입고예정)'];
+  const total3 = counts.위험 + counts.주의 + safeCombined; // 데이터부족 제외
+
+  document.getElementById('signalTotal').textContent = `품목 ${fmt(f.length)}개${ui.brandSelected.size>0?' · '+Array.from(ui.brandSelected).join(', '):''}`;
+
+  const circleDefs = [
+    {label:'위험', count:counts.위험, color:'var(--danger)'},
+    {label:'주의', count:counts.주의, color:'var(--caution)'},
+    {label:'안전', count:safeCombined, color:'var(--safe)'},
+  ];
+  const circles = document.getElementById('signalCircles');
+  circles.innerHTML = circleDefs.map(c=>{
+    const pct = total3>0 ? Math.round(c.count/total3*100) : 0;
+    return `<div style="text-align:center;">
+      <div style="position:relative;display:inline-block;">
+        ${donutSvg(pct, c.color)}
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+          <div style="font-family:'Pretendard','Inter';font-weight:800;font-size:20px;color:${c.color};">${fmt(c.count)}</div>
+        </div>
+      </div>
+      <div style="margin-top:8px;font-size:12.5px;font-weight:700;color:var(--ink);">${c.label}</div>
+      <div style="font-size:11px;color:var(--muted);">${pct}%</div>
+    </div>`;
+  }).join('');
+
+  const cardsEl = document.getElementById('overviewCards');
+  const totalCustomers = state.customers.length;
+  const pnSet = new Set(f.map(x=>x.품번));
+  const sold6moTotal = Array.from(state.salesByProduct.entries()).reduce((s,[pn,x])=> pnSet.has(pn) ? s+x.sum6mo : s, 0);
+  cardsEl.innerHTML = `
+    <div class="card"><div class="card-dot" style="background:var(--danger);"></div><div class="k">위험 품목</div><div class="v" style="color:var(--danger)">${fmt(counts.위험)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--caution);"></div><div class="k">주의 품목</div><div class="v" style="color:var(--caution)">${fmt(counts.주의)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--cat-incoming);"></div><div class="k">안전(입고예정)</div><div class="v" style="color:var(--cat-incoming)">${fmt(counts['안전(입고예정)'])}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--safe);"></div><div class="k">안전 품목</div><div class="v" style="color:var(--safe)">${fmt(counts.안전)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--none);"></div><div class="k">데이터부족</div><div class="v" style="color:var(--none)">${fmt(counts.데이터부족)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--accent);"></div><div class="k">거래처 수</div><div class="v">${fmt(totalCustomers)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--cat-warehouse);"></div><div class="k">최근 6개월 총판매</div><div class="v">${fmt(sold6moTotal)}</div></div>
+  `;
+}
+
+function syncForecastCustomerOptions(){
+  const sel = document.getElementById('forecastCustomer');
+  if(!sel || sel.dataset.synced==='1') return; // 한 번만 채움 (매 렌더마다 다시 만들 필요 없음)
+  const opts = state.customers.map(c=>`<option value="${escAttr(c)}">${c}</option>`).join('');
+  sel.innerHTML = `<option value="">거래처 전체</option>` + opts;
+  sel.value = ui.forecastCustomer;
+  sel.dataset.synced = '1';
+}
+function renderForecastOverstockScope(show){
+  const el = document.getElementById('forecastOverstockScope');
+  if(!el) return;
+  if(!show){ el.innerHTML=''; return; }
+  const opt = (val, label) => `<label style="display:flex;align-items:center;gap:5px;font-size:12.5px;color:var(--muted);cursor:pointer;">
+    <input type="radio" name="forecastOverstockScope" value="${val}" ${ui.forecastOverstockScope===val?'checked':''}> ${label}
+  </label>`;
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--surface-alt);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;">
+    <span style="font-size:12px;color:var(--muted);font-weight:700;">과잉재고 기준 창고</span>
+    ${opt('all','전체 (B2B1팀+EMP)')}
+    ${opt('b2b1','B2B1팀 창고만')}
+    ${opt('emp','EMP 정상창고만')}
+    <span style="font-size:11px;color:var(--muted);margin-left:auto;">최근 6개월간 판매 이력이 없으면서 재고가 남아있는 품목입니다</span>
+  </div>`;
+}
+
+function forecastDetailRow(x){
+  const pattern = Array.from((x.orderPattern||new Map()).values()).sort((a,b)=>b.분기환산수량-a.분기환산수량);
+  const details = salesDetailFor(x.품번);
+
+  const incomingRows = [];
+  if(x.sched){
+    if(x.sched.aug_q>0) incomingRows.push({m:'8월', d:x.sched.aug_d, q:x.sched.aug_q});
+    if(x.sched.sep_q>0) incomingRows.push({m:'9월', d:x.sched.sep_d, q:x.sched.sep_q});
+    if(x.sched.oct_q>0) incomingRows.push({m:'10월', d:x.sched.oct_d, q:x.sched.oct_q});
+  }
+
+  return `<tr class="detail-row"><td colspan="13" style="background:var(--surface-alt);padding:16px 18px;">
+    <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:20px;">
+      <div>
+        <div class="section-title" style="margin-bottom:8px;">거래처별 발주 패턴 (최근 12개월, 예상 분기수요의 근거)</div>
+        ${pattern.length===0 ? `<div class="empty" style="padding:10px 0;">최근 12개월간 판매 이력이 없습니다.</div>` : `
+        <table style="margin-bottom:10px;"><thead><tr><th>거래처</th><th class="num">주문횟수</th><th class="num">평균 발주수량</th><th class="num">평균 발주주기</th><th class="num">분기 환산</th></tr></thead>
+        <tbody>${pattern.map(p=>{
+          const isFiltered = ui.forecastCustomer && p.거래처===ui.forecastCustomer;
+          return `<tr style="${isFiltered?'background:var(--accent-soft);':''}">
+          <td>${p.거래처}${isFiltered?' <span class="badge safe" style="margin-left:4px;">선택됨</span>':''}</td><td class="num">${fmt(p.주문횟수)}</td><td class="num">${fmt(Math.round(p.평균발주수량))}</td>
+          <td class="num">${p.평균발주주기? Math.round(p.평균발주주기)+'일' : '-'}</td>
+          <td class="num" style="font-weight:700;">${fmt(Math.round(p.분기환산수량))}</td>
+        </tr>`;
+        }).join('')}</tbody></table>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">거래일자별 상세 (최근 20건)</div>
+        <table><thead><tr><th>실적일자</th><th>거래처</th><th class="num">수량</th></tr></thead>
+        <tbody>${details.slice(0,20).map(s=>`<tr><td class="mono">${s.실적일자.toLocaleDateString('ko-KR')}</td><td>${s.거래처}</td><td class="num">${fmt(s.수량)}</td></tr>`).join('')}</tbody></table>`}
+      </div>
+      <div>
+        <div class="section-title t-warehouse" style="margin-bottom:8px;">창고별 가용재고 (전체 창고)</div>
+        <div style="pointer-events:none;">${warehouseTableHtml(x.품번, x.품명, x.바코드, '', true)}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;">위 표는 전체 창고 기준이며, 상단의 "현재 가용재고" 숫자는 B2B1팀 + EMP 정상창고만 합산한 값입니다.</div>
+      </div>
+      <div>
+        <div class="section-title t-incoming" style="margin-bottom:8px;">입고예정 상세 (8~10월)</div>
+        ${incomingRows.length===0 ? `<div class="empty" style="padding:10px 0;">예정된 입고가 없습니다.</div>` : `
+        <table><thead><tr><th>월</th><th>날짜</th><th class="num">수량</th></tr></thead>
+        <tbody>${incomingRows.map(r=>`<tr><td>${r.m}</td><td class="mono">${r.d||'날짜 미정'}</td><td class="num">${fmt(r.q)}</td></tr>`).join('')}</tbody></table>`}
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;">예상 분기수요는 거래처별 평균 발주수량 × (91.25일 ÷ 평균 발주주기)의 합입니다.</div>
+      </div>
+    </div>
+  </td></tr>`;
+}
+
+function renderForecastPnChips(){
+  const row = document.getElementById('forecastPnChipRow');
+  if(!row) return;
+  if(ui.forecastPnChips.size===0){ row.innerHTML=''; return; }
+  const chipsHtml = Array.from(ui.forecastPnChips).map(pn=>`<span class="chip">${escAttr(pn)}<span class="x" data-action="remove-forecast-pn-chip" data-key="${escAttr(pn)}">×</span></span>`).join('');
+  row.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">${chipsHtml}<span data-action="clear-forecast-pn-chips" style="cursor:pointer;font-size:11px;color:var(--accent);font-weight:700;white-space:nowrap;">전체 지우기</span></div>`;
+}
+function addForecastPnTokens(raw){
+  const tokens = raw.split(/[\n,\s]+/).map(s=>s.trim()).filter(Boolean);
+  if(tokens.length===0) return;
+  tokens.forEach(t=>ui.forecastPnChips.add(t));
+  ui.forecastPage = 50;
+  renderForecast();
+}
+
+function renderForecastSelectPanel(){
+  const el = document.getElementById('forecastSelectPanel');
+  if(!el) return;
+  const selected = state.forecast.filter(x=>ui.forecastSelected.has(x.품번));
+  if(selected.length===0){ el.innerHTML=''; return; }
+  el.innerHTML = `
+    <div class="panel" style="border:1px solid var(--accent);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+        <div class="section-title t-download" style="margin-bottom:0;">발주할 품목 (${selected.length})</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn ghost" type="button" data-action="forecast-clear-select">전체 지우기</button>
+          <button class="btn" type="button" data-action="forecast-download-select">엑셀 다운로드</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+      <table><thead><tr><th>품번</th><th>브랜드</th><th>품명</th><th class="num">최근6개월 판매</th><th class="num">예상 분기수요</th><th class="num">현재 가용재고</th><th class="num">입고예정(3개월)</th><th class="num">추가발주 필요</th><th>등급</th><th></th></tr></thead>
+      <tbody>${selected.map(x=>`<tr>
+        <td><code class="pn">${x.품번}</code></td><td>${brandBadge(x.brand)}</td><td>${x.품명}</td>
+        <td class="num">${fmt(x.sold6)}</td><td class="num">${fmt(x.avgQuarterly)}</td>
+        <td class="num">${fmt(x.available)}</td><td class="num">${fmt(x.incoming)}</td>
+        <td class="num" style="font-weight:700;color:${x.orderQty>0?'var(--danger)':'inherit'}">${fmt(x.orderQty)}</td>
+        <td>${gradeBadge(x.grade)}</td>
+        <td><button class="btn ghost" type="button" style="padding:4px 9px;font-size:11px;" data-action="forecast-remove-select" data-pn="${escAttr(x.품번)}">삭제</button></td>
+      </tr>`).join('')}</tbody></table>
+      </div>
+    </div>
+  `;
+}
+function downloadForecastCsv(){
+  const selected = state.forecast.filter(x=>ui.forecastSelected.has(x.품번));
+  if(selected.length===0) return;
+  const headers = ['품번','브랜드','품명','최근6개월 판매','예상 분기수요','현재 가용재고','입고예정(3개월)','추가발주 필요','등급'];
+  const escape = v => {
+    const s = (v===null||v===undefined)?'':String(v);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  };
+  const lines = [headers.join(',')];
+  selected.forEach(x=>{
+    lines.push([x.품번,x.brand,x.품명,fmt(x.sold6),fmt(x.avgQuarterly),fmt(x.available),fmt(x.incoming),fmt(x.orderQty),x.grade].map(escape).join(','));
+  });
+  const csv = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `발주예측_선택품목_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function renderForecast(){
+  if(!state.loaded){ document.getElementById('forecastTable').innerHTML = renderEmptyState(); document.getElementById('forecastMoreWrap').innerHTML=''; return; }
+  syncForecastCustomerOptions();
+  const isOverstock = ui.forecastGrade==='과잉재고';
+  renderForecastOverstockScope(isOverstock);
+  // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
+  let list = isOverstock
+    ? state.forecast.filter(x=>brandPasses(x.brand) && x.sold6===0)
+    : state.forecast.filter(x=>brandPasses(x.brand) && (ui.forecastShowNoSales || x.sold6>0));
+
+  // 거래처 필터: 그 거래처가 실제로 사간 품목만 남기고, 예상 분기수요/재고비율/추가발주/등급을 그 거래처 수요 기준으로 재계산
+  if(ui.forecastCustomer){
+    list = list.filter(x=> x.orderPattern && x.orderPattern.has(ui.forecastCustomer)).map(x=>{
+      const cd = x.orderPattern.get(ui.forecastCustomer);
+      const avgQuarterly = cd.분기환산수량;
+      const available = x.available, incoming = x.incoming;
+      const orderQty = Math.max(0, Math.round(avgQuarterly - available - incoming));
+      let grade, ratio=null;
+      if(avgQuarterly > 0){
+        ratio = (available/avgQuarterly)*100;
+        if(ratio >= 100) grade = '안전';
+        else if(available + incoming >= avgQuarterly) grade = '안전(입고예정)';
+        else grade = ratio < 50 ? '위험' : '주의';
+      } else {
+        grade = '데이터부족';
+      }
+      return {...x, avgQuarterly, ratio, orderQty, grade, _customerScoped:true};
+    });
+  }
+
+  if(isOverstock){
+    const scope = ui.forecastOverstockScope;
+    list = list.map(x=>{
+      const avail = scopedAvailable(x.품번, scope);
+      return {...x, available:avail};
+    }).filter(x=> x.available>0); // 재고가 있는 것만 과잉재고
+  } else if(ui.forecastGrade){
+    list = list.filter(x=>x.grade===ui.forecastGrade);
+  }
+  if(ui.forecastSearch){
+    const s = ui.forecastSearch.toLowerCase();
+    list = list.filter(x=>x.품번.toLowerCase().includes(s) || x.품명.toLowerCase().includes(s));
+  }
+  if(ui.forecastPnChips.size>0){
+    const chips = Array.from(ui.forecastPnChips).map(c=>c.toLowerCase());
+    list = list.filter(x=> chips.some(c=>x.품번.toLowerCase().includes(c)));
+    // 검색한 품번 순서대로 정렬 (매칭된 칩의 입력 순서 기준)
+    list.sort((a,b)=>{
+      const ai = chips.findIndex(c=>a.품번.toLowerCase().includes(c));
+      const bi = chips.findIndex(c=>b.품번.toLowerCase().includes(c));
+      return ai-bi;
+    });
+  } else if(isOverstock){
+    list.sort((a,b)=> b.available - a.available); // 재고 많은 순
+  }
+  ui.forecastVisiblePns = list.map(x=>x.품번); // 전체 선택 대상 (필터링된 전체, 더보기 이전 포함)
+  const shown = list.slice(0, ui.forecastPage);
+  const el = document.getElementById('forecastTable');
+  renderForecastSelectPanel();
+  renderForecastPnChips();
+  if(list.length===0){
+    el.innerHTML = `<div class="empty">조건에 맞는 품목이 없습니다.</div>`;
+  } else {
+    const allSelected = list.length>0 && list.every(x=>ui.forecastSelected.has(x.품번));
+    const custNotice = ui.forecastCustomer ? `<div class="banner info" style="margin-bottom:10px;">현재 <b>${ui.forecastCustomer}</b> 거래처 기준으로 재계산된 예상 분기수요·재고비율·추가발주 필요·등급입니다 (전체 거래처 합산이 아닙니다).</div>` : '';
+    el.innerHTML = custNotice + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">가용재고는 <b>B2B1팀 + EMP 정상창고</b> 재고만 반영합니다 (다른 팀 전용 창고 재고는 제외). 예상 분기수요는 거래처별 평균 발주수량·발주주기 기반입니다. 행을 클릭하면 근거를 볼 수 있습니다. 체크박스로 발주할 품목을 선택하세요.</div>
+    <div style="margin-bottom:8px;">
+      <button class="btn ghost" type="button" data-action="forecast-select-all">전체 선택 (${fmt(list.length)}개)</button>
+      <button class="btn ghost" type="button" data-action="forecast-select-none" style="margin-left:6px;">선택 해제</button>
+    </div>
+    <div style="overflow-x:auto;">
+    <table><thead><tr>
+      <th><input type="checkbox" data-action="toggle-forecast-select-all" ${allSelected?'checked':''}></th><th></th><th>품번</th><th>바코드</th><th>브랜드</th><th>품명</th><th class="num">최근6개월 판매</th><th class="num">예상 분기수요</th>
+      <th class="num">현재 가용재고</th><th class="num">입고예정(3개월)</th><th class="num">재고비율</th><th class="num">추가발주 필요</th><th>등급</th>
+    </tr></thead><tbody>${shown.map(x=>{
+      const expanded = ui.forecastExpanded.has(x.품번);
+      const checked = ui.forecastSelected.has(x.품번);
+      const row = `<tr class="forecast-row">
+        <td><input type="checkbox" data-action="toggle-forecast-select" data-pn="${escAttr(x.품번)}" ${checked?'checked':''} onclick="event.stopPropagation()"></td>
+        <td style="color:var(--muted);cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${expanded?'▼':'▶'}</td>
+        <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}"><code class="pn">${x.품번}</code></td>
+        <td class="mono" style="cursor:pointer;font-size:11.5px;color:var(--muted);" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${x.바코드||'-'}</td>
+        <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${brandBadge(x.brand)}</td>
+        <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${x.품명}</td>
+        <td class="num">${fmt(x.sold6)}</td><td class="num">${fmt(x.avgQuarterly)}</td>
+        <td class="num">${fmt(x.available)}</td><td class="num">${fmt(x.incoming)}</td>
+        <td class="num">${x.ratio===null?'<span style="color:var(--muted)">—</span>':`<span class="mono" style="font-weight:700;color:${barColor(x.grade)}">${Math.round(x.ratio)}%</span>`}</td>
+        <td class="num" style="font-weight:${x.orderQty>0?700:400};color:${x.orderQty>0?'var(--danger)':'inherit'}">${fmt(x.orderQty)}</td>
+        <td>${gradeBadge(x.grade)}</td>
+      </tr>`;
+      return row + (expanded ? forecastDetailRow(x) : '');
+    }).join('')}</tbody></table>
+    </div>`;
+  }
+  document.getElementById('forecastMoreWrap').innerHTML = list.length>shown.length
+    ? `<button class="btn ghost" data-action="forecast-more">더 보기 (${fmt(list.length-shown.length)}개 더)</button>` : '';
+}
+
+const QUARTER_COLORS = ['#C15B72','#6E88A6','#BD8A3E','#6F8F5E','#8B6F94','#B6693F','#7A8B7E','#A5794F'];
+
+function productList(){
+  if(state._productListCache) return state._productListCache;
+  const map = new Map();
+  state.salesByProduct.forEach((v,pn)=>{ if(brandOf(pn)) map.set(pn, v.품명||''); });
+  state.schByProduct.forEach((v,pn)=>{ if(brandOf(pn) && !map.has(pn)) map.set(pn, v.품명||''); });
+  const list = Array.from(map.entries()).map(([pn,name])=>({pn,name})).sort((a,b)=>a.pn.localeCompare(b.pn));
+  state._productListCache = list;
+  return list;
+}
+
+/* ---------------- SKU 판매현황 ---------------- */
+function getAllSalesMonths(){
+  const set = new Set();
+  state.sales.forEach(r=>{
+    const d = r.실적일자;
+    set.add(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  });
+  return Array.from(set).sort();
+}
+function skuMonthLabel(mkey, singleYear){
+  const [y,m] = mkey.split('-');
+  return singleYear ? `${parseInt(m,10)}월` : `${y.slice(2)}.${parseInt(m,10)}월`;
+}
+function buildSkuStatusData(pns){
+  const pnSet = pns instanceof Set ? pns : new Set(pns);
+  const months = getAllSalesMonths();
+  const years = new Set(months.map(m=>m.split('-')[0]));
+  const singleYear = years.size<=1;
+  const rows = state.sales.filter(r=>pnSet.has(r.품번));
+  const byCust = new Map(); // 거래처 -> Map(month->qty)
+  rows.forEach(r=>{
+    const d = r.실적일자;
+    const mkey = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    if(!byCust.has(r.거래처)) byCust.set(r.거래처, new Map());
+    const m = byCust.get(r.거래처);
+    m.set(mkey, (m.get(mkey)||0) + r.수량);
+  });
+  const custList = Array.from(byCust.keys()).sort((a,b)=>{
+    const totalA = Array.from(byCust.get(a).values()).reduce((s,v)=>s+v,0);
+    const totalB = Array.from(byCust.get(b).values()).reduce((s,v)=>s+v,0);
+    return totalB-totalA; // 많이 산 거래처부터
+  });
+  return {months, singleYear, byCust, custList};
+}
+
+function renderSkuStatusSearchResults(){
+  const el = document.getElementById('skuStatusResults');
+  const raw = ui.skuStatusSearch.trim();
+  if(!raw){ el.style.display='none'; el.innerHTML=''; return; }
+  const terms = raw.split(/[\n,]+/).map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const matches = productList().filter(p=>{
+    const pnL = p.pn.toLowerCase(), nameL = (p.name||'').toLowerCase();
+    return terms.some(t=> pnL.includes(t) || nameL.includes(t));
+  }).slice(0,80);
+  ui.skuStatusLastMatches = matches.map(p=>p.pn);
+  if(matches.length===0){
+    el.innerHTML = `<div class="msel-empty">일치하는 품번/품명이 없습니다.</div>`;
+  } else {
+    el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 4px 6px 4px;">
+      <span style="font-size:11px;color:var(--muted);">${fmt(matches.length)}건 매칭</span>
+      <span data-action="pick-all-sku-status" style="cursor:pointer;font-size:11px;color:var(--accent);font-weight:700;">이 결과 전체 추가</span>
+    </div>
+    <div class="msel-list">${matches.map(p=>{
+      const picked = ui.skuStatusSelected.has(p.pn);
+      return `<div class="msel-row ${picked?'selected':''}" data-action="pick-sku-status" data-pn="${escAttr(p.pn)}">
+        <span><code class="pn" style="font-size:11.5px;">${p.pn}</code> · ${p.name||'-'}</span>
+        ${picked?'<span class="chk">✓ 선택됨</span>':''}
+      </div>`;
+    }).join('')}</div>`;
+  }
+  el.style.display = 'block';
+}
+
+function renderSkuStatusTable(){
+  const infoEl = document.getElementById('skuStatusSelectedInfo');
+  const wrapEl = document.getElementById('skuStatusTableWrap');
+  if(ui.skuStatusSelected.size===0){
+    infoEl.innerHTML = '';
+    wrapEl.innerHTML = `<div class="empty">품번(품명)을 검색해서 하나 이상 선택해주세요. 여러 개 선택하면 합산해서 보여줍니다.</div>`;
+    return;
+  }
+  const list = productList();
+  const chips = Array.from(ui.skuStatusSelected).map(pn=>{
+    const info = list.find(p=>p.pn===pn);
+    return `<span class="chip">${pn} · ${(info&&info.name)||''}<span class="x" data-action="remove-sku-status" data-pn="${escAttr(pn)}">×</span></span>`;
+  }).join('');
+  infoEl.innerHTML = `<div style="display:flex;align-items:center;gap:8px;margin:14px 0 10px 0;flex-wrap:wrap;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">${chips}</div>
+    <span data-action="clear-sku-status" style="cursor:pointer;font-size:11px;color:var(--accent);font-weight:700;margin-left:auto;white-space:nowrap;">전체 지우기</span>
+  </div>
+  ${ui.skuStatusSelected.size>1 ? `<div style="font-size:11.5px;color:var(--muted);margin-bottom:6px;">선택한 ${fmt(ui.skuStatusSelected.size)}개 품번을 합산한 수량입니다.</div>` : ''}`;
+
+  const {months, singleYear, byCust, custList} = buildSkuStatusData(ui.skuStatusSelected);
+  if(custList.length===0){
+    wrapEl.innerHTML = `<div class="empty">선택한 품번의 판매 이력이 없습니다.</div>`;
+    return;
+  }
+  const monthTotals = months.map(mk => custList.reduce((s,c)=> s + (byCust.get(c).get(mk)||0), 0));
+  const grandTotal = monthTotals.reduce((s,v)=>s+v,0);
+
+  wrapEl.innerHTML = `
+    <div style="margin-bottom:10px;">
+      <button class="btn" type="button" data-action="download-sku-status">엑셀 다운로드</button>
+    </div>
+    <div style="overflow-x:auto;">
+    <table><thead><tr>
+      <th>거래처</th>
+      ${months.map(mk=>`<th class="num">${skuMonthLabel(mk, singleYear)}</th>`).join('')}
+      <th class="num" style="color:var(--accent);">합계</th>
+    </tr></thead><tbody>
+      ${custList.map(c=>{
+        const m = byCust.get(c);
+        const rowTotal = months.reduce((s,mk)=>s+(m.get(mk)||0),0);
+        return `<tr><td>${c}</td>${months.map(mk=>`<td class="num">${fmt(m.get(mk)||0)}</td>`).join('')}<td class="num" style="font-weight:700;">${fmt(rowTotal)}</td></tr>`;
+      }).join('')}
+      <tr style="background:var(--surface-alt);font-weight:800;">
+        <td>합계</td>${monthTotals.map(v=>`<td class="num">${fmt(v)}</td>`).join('')}<td class="num" style="color:var(--accent);">${fmt(grandTotal)}</td>
+      </tr>
+    </tbody></table>
+    </div>
+  `;
+}
+
+function downloadSkuStatusCsv(){
+  if(ui.skuStatusSelected.size===0) return;
+  const {months, singleYear, byCust, custList} = buildSkuStatusData(ui.skuStatusSelected);
+  if(custList.length===0) return;
+  const escape = v => {
+    const s = (v===null||v===undefined)?'':String(v);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  };
+  const headers = ['거래처', ...months.map(mk=>skuMonthLabel(mk, singleYear)), '합계'];
+  const lines = [`선택 품번: ${Array.from(ui.skuStatusSelected).join(', ')}`];
+  lines.push(headers.join(','));
+  const monthTotals = months.map(mk => custList.reduce((s,c)=> s + (byCust.get(c).get(mk)||0), 0));
+  custList.forEach(c=>{
+    const m = byCust.get(c);
+    const rowTotal = months.reduce((s,mk)=>s+(m.get(mk)||0),0);
+    lines.push([c, ...months.map(mk=>fmt(m.get(mk)||0)), fmt(rowTotal)].map(escape).join(','));
+  });
+  lines.push(['합계', ...monthTotals.map(v=>fmt(v)), fmt(monthTotals.reduce((s,v)=>s+v,0))].map(escape).join(','));
+  const csv = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0,10);
+  const first = Array.from(ui.skuStatusSelected)[0].replace(/[^\w\-]/g,'');
+  const suffix = ui.skuStatusSelected.size>1 ? `외${ui.skuStatusSelected.size-1}건` : '';
+  a.href = url; a.download = `품목별판매현황_${first}${suffix}_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function renderMselList(which){
+  const isCust = which==='cust';
+  const listEl = document.getElementById(isCust?'custMselList':'pnMselList');
+  const search = (isCust?ui.custMselSearch:ui.pnMselSearch).toLowerCase();
+  const selectedSet = isCust?ui.custSelected:ui.pnSelected;
+  let items = isCust
+    ? state.customers.map(c=>({key:c,label:c}))
+    : productList().map(p=>({key:p.pn,label:`${p.pn} · ${p.name}`}));
+  if(search) items = items.filter(it=> it.label.toLowerCase().includes(search));
+  const total = items.length;
+  const capped = items.slice(0,150);
+  if(capped.length===0){
+    listEl.innerHTML = `<div class="msel-empty">일치하는 항목이 없습니다.</div>`;
+  } else if(isCust){
+    listEl.innerHTML = capped.map(it=>`<label><input type="checkbox" data-which="cust" data-key="${escAttr(it.key)}" ${selectedSet.has(it.key)?'checked':''}><span>${it.label}</span></label>`).join('')
+      + (total>capped.length ? `<div class="msel-more">검색어를 더 입력하면 좁혀집니다 (${fmt(total-capped.length)}개 더 있음)</div>` : '');
+  } else {
+    listEl.innerHTML = capped.map(it=>`<div class="msel-row ${selectedSet.has(it.key)?'selected':''}" data-action="pn-row-click" data-key="${escAttr(it.key)}"><span>${it.label}</span>${selectedSet.has(it.key)?'<span class="chk">✓</span>':''}</div>`).join('')
+      + (total>capped.length ? `<div class="msel-more">검색어를 더 입력하면 좁혀집니다 (${fmt(total-capped.length)}개 더 있음)</div>` : '');
+  }
+  if(!isCust) renderPnChips();
+}
+
+function renderPnChips(){
+  const row = document.getElementById('pnChipRow');
+  if(!row) return;
+  row.innerHTML = Array.from(ui.pnSelected).map(pn=>`<span class="chip">${pn}<span class="x" data-action="remove-pn-chip" data-key="${escAttr(pn)}">×</span></span>`).join('');
+}
+
+function addPnTokens(raw){
+  const tokens = raw.split(/[\n,\s]+/).map(s=>s.trim()).filter(Boolean);
+  if(tokens.length===0) return;
+  tokens.forEach(t=>ui.pnSelected.add(t));
+  updateMselTrigger('pn'); renderPnChips(); renderMselList('pn');
+  ui.customerPage=50; renderCustomerTable();
+}
+
+function updateMselTrigger(which){
+  const isCust = which==='cust';
+  const btn = document.getElementById(isCust?'custMselTrigger':'pnMselTrigger');
+  const n = (isCust?ui.custSelected:ui.pnSelected).size;
+  const label = isCust?'거래처':'품번';
+  btn.textContent = n===0 ? `${label} 전체 ▾` : `${label} ${n}개 선택 ▾`;
+}
+
+function renderCustomerFilters(){
+  updateMselTrigger('cust');
+  updateMselTrigger('pn');
+  const dl = document.getElementById('customerList');
+  if(dl.options.length===0){
+    state.customers.forEach(c=>{ const o=document.createElement('option'); o.value=c; dl.appendChild(o); });
+  }
+}
+
+function shortQuarter(q){ return q.replace(/^\d{2}(\d{2})/, '$1'); } // "2026 Q3" -> "26 Q3"
+
+function buildPivotRows(){
+  const groupByCust = ui.custSelected.size > 1;
+  const map = new Map(); // key -> {품번, 품명, 거래처?, quarters:Map, total}
+  state.sales.forEach(s=>{
+    const brand = brandOf(s.품번);
+    if(!brand) return; // 운영 종료 품번 삭제
+    if(!brandPasses(brand)) return;
+    if(ui.custSelected.size>0 && !ui.custSelected.has(s.거래처)) return;
+    if(ui.pnSelected.size>0 && !ui.pnSelected.has(s.품번)) return;
+    const q = quarterLabel(s.실적일자);
+    const key = groupByCust ? (s.품번+'||'+s.거래처) : s.품번;
+    if(!map.has(key)) map.set(key, {품번:s.품번, 품명:s.품명, brand, 거래처: groupByCust ? s.거래처 : null, quarters:new Map(), total:0});
+    const e = map.get(key);
+    if(!e.품명 && s.품명) e.품명 = s.품명;
+    e.quarters.set(q, (e.quarters.get(q)||0) + s.수량);
+    e.total += s.수량;
+  });
+  return Array.from(map.values());
+}
+
+function renderCustomerTable(){
+  if(!state.loaded){ document.getElementById('customerTable').innerHTML = renderEmptyState(); document.getElementById('customerMoreWrap').innerHTML=''; return; }
+  const quarterCols = [...state.quarters].sort(); // ascending, oldest first
+  const groupByCust = ui.custSelected.size > 1;
+  let rows = buildPivotRows();
+  if(ui.customerPnSearch){
+    const s = ui.customerPnSearch.toLowerCase();
+    rows = rows.filter(r=> r.품번.toLowerCase().includes(s) || (r.품명||'').toLowerCase().includes(s));
+  }
+
+  if(groupByCust){
+    const productTotals = new Map();
+    rows.forEach(r=>{ productTotals.set(r.품번, (productTotals.get(r.품번)||0)+r.total); });
+    rows.sort((a,b)=>{
+      const diff = productTotals.get(b.품번)-productTotals.get(a.품번);
+      if(diff!==0) return diff;
+      if(a.품번!==b.품번) return a.품번.localeCompare(b.품번);
+      return b.total-a.total;
+    });
+  } else {
+    rows.sort((a,b)=> b.total-a.total);
+  }
+
+  const shown = rows.slice(0, ui.customerPage);
+  const el = document.getElementById('customerTable');
+  if(rows.length===0){
+    el.innerHTML = `<div class="empty">데이터가 없습니다.</div>`;
+    document.getElementById('customerMoreWrap').innerHTML = '';
+    return;
+  }
+
+  const quarterTh = quarterCols.map((q,i)=>`<th class="num" style="color:${QUARTER_COLORS[i%QUARTER_COLORS.length]};font-weight:800;">${shortQuarter(q)}</th>`).join('');
+  const quarterTd = (r,i0) => quarterCols.map((q,i)=>{
+    const v = r.quarters.get(q);
+    const c = QUARTER_COLORS[i%QUARTER_COLORS.length];
+    return `<td class="num" style="${v?`color:${c};font-weight:700;`:'color:var(--muted);'}">${v?fmt(v):'-'}</td>`;
+  }).join('');
+
+  let bodyHtml = '';
+  if(groupByCust){
+    let i=0, groupIdx=0;
+    while(i<shown.length){
+      let j=i;
+      while(j<shown.length && shown[j].품번===shown[i].품번) j++;
+      const groupRows = shown.slice(i,j);
+      const inv = state.invByProduct.get(shown[i].품번);
+      const avail = usableAvailable(inv);
+      const tint = groupIdx%2===1 ? `background:var(--surface-alt);` : '';
+      groupRows.forEach((r,idx)=>{
+        const topBorder = (idx===0 && i>0) ? 'border-top:2px solid var(--line);' : '';
+        bodyHtml += `<tr style="${tint}">`;
+        if(idx===0){
+          bodyHtml += `<td rowspan="${groupRows.length}" style="${topBorder}"><code class="pn">${r.품번}</code></td>`;
+          bodyHtml += `<td rowspan="${groupRows.length}" style="${topBorder}">${brandBadge(r.brand)}</td>`;
+          bodyHtml += `<td rowspan="${groupRows.length}" style="color:var(--ink);${topBorder}">${r.품명}</td>`;
+          bodyHtml += `<td rowspan="${groupRows.length}" class="num" style="color:var(--ink);font-weight:600;${topBorder}">${fmt(avail)}</td>`;
+        }
+        bodyHtml += `<td style="color:var(--muted);font-size:12px;${idx===0?topBorder:''}">${r.거래처}</td>`;
+        bodyHtml += quarterCols.map((q,qi)=>{
+          const v = r.quarters.get(q);
+          const c = QUARTER_COLORS[qi%QUARTER_COLORS.length];
+          return `<td class="num" style="${idx===0?topBorder:''}${v?`color:${c};font-weight:700;`:'color:var(--muted);'}">${v?fmt(v):'-'}</td>`;
+        }).join('');
+        bodyHtml += `<td class="num" style="font-weight:800;color:var(--ink);${idx===0?topBorder:''}">${fmt(r.total)}</td>`;
+        bodyHtml += '</tr>';
+      });
+      i=j; groupIdx++;
+    }
+  } else {
+    bodyHtml = shown.map(r=>{
+      const inv = state.invByProduct.get(r.품번);
+      const avail = usableAvailable(inv);
+      return `<tr>
+        <td><code class="pn">${r.품번}</code></td><td>${brandBadge(r.brand)}</td><td style="color:var(--ink);">${r.품명}</td>
+        <td class="num" style="color:var(--ink);font-weight:600;">${fmt(avail)}</td>
+        ${quarterTd(r)}
+        <td class="num" style="font-weight:800;color:var(--ink);font-size:13.5px;">${fmt(r.total)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  el.innerHTML = `<div style="overflow-x:auto;">
+  <table><thead><tr>
+    <th style="color:var(--ink);">품번</th><th style="color:var(--ink);">브랜드</th><th style="color:var(--ink);">품명</th>
+    ${groupByCust ? `<th style="color:var(--ink);">거래처</th>` : ''}
+    <th class="num" style="color:var(--ink);">가용재고</th>
+    ${quarterTh}
+    <th class="num" style="color:var(--ink);font-weight:800;">합계</th>
+  </tr></thead>
+  <tbody>${bodyHtml}</tbody></table>
+  </div>`;
+  document.getElementById('customerMoreWrap').innerHTML = rows.length>shown.length
+    ? `<button class="btn ghost" data-action="customer-more">더 보기 (${fmt(rows.length-shown.length)}개 더)</button>` : '';
+}
+
+function renderAll(){
+  renderSyncStatus(); renderBanner(); renderMetaLine();
+  renderOverview();
+  renderCustomerFilters(); renderCustomerTable();
+  renderSkuStatusTable();
+  renderForecast();
+  if(ui.lookupItems.length>0) renderLookupBatch();
+}
+
+/* ---------------- Lookup tool (multi-barcode) ---------------- */
+function baseBarcode(bc){
+  return String(bc||'').trim().replace(/-\d+$/,'');
+}
+function suffixNum(bc){
+  const m = String(bc||'').match(/-(\d+)$/);
+  return m ? parseInt(m[1],10) : 0;
+}
+function alternativesFor(row){
+  const base = baseBarcode(row.바코드);
+  const group = state.schedule.filter(r=>baseBarcode(r.바코드)===base && brandOf(r.품번));
+  return group.filter(s=>s.품번!==row.품번).sort((a,b)=> suffixNum(b.바코드)-suffixNum(a.바코드));
+}
+function resolveBarcode(query, customer){
+  const q = String(query||'').trim();
+  const base = baseBarcode(q);
+  let group = state.schedule.filter(r=>baseBarcode(r.바코드)===base && brandOf(r.품번));
+  let matchedPn = null;
+
+  if(group.length===0){
+    // 바코드로 못 찾으면 품번(정확히 일치)으로도 시도
+    const pnRow = state.schedule.find(r=> r.품번.toLowerCase()===q.toLowerCase() && brandOf(r.품번));
+    if(pnRow){
+      matchedPn = pnRow.품번;
+      const realBase = baseBarcode(pnRow.바코드);
+      group = state.schedule.filter(r=>baseBarcode(r.바코드)===realBase && brandOf(r.품번));
+    }
+  }
+
+  if(group.length===0){
+    return {barcode:q, status:'notfound'};
+  }
+  let pool = group;
+  if(customer){
+    const cLower = customer.toLowerCase();
+    const filtered = group.filter(r=>r.거래처 && r.거래처.toLowerCase().includes(cLower));
+    if(filtered.length>0) pool = filtered;
+  }
+  let matched;
+  if(matchedPn){
+    // 품번으로 입력한 경우 그 정확한 품번을 우선 매칭
+    matched = pool.find(r=>r.품번.toLowerCase()===matchedPn.toLowerCase())
+      || pool.slice().sort((a,b)=> suffixNum(b.바코드)-suffixNum(a.바코드))[0];
+  } else {
+    matched = pool.slice().sort((a,b)=> suffixNum(b.바코드)-suffixNum(a.바코드))[0];
+  }
+  const alternatives = group.filter(s=>s.품번!==matched.품번)
+    .sort((a,b)=> suffixNum(b.바코드)-suffixNum(a.바코드));
+  return {barcode:q, status:'resolved', row:matched, alternatives};
+}
+
+function resolveNameMatches(term, customer){
+  const t = term.toLowerCase();
+  let matches = state.schedule.filter(r=> r.품명 && r.품명.toLowerCase().includes(t) && brandOf(r.품번));
+  const seen = new Set();
+  matches = matches.filter(r=>{ if(seen.has(r.품번)) return false; seen.add(r.품번); return true; });
+  if(customer){
+    const cLower = customer.toLowerCase();
+    const filtered = matches.filter(r=>r.거래처 && r.거래처.toLowerCase().includes(cLower));
+    if(filtered.length>0) matches = filtered;
+  }
+  return matches;
+}
+
+function doLookupBatch(barcodesRaw, nameRaw, customer){
+  ui.collapsedItems = new Set();
+  const seen = new Set();
+  const barcodes = [];
+  const pastedQty = new Map(); // 원본 입력 토큰 -> 수량 (엑셀에서 바코드+수량 붙여넣은 경우)
+  (barcodesRaw||'').split('\n').map(s=>s.trim()).filter(Boolean).forEach(line=>{
+    // 탭(엑셀 붙여넣기)이든 그냥 스페이스로 직접 입력했든, 마지막 칸이 숫자면 수량으로 인식
+    let tokens = line.split(/\t+|\s+/).map(s=>s.trim()).filter(Boolean);
+    let qty = null;
+    if(tokens.length>=2){
+      const last = tokens[tokens.length-1].replace(/,/g,'');
+      if(/^-?\d+(\.\d+)?$/.test(last)){
+        qty = num(last);
+        tokens = tokens.slice(0,-1);
+      }
+    }
+    // 나머지는 쉼표로 구분된 여러 바코드/품번으로 처리 (수량이 있으면 각각에 동일 적용)
+    tokens.join(' ').split(/,+/).map(s=>s.trim()).filter(Boolean).forEach(bc=>{
+      if(!seen.has(bc)){
+        seen.add(bc); barcodes.push(bc);
+        if(qty!==null) pastedQty.set(bc, qty);
+      }
+    });
+  });
+  const barcodeItems = barcodes.map(bc=>{
+    const item = resolveBarcode(bc, customer);
+    if(item.status==='resolved' && pastedQty.has(bc)){
+      ui.neededQty.set(item.row.품번, pastedQty.get(bc));
+    }
+    return item;
+  });
+
+  const seenNames = new Set();
+  const nameTerms = (nameRaw||'').split(/[\n,]+/).map(s=>s.trim()).filter(s=>{
+    if(!s || seenNames.has(s.toLowerCase())) return false;
+    seenNames.add(s.toLowerCase()); return true;
+  });
+  const NAME_MATCH_CAP = 20;
+  const nameItems = [];
+  nameTerms.forEach(term=>{
+    const matches = resolveNameMatches(term, customer);
+    if(matches.length===0){
+      nameItems.push({nameQuery:term, status:'notfound'});
+      return;
+    }
+    matches.slice(0, NAME_MATCH_CAP).forEach(row=>{
+      nameItems.push({nameQuery:term, status:'resolved', row, alternatives:alternativesFor(row)});
+    });
+    if(matches.length>NAME_MATCH_CAP){
+      nameItems.push({nameQuery:term, status:'truncated', extra:matches.length-NAME_MATCH_CAP});
+    }
+  });
+
+  ui.lookupItems = [...barcodeItems, ...nameItems];
+  renderLookupBatch();
+}
+
+function escAttr(s){ return String(s===null||s===undefined?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+function warehouseTableHtml(pn, name, barcode, vendor, compact){
+  const invRows = state.invByProduct.get(pn);
+  const cols = compact
+    ? `<th>창고</th><th class="num">가용재고</th>`
+    : `<th>창고</th><th class="num">가용재고</th><th class="num">현재고</th><th class="num">입고예정</th><th class="num">출고예정</th>`;
+
+  if(!invRows || invRows.rows.length===0){
+    const key = pn+'||재고없음';
+    const picked = ui.exportList.some(x=>x.key===key);
+    const extraCols = compact ? '' : `<td class="num">0</td><td class="num">0</td><td class="num">0</td>`;
+    return `<table><thead><tr>${cols}</tr></thead>
+      <tbody><tr class="wh-row ${picked?'picked':''}" style="cursor:pointer;" data-action="add-to-export"
+        data-pn="${escAttr(pn)}" data-name="${escAttr(name)}" data-barcode="${escAttr(barcode)}" data-vendor="${escAttr(vendor)}"
+        data-warehouse="재고없음" data-avail="0">
+        <td>재고없음 ${picked?'<span class="badge safe" style="margin-left:6px;">추가됨</span>':''}</td>
+        <td class="num">0</td>${extraCols}</tr></tbody></table>`;
+  }
+  const rowsHtml = invRows.rows.map(r=>{
+    const key = pn+'||'+r.창고;
+    const picked = ui.exportList.some(x=>x.key===key);
+    const extraCols = compact ? '' : `<td class="num">${fmt(r.현재고)}</td><td class="num">${fmt(r.입고예정)}</td><td class="num">${fmt(r.출고예정)}</td>`;
+    return `<tr class="wh-row ${picked?'picked':''}" style="cursor:pointer;" data-action="add-to-export"
+      data-pn="${escAttr(pn)}" data-name="${escAttr(name)}" data-barcode="${escAttr(barcode)}" data-vendor="${escAttr(vendor)}"
+      data-warehouse="${escAttr(r.창고)}" data-avail="${r.가용재고}">
+      <td>${r.창고} ${picked?'<span class="badge safe" style="margin-left:6px;">추가됨</span>':''}</td>
+      <td class="num">${fmt(r.가용재고)}</td>${extraCols}</tr>`;
+  }).join('');
+  return `<table><thead><tr>${cols}</tr></thead>
+    <tbody>${rowsHtml}
+    <tr style="font-weight:700;background:var(--surface-alt);"><td>합계</td><td class="num">${fmt(invRows.total)}</td>${compact?'':'<td colspan="3"></td>'}</tr>
+    </tbody></table>`;
+}
+
+function expiryTableHtml(pn, name, barcode, vendor, compact){
+  const all = (state.expiryByProduct.get(pn)||[]).filter(e=>e.가용재고수량>0);
+  if(all.length===0){
+    return `<div class="empty" style="padding:${compact?'14px':'30px'};">유통기한 시트에 가용재고가 있는 LOT이 없습니다.</div>`;
+  }
+  const now = new Date();
+  const twoYearsOut = new Date(now); twoYearsOut.setFullYear(twoYearsOut.getFullYear()+2);
+  const safe = all.filter(e=> e.유통기한 && e.유통기한>=twoYearsOut).sort((a,b)=>a.유통기한-b.유통기한);
+  const risky = all.filter(e=> !(e.유통기한 && e.유통기한>=twoYearsOut)).sort((a,b)=>{
+    if(!a.유통기한) return 1; if(!b.유통기한) return -1;
+    return b.유통기한-a.유통기한; // 그나마 유통기한이 긴 것부터 추천
+  });
+  const list = safe.length>0 ? safe : risky;
+  const warn = safe.length===0;
+  const cols = compact
+    ? `<th>LOT</th><th>유통기한</th><th class="num">가용재고</th>`
+    : `<th>LOT</th><th>유통기한</th><th class="num">가용재고수량</th><th></th>`;
+  const rowsHtml = list.map(e=>{
+    const key = pn+'||EXP||'+(e.LOT||'-')+'||'+(e.유통기한Str||'-');
+    const picked = ui.expiryList.some(x=>x.key===key);
+    return `<tr class="wh-row ${picked?'picked':''}" style="cursor:pointer;" data-action="toggle-expiry"
+      data-pn="${escAttr(pn)}" data-name="${escAttr(name)}" data-barcode="${escAttr(barcode)}" data-vendor="${escAttr(vendor)}"
+      data-lot="${escAttr(e.LOT||'-')}" data-date="${escAttr(e.유통기한Str||'-')}" data-avail="${e.가용재고수량}">
+      <td>${e.LOT||'-'} ${picked?'<span class="badge safe" style="margin-left:4px;">추가됨</span>':''}</td><td class="mono">${e.유통기한Str||'-'}</td><td class="num">${fmt(e.가용재고수량)}</td>
+      ${compact?'':`<td>${warn?'<span class="badge caution">2년 미만-주의</span>':''}</td>`}
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr>${cols}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
+}
+
+function selectionSummaryFor(pn){
+  const wh = ui.exportList.filter(x=>x.품번===pn).length;
+  const inc = ui.incomingList.filter(x=>x.품번===pn).length;
+  const exp = ui.expiryList.filter(x=>x.품번===pn).length;
+  const parts = [];
+  if(wh>0) parts.push(`창고 ${wh}개`);
+  if(inc>0) parts.push(`입고예정 ${inc}개`);
+  if(exp>0) parts.push(`유통기한 ${exp}개`);
+  return parts.length ? parts.join(' · ') : '선택된 항목 없음';
+}
+
+function incomingChipsHtml(prod, compact){
+  const chips = [];
+  if(prod.aug_q>0) chips.push({m:'8월', d:prod.aug_d, q:prod.aug_q});
+  if(prod.sep_q>0) chips.push({m:'9월', d:prod.sep_d, q:prod.sep_q});
+  if(prod.oct_q>0) chips.push({m:'10월', d:prod.oct_d, q:prod.oct_q});
+  if(chips.length===0) return `<div class="empty" style="padding:${compact?'14px':'30px'};">예정된 입고가 없습니다.</div>`;
+  return chips.map(c=>{
+    const key = prod.품번+'||'+c.m;
+    const picked = ui.incomingList.some(x=>x.key===key);
+    return `<div class="incoming-chip ${picked?'picked':''}" style="cursor:pointer;${compact?'padding:8px 10px;min-width:0;margin-right:6px;margin-bottom:6px;':''}" data-action="toggle-incoming"
+      data-pn="${escAttr(prod.품번)}" data-name="${escAttr(prod.품명)}" data-barcode="${escAttr(prod.바코드)}" data-vendor="${escAttr(prod.거래처)}"
+      data-month="${escAttr(c.m)}" data-date="${escAttr(c.d||'')}" data-qty="${c.q}">
+      <span class="m" style="${compact?'font-size:10px;':''}">${c.m} 입고예정 ${picked?'<span class="badge safe" style="margin-left:4px;">추가됨</span>':''}</span>
+      <span class="d" style="${compact?'font-size:11px;':''}">${c.d||'날짜 미정'}</span><span class="q" style="${compact?'font-size:13px;':''}">${fmt(c.q)}개</span>
+    </div>`;
+  }).join('');
+}
+
+function boxInfoFor(pn){
+  const manual = ui.manualBoxInfo.get(pn) || {};
+  const m = state.masterByProduct.get(pn) || {};
+  return {
+    아웃W: manual.아웃W || m.아웃W || 0,
+    아웃D: manual.아웃D || m.아웃D || 0,
+    아웃H: manual.아웃H || m.아웃H || 0,
+    아웃무게g: manual.아웃무게g || m.아웃무게g || 0,
+    아웃입수: manual.아웃입수 || m.아웃입수 || 0,
+    인W: manual.인W || m.인W || 0,
+    인D: manual.인D || m.인D || 0,
+    인H: manual.인H || m.인H || 0,
+    인무게g: manual.인무게g || m.인무게g || 0,
+    인입수: manual.인입수 || m.인입수 || 0,
+    제품W: manual.제품W || m.제품W || 0,
+    제품D: manual.제품D || m.제품D || 0,
+    제품H: manual.제품H || m.제품H || 0,
+    제품무게g: manual.제품무게g || m.제품무게g || 0,
+  };
+}
+function setBoxDim(pn, field, value){
+  // 입력할 때마다 화면 전체를 다시 그리면 입력칸이 사라졌다 새로 생겨서
+  // 스크롤이 튀고 Tab으로 다음 칸 이동도 끊깁니다. 그래서 여기서는 값만 조용히 저장하고
+  // 화면은 다시 그리지 않습니다. (PLT 계산, 다운로드 등 다른 동작을 누르는 순간 최신 값이 반영됩니다)
+  if(!ui.manualBoxInfo.has(pn)) ui.manualBoxInfo.set(pn, {});
+  const v = num(value);
+  if(v>0) ui.manualBoxInfo.get(pn)[field] = v; else delete ui.manualBoxInfo.get(pn)[field];
+}
+
+function productMasterHtml(pn, compact){
+  const m = state.masterByProduct.get(pn);
+  const box = boxInfoFor(pn);
+
+  if(compact){
+    // 대체품목 카드: 읽기 전용 요약, 정보 없으면 '정보 없음'
+    const dims = (w,d,h) => (w||d||h) ? `${fmt(w)}×${fmt(d)}×${fmt(h)}` : null;
+    const rows = [
+      {label:'아웃박스', dim:dims(box.아웃W,box.아웃D,box.아웃H), weight:box.아웃무게g},
+      {label:'인박스', dim:dims(box.인W,box.인D,box.인H), weight:box.인무게g},
+      {label:'제품', dim:dims(box.제품W,box.제품D,box.제품H), weight:box.제품무게g},
+    ];
+    const body = rows.map(r=> r.dim
+      ? `<tr><td>${r.label}</td><td class="mono">${r.dim}</td><td class="num">${r.weight?fmt(r.weight):'-'}</td></tr>`
+      : `<tr><td>${r.label}</td><td colspan="2" style="color:var(--muted);">정보 없음</td></tr>`
+    ).join('');
+    return `<table><thead><tr><th>구분</th><th>규격(mm)</th><th class="num">무게(g)</th></tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  // 매칭된 품목 카드: 언제든 고쳐쓸 수 있는 입력폼 (이미 값이 있어도 그대로 편집 가능)
+  const rowsDef = [
+    {label:'아웃박스', prefix:'아웃', weightField:'아웃무게g', countField:'아웃입수'},
+    {label:'인박스', prefix:'인', weightField:'인무게g', countField:'인입수'},
+    {label:'제품', prefix:'제품', weightField:'제품무게g', countField:null},
+  ];
+  const bodyRows = rowsDef.map(r=>`<tr>
+    <td>${r.label}</td>
+    <td>${editableDimsCell(pn, r.prefix)}</td>
+    <td class="num">${editableNumCell(pn, r.weightField, '무게(g)')}</td>
+    <td class="num">${r.countField ? editableNumCell(pn, r.countField, '입수') : '-'}</td>
+  </tr>`).join('');
+
+  let pltHtml = '';
+  if(m && (m.PLT박스수||m.PLT입수||m.PLT무게kg||m.PLT단수)){
+    pltHtml = `<div style="font-size:11px;color:var(--muted);margin:10px 0 4px 0;">파레트(PLT) 정보${m.입고PLT종류?' · '+m.입고PLT종류:''}</div>
+    <table><tbody>
+      <tr><td>1단 박스수</td><td class="num">${m.PLT1단?fmt(m.PLT1단):'-'}</td><td>단수</td><td class="num">${m.PLT단수?fmt(m.PLT단수):'-'}</td></tr>
+      <tr><td>총 높이</td><td class="num">${m.PLT총높이cm?fmt(m.PLT총높이cm)+'cm':'-'}</td><td>PLT당 박스수</td><td class="num">${m.PLT박스수?fmt(m.PLT박스수):'-'}</td></tr>
+      <tr><td>PLT당 입수</td><td class="num">${m.PLT입수?fmt(m.PLT입수):'-'}</td><td>PLT 무게</td><td class="num">${m.PLT무게kg?fmt(m.PLT무게kg)+'kg':'-'}</td></tr>
+    </tbody></table>`;
+  }
+  return `<div style="font-size:11px;color:var(--muted);margin-bottom:6px;">규격(mm)·무게(g)·입수는 언제든 클릭해서 직접 수정할 수 있습니다.</div>
+    <table><thead><tr><th>구분</th><th>규격(mm, W×D×H)</th><th class="num">무게(g)</th><th class="num">입수</th></tr></thead><tbody>${bodyRows}</tbody></table>${pltHtml}`;
+}
+
+function renderResultBlock(row, batchIdx, alternatives){
+  const isActive = ui.activeBatchIdx===batchIdx;
+  const isCollapsed = ui.collapsedItems.has(batchIdx);
+
+  if(isCollapsed){
+    return `
+    <div class="panel" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;" data-action="toggle-collapse" data-batch-idx="${batchIdx}">
+      <div>
+        <code class="pn">${row.품번}</code> <span style="margin-left:8px;font-weight:600;">${row.품명}</span>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:5px;">${selectionSummaryFor(row.품번)}</div>
+      </div>
+      <button class="btn ghost" type="button" data-action="toggle-collapse" data-batch-idx="${batchIdx}">펼치기 ▾</button>
+    </div>`;
+  }
+
+  const mainBox = `
+    <div class="panel product-pick ${isActive?'active':''}" style="border:1px solid ${isActive?'var(--accent)':'var(--line)'};cursor:pointer;" data-action="toggle-product" data-batch-idx="${batchIdx}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div class="section-title t-product">매칭된 품목 ${isActive?'<span class="badge safe" style="margin-left:6px;">선택됨</span>':''}</div>
+          <div style="font-size:22px;font-family:'Space Grotesk';font-weight:600;">${row.품번}</div>
+          <div style="color:var(--muted);margin-top:2px;">${row.품명}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;">
+            <button class="btn" type="button" data-action="auto-select-recommended" data-batch-idx="${batchIdx}">✨ 추천 선택</button>
+            <button class="btn ghost" type="button" data-action="toggle-collapse" data-batch-idx="${batchIdx}">선택완료 ▴</button>
+          </div>
+          <div class="info-line" style="border:none;"><span>거래처</span><span style="font-weight:600;">${row.거래처||'-'}</span></div>
+          <div class="info-line" style="border:none;"><span>바코드</span><span class="mono">${row.바코드}</span></div>
+          <div class="info-line" style="border:none;" onclick="event.stopPropagation()"><span>필요 수량</span><input type="number" data-action="set-needed-qty" data-pn="${escAttr(row.품번)}" value="${ui.neededQty.get(row.품번)||''}" placeholder="0" style="width:100px;padding:5px 8px;border-radius:6px;border:1.5px solid var(--line);text-align:right;font-family:inherit;"></div>
+          ${(()=>{
+            const nd = productNeedDiff(row.품번);
+            if(!nd.needed) return '';
+            const short = nd.diff<0;
+            return `<div class="info-line" style="border:none;"><span>선택 창고 재고 대비</span><span style="font-weight:800;color:${short?'var(--danger)':'var(--safe)'}">${short?'':'+'}${fmt(nd.diff)}개</span></div>`;
+          })()}
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+        <div class="section-title t-warehouse" style="margin-bottom:0;">창고별 가용재고</div>
+        <span style="font-size:11.5px;color:var(--muted);">창고를 클릭하면 다운로드 목록에 추가됩니다</span>
+      </div>
+      ${warehouseTableHtml(row.품번, row.품명, row.바코드, row.거래처, false)}
+    </div>
+
+    <div class="panel">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;">
+        <div class="section-title t-expiry" style="margin-bottom:0;">유통기한 (LOT)</div>
+        <span style="font-size:11.5px;color:var(--muted);">2년 이상 남은 LOT을 우선 표시 · 없으면 가장 긴 LOT을 추천하고 주의 표시</span>
+      </div>
+      ${expiryTableHtml(row.품번, row.품명, row.바코드, row.거래처)}
+    </div>
+
+    <div class="panel">
+      <div class="section-title t-incoming">입고예정 (제품일정표 기준, 8~10월)</div>
+      <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 10px 0;">칩을 클릭하면 다운로드 목록의 '입고예정' 칸에 추가됩니다</div>
+      ${incomingChipsHtml(row, false)}
+    </div>
+
+    <div class="panel">
+      <div class="section-title t-master" style="margin-bottom:${ui.masterInfoExpanded.has(row.품번)?'8px':'0'};cursor:pointer;" data-action="toggle-master-info" data-pn="${escAttr(row.품번)}">
+        아웃박스 · 인박스 · 중량 정보
+        <span style="margin-left:auto;color:var(--muted);font-size:11px;text-transform:none;letter-spacing:0;font-weight:600;">${ui.masterInfoExpanded.has(row.품번)?'접기 ▲':'펼치기 ▾'}</span>
+      </div>
+      ${ui.masterInfoExpanded.has(row.품번) ? productMasterHtml(row.품번, false) : ''}
+    </div>
+  `;
+
+
+  const altBoxes = (alternatives && alternatives.length>0) ? alternatives.map(a=>`
+    <div class="alt-card">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:4px;">
+        <code class="pn">${a.품번}</code>
+        <span class="mono" style="font-size:11px;color:var(--muted);">${a.바코드}</span>
+      </div>
+      <div style="font-size:12.8px;margin-bottom:6px;">${a.품명}</div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">거래처: ${a.거래처||'-'}</div>
+      ${warehouseTableHtml(a.품번, a.품명, a.바코드, a.거래처, true)}
+      <div class="section-title t-expiry" style="margin:10px 0 4px 0;font-size:10.5px;">유통기한 (LOT)</div>
+      ${expiryTableHtml(a.품번, a.품명, a.바코드, a.거래처, true)}
+      <div class="section-title t-incoming" style="margin:10px 0 4px 0;font-size:10.5px;">입고예정</div>
+      ${incomingChipsHtml(a, true)}
+      <div class="section-title t-master" style="margin:10px 0 4px 0;font-size:10.5px;">박스 · 중량</div>
+      ${productMasterHtml(a.품번, true)}
+    </div>
+  `).join('') : `<div class="alt-card"><div class="empty" style="padding:16px;">바코드가 같은 다른 품번(-1, -2 등)이 없습니다.</div></div>`;
+
+  return `
+    <div class="lookup-layout">
+      <div class="main-box">${mainBox}</div>
+      <div class="alt-boxes">
+        <div class="section-title t-alt" style="margin-bottom:2px;">동일 바코드 다른 품번</div>
+        ${altBoxes}
+      </div>
+    </div>
+  `;
+}
+
+function renderLookupBatch(){
+  const results = document.getElementById('lookupResults');
+  renderExportPanel();
+  if(ui.lookupItems.length===0){ results.innerHTML=''; return; }
+  const multi = ui.lookupItems.length>1;
+  const resolvedCount = ui.lookupItems.filter(x=>x.status==='resolved').length;
+  const scopeBar = resolvedCount>0 ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:14px;margin-bottom:8px;flex-wrap:wrap;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer;">
+        <input type="checkbox" id="autoSelectAltToggle" ${ui.autoSelectIncludeAlternatives?'checked':''}>
+        추천 선택 시 대체품목(동일 바코드 다른 품번)도 함께 담기
+      </label>
+      ${resolvedCount>1 ? `<button class="btn" type="button" data-action="auto-select-recommended-all">✨ 전체 추천 선택 (${fmt(resolvedCount)}개 품목)</button>` : ''}
+    </div>` : '';
+  results.innerHTML = scopeBar + ui.lookupItems.map((item,i)=>{
+    const isName = item.nameQuery!==undefined;
+    const header = multi ? `<div style="display:flex;align-items:center;gap:10px;margin:${i===0?'20px':'32px'} 0 4px 0;">
+      <span class="mono" style="font-size:12.5px;color:var(--muted);">${isName?'품명 검색':'바코드/품번'}</span>
+      <code class="pn" style="font-size:13px;">${isName?item.nameQuery:item.barcode}</code>
+      <div style="flex:1;border-top:1px dashed var(--line);"></div>
+    </div>` : '';
+    if(item.status==='notfound'){
+      const msg = isName ? `'${item.nameQuery}'가 포함된 품명을 제품일정표에서 찾지 못했습니다.` : `해당 바코드/품번으로 제품일정표에서 일치하는 품목을 찾지 못했습니다. 다시 확인해주세요.`;
+      return header + `<div class="banner info">${msg}</div>`;
+    }
+    if(item.status==='truncated'){
+      return `<div class="banner info" style="margin-top:6px;">'${item.nameQuery}' 검색 결과가 더 있습니다 (${fmt(item.extra)}개 더). 검색어를 조금 더 구체적으로 입력하면 좁혀집니다.</div>`;
+    }
+    return header + renderResultBlock(item.row, i, item.alternatives);
+  }).join('');
+}
+
+/* ---------------- Export (download) list ---------------- */
+function toggleActiveProduct(idx){
+  ui.activeBatchIdx = (ui.activeBatchIdx===idx) ? null : idx;
+  renderLookupBatch();
+}
+function addToExport(pn, name, barcode, vendor, warehouse, avail){
+  if(!pn || !warehouse) return;
+  const key = pn+'||'+warehouse;
+  if(ui.exportList.some(x=>x.key===key)) return; // already added
+  const priority = ui.exportList.filter(x=>x.품번===pn).length + 1;
+  ui.exportList.push({
+    key, 품번:pn, 품명:name, 바코드:barcode,
+    창고:warehouse, 가용재고:avail, 거래처:vendor||'', 우선순위:priority
+  });
+  renderLookupBatch();
+}
+function removeFromExport(key){
+  ui.exportList = ui.exportList.filter(x=>x.key!==key);
+  renderLookupBatch();
+}
+function productNeedDiff(pn){
+  const needed = ui.neededQty.get(pn) || 0;
+  const rows = ui.exportList.filter(x=>x.품번===pn && x.창고 && x.창고!=='재고없음' && typeof x.가용재고==='number');
+  const totalAvail = rows.reduce((s,r)=>s+r.가용재고,0);
+  return {needed, totalAvail, diff: totalAvail-needed};
+}
+function toggleIncoming(pn, name, barcode, vendor, monthLabel, date, qty){
+  const key = pn+'||'+monthLabel;
+  const idx = ui.incomingList.findIndex(x=>x.key===key);
+  if(idx>=0){
+    ui.incomingList.splice(idx,1);
+  } else {
+    ui.incomingList.push({key, 품번:pn, 품명:name, 바코드:barcode, 거래처:vendor||'', 월:monthLabel, 날짜:date||'', 수량:qty});
+  }
+  renderLookupBatch();
+}
+function removeIncoming(key){
+  ui.incomingList = ui.incomingList.filter(x=>x.key!==key);
+  renderLookupBatch();
+}
+function shortDate(dateStr){
+  const s = String(dateStr||'').trim();
+  const m = s.match(/^\d{4}-(\d{1,2})-(\d{1,2})/);
+  if(m) return `${parseInt(m[1],10)}/${parseInt(m[2],10)}`;
+  return s;
+}
+function incomingItemsFor(pn){
+  return ui.incomingList.filter(x=>x.품번===pn);
+}
+function incomingDateCellHtml(pn){
+  const items = incomingItemsFor(pn);
+  if(items.length===0) return '<span style="color:var(--muted);">-</span>';
+  return items.map(x=>`<span class="mono">${x.날짜?shortDate(x.날짜):'날짜 미정'}<span data-action="remove-incoming" data-key="${x.key}" style="cursor:pointer;font-weight:800;color:var(--cat-incoming);margin-left:3px;">×</span></span>`).join(', ');
+}
+function incomingQtyCellHtml(pn){
+  const items = incomingItemsFor(pn);
+  if(items.length===0) return '<span style="color:var(--muted);">-</span>';
+  return items.map(x=>`<span class="mono">${fmt(x.수량)}</span>`).join(', ');
+}
+function incomingDateText(pn){
+  return incomingItemsFor(pn).map(x=>x.날짜?shortDate(x.날짜):'날짜미정').join(', ');
+}
+function incomingQtyText(pn){
+  return incomingItemsFor(pn).map(x=>fmt(x.수량)).join(', ');
+}
+
+function toggleExpiry(pn, name, barcode, vendor, lot, dateStr, avail){
+  const key = pn+'||EXP||'+lot+'||'+dateStr;
+  const idx = ui.expiryList.findIndex(x=>x.key===key);
+  if(idx>=0){
+    ui.expiryList.splice(idx,1);
+  } else {
+    ui.expiryList.push({key, 품번:pn, 품명:name, 바코드:barcode, 거래처:vendor||'', LOT:lot, 유통기한:dateStr, 가용재고수량:avail});
+  }
+  renderLookupBatch();
+}
+function removeExpiry(key){
+  ui.expiryList = ui.expiryList.filter(x=>x.key!==key);
+  renderLookupBatch();
+}
+
+function pickRecommendedLot(pn){
+  const expEntries = (state.expiryByProduct.get(pn)||[]).filter(e=>e.가용재고수량>0);
+  if(expEntries.length===0) return null;
+  const needed = ui.neededQty.get(pn) || 0;
+  const now = new Date(); const twoYearsOut = new Date(now); twoYearsOut.setFullYear(twoYearsOut.getFullYear()+2);
+  const isSafe = e => e.유통기한 && e.유통기한>=twoYearsOut;
+
+  if(needed>0){
+    // 1순위: 2년 이상 남았으면서 필요수량을 그 LOT 하나로 충족
+    const safeEnough = expEntries.filter(e=>isSafe(e) && e.가용재고수량>=needed).sort((a,b)=>a.유통기한-b.유통기한);
+    if(safeEnough.length>0) return safeEnough[0];
+    // 2순위: 유통기한 상관없이 필요수량을 충족 (그 중에선 유통기한 긴 것 우선)
+    const enoughAny = expEntries.filter(e=>e.가용재고수량>=needed).sort((a,b)=>{
+      if(!a.유통기한) return 1; if(!b.유통기한) return -1;
+      return b.유통기한-a.유통기한;
+    });
+    if(enoughAny.length>0) return enoughAny[0];
+  }
+  // 3순위(필요수량 미입력이거나, 단일 LOT으로는 충족 불가할 때의 기존 기준): 2년 이상 우선, 없으면 가장 긴 것
+  const safe = expEntries.filter(isSafe).sort((a,b)=>a.유통기한-b.유통기한);
+  const risky = expEntries.filter(e=>!isSafe(e)).sort((a,b)=>{
+    if(!a.유통기한) return 1; if(!b.유통기한) return -1;
+    return b.유통기한-a.유통기한;
+  });
+  return (safe.length>0 ? safe : risky)[0];
+}
+
+function autoSelectRecommendedFor(pn, name, barcode, vendor){
+  let addedWarehouse = false, addedLot = false;
+
+  // 창고: 사용 가능한(B2B1팀/EMP) 창고 중 가용재고가 가장 많은 곳을 추천
+  const invInfo = state.invByProduct.get(pn);
+  if(invInfo && invInfo.rows.length>0){
+    const usableRows = invInfo.rows.filter(r=>isUsableWarehouse(r.창고) && r.가용재고>0);
+    const pool = usableRows.length>0 ? usableRows : invInfo.rows.filter(r=>r.가용재고>0);
+    if(pool.length>0){
+      const best = pool.slice().sort((a,b)=>b.가용재고-a.가용재고)[0];
+      const key = pn+'||'+best.창고;
+      if(!ui.exportList.some(x=>x.key===key)){
+        const priority = ui.exportList.filter(x=>x.품번===pn).length + 1;
+        ui.exportList.push({key, 품번:pn, 품명:name, 바코드:barcode, 창고:best.창고, 가용재고:best.가용재고, 거래처:vendor||'', 우선순위:priority});
+        addedWarehouse = true;
+      }
+    }
+  }
+
+  // 유통기한(LOT): 필요수량을 고려한 추천 (2년 이상+충족 > 충족만 > 기존 기준)
+  const top = pickRecommendedLot(pn);
+  if(top){
+    const key = pn+'||EXP||'+(top.LOT||'-')+'||'+(top.유통기한Str||'-');
+    if(!ui.expiryList.some(x=>x.key===key)){
+      ui.expiryList.push({key, 품번:pn, 품명:name, 바코드:barcode, 거래처:vendor||'', LOT:top.LOT, 유통기한:top.유통기한Str, 가용재고수량:top.가용재고수량});
+      addedLot = true;
+    }
+  }
+
+  // 담을 창고도, LOT도 없는 경우 (가용재고가 전혀 없는 품목) — 목록에서 조용히 빠지지 않도록 '재고없음'으로 표시
+  if(!addedWarehouse && !addedLot && !ui.exportList.some(x=>x.품번===pn)){
+    const key = pn+'||재고없음';
+    const priority = ui.exportList.filter(x=>x.품번===pn).length + 1;
+    ui.exportList.push({key, 품번:pn, 품명:name, 바코드:barcode, 창고:'재고없음', 가용재고:0, 거래처:vendor||'', 우선순위:priority});
+  }
+
+  return {addedWarehouse, addedLot};
+}
+function applyAutoSelectForItem(item){
+  if(!item || item.status!=='resolved' || !item.row) return;
+  autoSelectRecommendedFor(item.row.품번, item.row.품명, item.row.바코드, item.row.거래처);
+  if(ui.autoSelectIncludeAlternatives && item.alternatives && item.alternatives.length>0){
+    item.alternatives.forEach(a=> autoSelectRecommendedFor(a.품번, a.품명, a.바코드, a.거래처));
+  }
+}
+function autoSelectRecommended(batchIdx){
+  applyAutoSelectForItem(ui.lookupItems[batchIdx]);
+  renderLookupBatch();
+}
+function autoSelectRecommendedAll(){
+  if(!ui.lookupItems || ui.lookupItems.length===0) return;
+  ui.lookupItems.forEach(item=> applyAutoSelectForItem(item));
+  renderLookupBatch();
+}
+function expiryItemsFor(pn){
+  return ui.expiryList.filter(x=>x.품번===pn);
+}
+function expiryLotCellHtml(pn){
+  const items = expiryItemsFor(pn);
+  if(items.length===0) return '<span style="color:var(--muted);">-</span>';
+  return items.map(x=>`<div class="mono" style="font-size:11.5px;white-space:nowrap;">${x.LOT}<span data-action="remove-expiry" data-key="${x.key}" style="cursor:pointer;font-weight:800;color:var(--cat-expiry);margin-left:5px;">×</span></div>`).join('');
+}
+function expiryDateCellHtml(pn){
+  const items = expiryItemsFor(pn);
+  if(items.length===0) return '<span style="color:var(--muted);">-</span>';
+  return items.map(x=>`<div class="mono" style="font-size:11.5px;white-space:nowrap;">${x.유통기한}</div>`).join('');
+}
+function expiryQtyCellHtml(pn){
+  const items = expiryItemsFor(pn);
+  if(items.length===0) return '<span style="color:var(--muted);">-</span>';
+  return items.map(x=>`<div class="mono" style="font-size:11.5px;">${fmt(x.가용재고수량)}</div>`).join('');
+}
+function expiryLotText(pn){ return expiryItemsFor(pn).map(x=>x.LOT).join(' / '); }
+function expiryDateText(pn){ return expiryItemsFor(pn).map(x=>x.유통기한).join(' / '); }
+function expiryQtyText(pn){ return expiryItemsFor(pn).map(x=>fmt(x.가용재고수량)).join(' / '); }
+
+function editableDimsCell(pn, prefix){
+  const m = state.masterByProduct.get(pn) || {};
+  const mw = m[prefix+'W'], md = m[prefix+'D'], mh = m[prefix+'H'];
+  if(mw || md || mh){
+    // 파일에 이미 있는 값 -> 고정 표시 (수정 불가)
+    return `<span class="mono">${fmt(mw||0)}×${fmt(md||0)}×${fmt(mh||0)}</span>`;
+  }
+  // 파일에 없는 값 -> 계속 고쳐 쓸 수 있는 입력칸 (이전에 직접 입력한 값 있으면 그대로 보여줌)
+  const manual = ui.manualBoxInfo.get(pn) || {};
+  const w = manual[prefix+'W']||'', d = manual[prefix+'D']||'', h = manual[prefix+'H']||'';
+  return `<div style="display:flex;gap:4px;align-items:center;" onclick="event.stopPropagation()">
+    <input type="number" placeholder="W" value="${w}" data-action="set-box-dim" data-pn="${escAttr(pn)}" data-field="${prefix}W" style="width:56px;padding:5px 6px;border-radius:6px;border:1.5px solid var(--line);font-size:12.5px;font-family:inherit;">
+    <span style="color:var(--muted);font-size:11px;">×</span>
+    <input type="number" placeholder="D" value="${d}" data-action="set-box-dim" data-pn="${escAttr(pn)}" data-field="${prefix}D" style="width:56px;padding:5px 6px;border-radius:6px;border:1.5px solid var(--line);font-size:12.5px;font-family:inherit;">
+    <span style="color:var(--muted);font-size:11px;">×</span>
+    <input type="number" placeholder="H" value="${h}" data-action="set-box-dim" data-pn="${escAttr(pn)}" data-field="${prefix}H" style="width:56px;padding:5px 6px;border-radius:6px;border:1.5px solid var(--line);font-size:12.5px;font-family:inherit;">
+  </div>`;
+}
+function editableNumCell(pn, field, placeholder){
+  const m = state.masterByProduct.get(pn) || {};
+  if(m[field]) return fmt(m[field]); // 파일에 이미 있는 값 -> 고정 표시
+  const manual = ui.manualBoxInfo.get(pn) || {};
+  const v = manual[field]||'';
+  return `<input type="number" placeholder="${placeholder}" value="${v}" data-action="set-box-dim" data-pn="${escAttr(pn)}" data-field="${field}" onclick="event.stopPropagation()" style="width:78px;padding:5px 6px;border-radius:6px;border:1.5px solid var(--line);font-size:12.5px;font-family:inherit;text-align:right;">`;
+}
+function masterFieldsFor(pn){
+  const box = boxInfoFor(pn);
+  const dims = (w,d,h) => (w||d||h) ? `${fmt(w)}×${fmt(d)}×${fmt(h)}` : '';
+  return {
+    아웃규격: dims(box.아웃W,box.아웃D,box.아웃H), 아웃무게: box.아웃무게g?fmt(box.아웃무게g):'', 아웃입수: box.아웃입수?fmt(box.아웃입수):'',
+    인규격: dims(box.인W,box.인D,box.인H), 인무게: box.인무게g?fmt(box.인무게g):'', 인입수: box.인입수?fmt(box.인입수):'',
+    제품규격: dims(box.제품W,box.제품D,box.제품H), 제품무게: box.제품무게g?fmt(box.제품무게g):'',
+  };
+}
+
+/* ---------------- PLT 선적 계산 (다운로드 목록의 PLT계산 버튼에서 사용) ---------------- */
+function computePltForRow(query, qty, palletL, palletW, palletH){
+  const resolved = resolveBarcode(query, '');
+  if(resolved.status!=='resolved'){
+    return {query, qty, status:'notfound'};
+  }
+  const row = resolved.row;
+  const box = boxInfoFor(row.품번);
+  if(!(box.아웃W && box.아웃D && box.아웃H)){
+    return {query, qty, status:'no-master', 품번:row.품번, 품명:row.품명};
+  }
+  const boxL = box.아웃W/10, boxD = box.아웃D/10, boxH = box.아웃H/10; // mm -> cm
+  const opt1 = Math.floor(palletL/boxL) * Math.floor(palletW/boxD);
+  const opt2 = Math.floor(palletL/boxD) * Math.floor(palletW/boxL);
+  const perLayer = Math.max(opt1, opt2, 0);
+  const layers = boxH>0 ? Math.floor(palletH/boxH) : 0;
+  const boxesPerPallet = perLayer * layers;
+
+  const perBox = box.아웃입수 || 0;
+  const qtyVal = qty || 0;
+  const boxesNeeded = perBox>0 ? Math.ceil(qtyVal/perBox) : Math.ceil(qtyVal); // 아웃입수 없으면 수량=박스수로 취급
+  const pltNeeded = boxesPerPallet>0 ? Math.ceil(boxesNeeded/boxesPerPallet) : null;
+  // 잔량: 박스입수로 딱 안 나눠떨어질 때, 마지막 박스에 몇 개가 들어가는지
+  const remainderUnits = perBox>0 ? (qtyVal % perBox) : 0; // 0이면 완전히 딱 맞음(잔량 박스 없음)
+
+  return {
+    query, qty:qtyVal, status:'ok', 품번:row.품번, 품명:row.품명,
+    perBox, boxesNeeded, perLayer, layers, boxesPerPallet, pltNeeded, remainderUnits, boxH,
+  };
+}
+
+function buildExportRows(){
+  const baseRows = ui.exportList.map(x=>({...x, isSynthetic:false}));
+  const seenPn = new Set(ui.exportList.map(x=>x.품번));
+  const extraPns = [...new Set([...ui.incomingList.map(x=>x.품번), ...ui.expiryList.map(x=>x.품번)])].filter(pn=>!seenPn.has(pn));
+  extraPns.forEach(pn=>{
+    const sample = ui.incomingList.find(x=>x.품번===pn) || ui.expiryList.find(x=>x.품번===pn);
+    baseRows.push({key:'extra||'+pn, 품번:pn, 품명:sample.품명, 바코드:sample.바코드, 창고:'-', 가용재고:'-', 거래처:sample.거래처, isSynthetic:true});
+  });
+
+  // 품번별로 우선순위(1순위, 2순위...) 순서대로 필요수량을 순차 차감 배분
+  const byProduct = new Map();
+  baseRows.forEach(r=>{ if(!byProduct.has(r.품번)) byProduct.set(r.품번, []); byProduct.get(r.품번).push(r); });
+  byProduct.forEach((rows, pn)=>{
+    const needed = ui.neededQty.get(pn) || 0;
+    const realRows = rows.filter(r=>!r.isSynthetic && r.창고 && r.창고!=='재고없음' && typeof r.가용재고==='number')
+      .sort((a,b)=>(a.우선순위||999)-(b.우선순위||999));
+    let remaining = needed;
+    realRows.forEach(r=>{
+      const alloc = Math.max(0, Math.min(remaining, r.가용재고));
+      r._allocated = alloc;
+      remaining -= alloc;
+    });
+    const totalAvail = realRows.reduce((s,r)=>s+r.가용재고,0);
+    const diff = totalAvail - needed;
+    rows.forEach(r=>{ r._needed = needed; r._diff = diff; });
+  });
+
+  // LOT/유통기한을 여러 개 선택한 경우, 앞의 내용은 그대로 두고 행을 새로 추가
+  const rows = [];
+  baseRows.forEach(r=>{
+    const items = expiryItemsFor(r.품번);
+    if(items.length===0){
+      rows.push({...r, _expiry:null, _isExpiryClone:false});
+    } else {
+      items.forEach((it,idx)=>{
+        rows.push({...r, key: idx===0?r.key:(r.key+'||exp'+idx), _expiry:it, _isExpiryClone: idx>0});
+      });
+    }
+  });
+  return rows;
+}
+function renderExportPanel(){
+  const el = document.getElementById('exportPanel');
+  if(!el) return;
+  const rows = buildExportRows();
+  if(rows.length===0){ el.innerHTML=''; return; }
+  const mixed = ui.pltMixMode==='O';
+  const pltTotal = mixed && ui.exportPltMixedTotal!==null
+    ? ui.exportPltMixedTotal
+    : Array.from(new Set(rows.map(r=>r.품번))).reduce((s,pn)=> s + (ui.exportPltByProduct.get(pn)||0), 0);
+  el.innerHTML = `
+    <div class="panel" style="border:1px solid var(--accent);margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px;">
+        <div class="section-title t-download" style="margin-bottom:0;">다운로드 목록 (${rows.length})</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="number" id="exportPltL" value="110" title="PLT 가로(cm)" style="width:56px;padding:7px 6px;border-radius:7px;border:1.5px solid var(--line);text-align:center;font-family:inherit;font-size:12px;">
+          <span style="color:var(--muted);font-size:12px;">×</span>
+          <input type="number" id="exportPltW" value="110" title="PLT 세로(cm)" style="width:56px;padding:7px 6px;border-radius:7px;border:1.5px solid var(--line);text-align:center;font-family:inherit;font-size:12px;">
+          <span style="color:var(--muted);font-size:12px;">cm, 최대높이</span>
+          <input type="number" id="exportPltH" value="150" title="PLT 최대높이(cm)" style="width:56px;padding:7px 6px;border-radius:7px;border:1.5px solid var(--line);text-align:center;font-family:inherit;font-size:12px;">
+          <span style="color:var(--muted);font-size:12px;">cm</span>
+          <span style="color:var(--muted);font-size:12px;">, 밑판 두께</span>
+          <input type="number" id="exportPltBaseHeight" value="15" title="PLT 밑판 두께(cm) — 최대높이에서 빼고 계산" style="width:48px;padding:7px 6px;border-radius:7px;border:1.5px solid var(--line);text-align:center;font-family:inherit;font-size:12px;">
+          <span style="color:var(--muted);font-size:12px;">cm</span>
+          <span style="color:var(--muted);font-size:12px;">, 빈 PLT 무게</span>
+          <input type="number" id="exportPltTare" value="20" title="PLT 자체 무게(kg)" style="width:52px;padding:7px 6px;border-radius:7px;border:1.5px solid var(--line);text-align:center;font-family:inherit;font-size:12px;">
+          <span style="color:var(--muted);font-size:12px;">kg</span>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="radio" name="pltMixMode" value="X" ${!mixed?'checked':''}> 혼적 X</label>
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--muted);cursor:pointer;"><input type="radio" name="pltMixMode" value="O" ${mixed?'checked':''}> 혼적 O</label>
+          <button class="btn ghost" type="button" data-action="calc-export-plt">PLT 계산</button>
+          ${mixed && ui.exportPltPacking && ui.exportPltPacking.length>0 ? `<button class="btn ghost" type="button" data-action="toggle-plt-detail">${ui.showPltPackingDetail?'PLT 상세 숨기기 ▲':'PLT 상세보기 ▾'}</button>` : ''}
+          <button class="btn ghost" type="button" data-action="clear-export">전체 지우기</button>
+          <button class="btn" type="button" data-action="download-export">엑셀 다운로드</button>
+        </div>
+      </div>
+      ${pltTotal>0 ? (()=>{
+        const boxWeightTotal = Array.from(ui.exportPltDetail.values()).reduce((s,d)=>s+d.totalWeightKg,0);
+        const tareKg = ui.exportPltTareKg || 20;
+        const pltTareTotal = pltTotal * tareKg;
+        const grandTotal = boxWeightTotal + pltTareTotal;
+        const pltLabel = mixed ? '혼적 기준 총 예상 PLT' : '품목별 개별 계산 기준 총 예상 PLT';
+        const stat = (label, value) => `<div style="flex:1;min-width:150px;">
+          <div style="font-size:11.5px;font-weight:700;color:#5A3C43;text-transform:uppercase;letter-spacing:.02em;margin-bottom:4px;">${label}</div>
+          <div style="font-weight:800;font-size:22px;color:var(--accent);">${value}</div>
+        </div>`;
+        return `<div class="banner info" style="margin-bottom:12px;display:block;padding:18px 22px;">
+          <div style="display:flex;gap:10px;">
+            ${stat(pltLabel, fmt(pltTotal)+' PLT')}
+            ${stat('박스 중량 합계', fmt(boxWeightTotal)+' kg')}
+            ${stat(`빈 PLT 무게 합계 (${fmt(pltTotal)}개×${fmt(tareKg)}kg)`, fmt(pltTareTotal)+' kg')}
+            ${stat('총 예상 중량', fmt(grandTotal)+' kg')}
+          </div>
+          <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(140,64,84,0.25);font-size:12.5px;font-weight:600;color:#5A3C43;line-height:1.8;">
+            (필요수량 입력된 품목은 필요수량 기준, 없으면 선택한 가용재고 합계 기준)<br>
+            (최대높이에서 밑판 두께 ${fmt(ui.exportPltBaseHeightCm||0)}cm를 뺀 값으로 적재층수 계산)
+          </div>
+        </div>`;
+      })() : ''}
+      <div style="overflow-x:auto;">
+      <table><thead><tr>
+        <th></th>
+        <th>품번</th><th>품명</th><th>ERP 바코드</th><th>바코드</th>
+        <th>창고</th><th class="num">우선순위</th><th class="num">가용재고</th><th class="num">할당수량</th>
+        <th class="num">필요수량</th><th class="num">부족/여유</th>
+        <th>거래처(제조사)</th>
+        <th style="color:var(--cat-incoming);">입고예정 일자</th><th class="num" style="color:var(--cat-incoming);">입고예정 수량</th>
+        <th style="color:var(--cat-expiry);">LOT</th><th style="color:var(--cat-expiry);">유통기한</th><th class="num" style="color:var(--cat-expiry);">유통기한 가용재고</th>
+        <th style="color:var(--cat-master);">아웃박스 규격(mm)</th><th class="num" style="color:var(--cat-master);">아웃박스 무게(g)</th><th class="num" style="color:var(--cat-master);">아웃박스 입수</th>
+        <th style="color:var(--cat-master);">인박스 규격(mm)</th><th class="num" style="color:var(--cat-master);">인박스 무게(g)</th><th class="num" style="color:var(--cat-master);">인박스 입수</th>
+        <th style="color:var(--cat-master);">제품 규격(mm)</th><th class="num" style="color:var(--cat-master);">제품 무게(g)</th>
+        <th class="num" style="color:var(--accent);">예상 총 박스수</th>
+        <th class="num" style="color:var(--accent);">잔량(마지막 박스)</th>
+        <th class="num" style="color:var(--accent);">예상 총 박스중량(kg)</th>
+        <th class="num" style="color:var(--accent);">PLT당 박스수</th>
+        ${!mixed ? `<th class="num" style="color:var(--accent);">PLT 최대 적재 가능 박스수</th>` : ''}
+        <th style="color:var(--accent);">PLT 번호</th>
+        <th class="num" style="color:var(--accent);">PLT 예상중량(kg)</th>
+        <th style="color:var(--accent);">PLT 예상 W×D×H(cm)</th>
+      </tr></thead>
+      <tbody>${rows.map(x=>{
+        let delBtn = '';
+        if(x._isExpiryClone || (x.isSynthetic && x._expiry)){
+          delBtn = `<button class="btn ghost" type="button" style="padding:4px 9px;font-size:11px;" data-action="remove-expiry" data-key="${x._expiry.key}">삭제</button>`;
+        } else if(!x.isSynthetic){
+          delBtn = `<button class="btn ghost" type="button" style="padding:4px 9px;font-size:11px;" data-action="remove-export" data-key="${x.key}">삭제</button>`;
+        }
+        const mf = masterFieldsFor(x.품번);
+        const isRealWh = !x.isSynthetic && x.창고 && x.창고!=='재고없음';
+        const priorityCell = isRealWh
+          ? `<input type="number" min="1" value="${x.우선순위||1}" data-action="set-priority" data-key="${escAttr(x.key)}" style="width:52px;padding:4px 6px;border-radius:6px;border:1.5px solid var(--line);text-align:center;font-family:inherit;">`
+          : '<span style="color:var(--muted);">-</span>';
+        const allocCell = isRealWh ? fmt(x._allocated||0) : '-';
+        const needed = x._needed||0;
+        const diff = x._diff;
+        const diffCell = (needed>0 && diff!==undefined)
+          ? `<span style="font-weight:800;color:${diff<0?'var(--danger)':'var(--safe)'}">${diff<0?'':'+'}${fmt(diff)}개</span>`
+          : '<span style="color:var(--muted);">-</span>';
+        const detail = ui.exportPltDetail.get(x.품번);
+        const boxesNeededCell = detail ? fmt(detail.boxesNeeded) : '-';
+        const remainderCell = detail
+          ? (detail.remainderUnits>0
+              ? `<span style="color:var(--caution);font-weight:700;">${fmt(detail.remainderUnits)}개 / ${fmt(detail.perBox)}개</span>`
+              : '<span style="color:var(--muted);">딱 맞음</span>')
+          : '-';
+        const totalWeightCell = detail && detail.totalWeightKg ? fmt(detail.totalWeightKg)+' kg' : '-';
+        const actualBoxesPerPalletCell = detail ? fmt(detail.actualBoxesPerPallet) : '-';
+        const maxBoxesPerPalletCell = detail ? fmt(detail.boxesPerPallet) : '-';
+        let pltNumberCell = '-', pltWeightCell = '-', pltDimsCell = '-';
+        if(mixed){
+          const nums = ui.exportPltNumbersByProduct.get(x.품번);
+          if(nums && nums.length>0) pltNumberCell = nums.map(n=>'PLT '+n).join(', ');
+          const weights = ui.exportPltRepWeightByProduct.get(x.품번);
+          if(weights && weights.length>0) pltWeightCell = weights.map(w=>fmt(w)+' kg').join(', ');
+          const dimsArr = ui.exportPltRepDimsByProduct.get(x.품번);
+          if(dimsArr && dimsArr.length>0) pltDimsCell = dimsArr.map(d=>`${fmt(d.L)}×${fmt(d.W)}×${fmt(d.H)}`).join(', ');
+        } else if(ui.exportPltByProduct.has(x.품번)){
+          pltNumberCell = fmt(ui.exportPltByProduct.get(x.품번)) + ' PLT';
+          pltWeightCell = detail && detail.weightPerPltKg ? fmt(detail.weightPerPltKg)+' kg' : '-';
+          pltDimsCell = detail ? `${fmt(detail.palletL)}×${fmt(detail.palletW)}×${fmt(detail.actualHeightCm)}` : '-';
+        }
+        return `<tr>
+        <td>${delBtn}</td>
+        <td><code class="pn">${x.품번}</code></td><td>${x.품명}</td><td class="mono">${x.바코드}</td><td class="mono">${baseBarcode(x.바코드)}</td>
+        <td>${x.창고}</td><td class="num">${priorityCell}</td>
+        <td class="num">${x.가용재고==='-'?'-':fmt(x.가용재고)}</td><td class="num">${allocCell}</td>
+        <td class="num"><input type="number" min="0" value="${ui.neededQty.get(x.품번)||''}" placeholder="0" data-action="set-needed-qty" data-pn="${escAttr(x.품번)}" style="width:70px;padding:4px 6px;border-radius:6px;border:1.5px solid var(--line);text-align:right;font-family:inherit;"></td>
+        <td class="num">${diffCell}</td>
+        <td>${x.거래처||'-'}</td>
+        <td>${incomingDateCellHtml(x.품번)}</td>
+        <td class="num">${incomingQtyCellHtml(x.품번)}</td>
+        <td>${x._expiry ? `${x._expiry.LOT}<span data-action="remove-expiry" data-key="${x._expiry.key}" style="cursor:pointer;font-weight:800;color:var(--cat-expiry);margin-left:5px;">×</span>` : '<span style="color:var(--muted);">-</span>'}</td>
+        <td>${x._expiry ? x._expiry.유통기한 : '<span style="color:var(--muted);">-</span>'}</td>
+        <td class="num">${x._expiry ? fmt(x._expiry.가용재고수량) : '<span style="color:var(--muted);">-</span>'}</td>
+        <td class="mono">${editableDimsCell(x.품번,'아웃')}</td><td class="num">${editableNumCell(x.품번,'아웃무게g','무게(g)')}</td><td class="num">${editableNumCell(x.품번,'아웃입수','입수')}</td>
+        <td class="mono">${editableDimsCell(x.품번,'인')}</td><td class="num">${editableNumCell(x.품번,'인무게g','무게(g)')}</td><td class="num">${editableNumCell(x.품번,'인입수','입수')}</td>
+        <td class="mono">${editableDimsCell(x.품번,'제품')}</td><td class="num">${editableNumCell(x.품번,'제품무게g','무게(g)')}</td>
+        <td class="num">${boxesNeededCell}</td>
+        <td class="num">${remainderCell}</td>
+        <td class="num">${totalWeightCell}</td>
+        <td class="num">${actualBoxesPerPalletCell}</td>
+        ${!mixed ? `<td class="num">${maxBoxesPerPalletCell}</td>` : ''}
+        <td>${pltNumberCell}</td>
+        <td class="num" style="font-weight:700;color:var(--accent);">${pltWeightCell}</td>
+        <td class="mono">${pltDimsCell}</td>
+      </tr>`;
+      }).join('')}</tbody></table>
+      </div>
+      ${mixed && ui.showPltPackingDetail ? renderPltPackingHtml() : ''}
+    </div>
+  `;
+}
+function renderPltPackingHtml(){
+  if(!ui.exportPltPacking || ui.exportPltPacking.length===0) return '';
+  return `
+    <div style="margin-top:16px;border-top:1.5px dashed var(--line);padding-top:14px;">
+      <div class="section-title" style="margin-bottom:4px;">혼적 PLT 구성 — PLT별로 어떤 품목이 얼마나 들어가는지</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px;">파레트 하나에 여러 품목이 같이 실릴 때, 실제로 어떤 조합인지와 그 파레트의 진짜 예상 중량입니다.</div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;">
+        ${ui.exportPltPacking.map(p=>`
+          <div style="border:2px solid var(--line-strong);border-radius:10px;padding:12px 14px;min-width:190px;box-shadow:var(--shadow);">
+            <div style="font-weight:800;font-size:13px;margin-bottom:6px;">PLT ${p.index}</div>
+            ${p.items.map(it=>`<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:2px 0;">
+              <span><code class="pn" style="font-size:11px;">${it.pn}</code></span>
+              <span class="mono" style="color:var(--muted);">${Math.round(it.frac*100)}%</span>
+            </div>`).join('')}
+            <div style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--line);font-size:11px;color:var(--muted);display:flex;justify-content:space-between;">
+              <span>사용률</span><span class="mono" style="font-weight:700;color:${p.used>0.98?'var(--danger)':'var(--ink)'};">${Math.round(p.used*100)}%</span>
+            </div>
+            <div style="margin-top:3px;font-size:11px;color:var(--muted);display:flex;justify-content:space-between;">
+              <span>예상 중량</span><span class="mono" style="font-weight:800;color:var(--accent);">${fmt(p.weightKg)} kg</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+function packPalletsMixed(items, tareKg, palletL, palletW){
+  // items: [{pn, 품명, frac, boxesPerPallet, weightPerBoxKg, perLayer, boxH}]
+  const pallets = [];
+  const fragments = [];
+  items.forEach(it=>{
+    const whole = Math.floor(it.frac + 1e-9);
+    const rem = it.frac - whole;
+    for(let i=0;i<whole;i++){
+      pallets.push({items:[{pn:it.pn, 품명:it.품명, frac:1, boxesPerPallet:it.boxesPerPallet, weightPerBoxKg:it.weightPerBoxKg, perLayer:it.perLayer, boxH:it.boxH}], used:1});
+    }
+    if(rem>1e-6) fragments.push({pn:it.pn, 품명:it.품명, frac:rem, boxesPerPallet:it.boxesPerPallet, weightPerBoxKg:it.weightPerBoxKg, perLayer:it.perLayer, boxH:it.boxH});
+  });
+  fragments.sort((a,b)=>b.frac-a.frac); // First-Fit-Decreasing
+  fragments.forEach(frag=>{
+    let placed = false;
+    for(const p of pallets){
+      if(p.used<1-1e-9 && (1-p.used) >= frag.frac-1e-9){
+        p.items.push(frag);
+        p.used += frag.frac;
+        placed = true;
+        break;
+      }
+    }
+    if(!placed) pallets.push({items:[frag], used:frag.frac});
+  });
+  pallets.forEach((p,i)=>{
+    p.index = i+1;
+    // 이 파레트에 실제로 실리는 각 품목의 박스 수 × 박스무게 를 더해서 실제 중량 계산 (+ 빈 PLT 자체무게)
+    const productWeight = p.items.reduce((s,it)=> s + (it.frac * (it.boxesPerPallet||0) * (it.weightPerBoxKg||0)), 0);
+    p.weightKg = productWeight + (tareKg||0);
+    // 실제 규격: 가로/세로는 파레트 그대로, 높이는 품목별로 각자 몇 층 쌓이는지 더한 값 (품목별로 층을 나눠 쌓는다고 가정)
+    const heightCm = p.items.reduce((s,it)=>{
+      if(!it.perLayer || !it.boxH) return s;
+      const boxesOnThisPallet = it.frac * (it.boxesPerPallet||0);
+      const layersNeeded = Math.ceil(boxesOnThisPallet / it.perLayer - 1e-9);
+      return s + layersNeeded*it.boxH;
+    }, 0);
+    p.dims = {L:palletL, W:palletW, H:Math.round(heightCm*10)/10};
+  });
+  return pallets;
+}
+
+function calcExportPlt(){
+  const rows = buildExportRows();
+  const palletL = num(document.getElementById('exportPltL').value) || 110;
+  const palletW = num(document.getElementById('exportPltW').value) || 110;
+  const palletH = num(document.getElementById('exportPltH').value) || 150;
+  const baseHeightCm = num(document.getElementById('exportPltBaseHeight').value) || 0;
+  ui.exportPltBaseHeightCm = baseHeightCm;
+  const usableH = Math.max(0, palletH - baseHeightCm); // 밑판 두께 뺀 실제 적재 가능 높이
+  const tareKg = num(document.getElementById('exportPltTare').value) || 20;
+  ui.exportPltTareKg = tareKg;
+  const mixedInput = document.querySelector('input[name="pltMixMode"]:checked');
+  const mixed = mixedInput ? mixedInput.value==='O' : (ui.pltMixMode==='O');
+  ui.pltMixMode = mixed ? 'O' : 'X';
+  const pns = Array.from(new Set(rows.map(r=>r.품번)));
+  ui.exportPltByProduct = new Map();
+  ui.exportPltDetail = new Map();
+  ui.exportPltPacking = [];
+  let fractionSum = 0;
+  let hasAny = false;
+  const mixedItems = [];
+  pns.forEach(pn=>{
+    const box = boxInfoFor(pn);
+    if(!(box.아웃W && box.아웃D && box.아웃H)) return;
+    const needed = ui.neededQty.get(pn);
+    let qty = needed;
+    if(!qty){
+      qty = ui.exportList.filter(x=>x.품번===pn && x.창고 && x.창고!=='재고없음' && typeof x.가용재고==='number')
+        .reduce((s,r)=>s+r.가용재고, 0);
+    }
+    if(!qty) return;
+    const r = computePltForRow(pn, qty, palletL, palletW, usableH);
+    if(r.status!=='ok' || !r.boxesPerPallet) return;
+    hasAny = true;
+    const weightPerBoxKg = box.아웃무게g>0 ? box.아웃무게g/1000 : 0;
+    const totalWeightKg = r.boxesNeeded * weightPerBoxKg;
+    let pltCountForThis;
+    if(mixed){
+      const frac = r.boxesNeeded / r.boxesPerPallet;
+      fractionSum += frac;
+      pltCountForThis = frac;
+      ui.exportPltByProduct.set(pn, Math.round(frac*100)/100);
+      mixedItems.push({pn, 품명:r.품명, frac, boxesPerPallet:r.boxesPerPallet, weightPerBoxKg, perLayer:r.perLayer, boxH:r.boxH});
+    } else if(r.pltNeeded!==null){
+      pltCountForThis = r.pltNeeded;
+      ui.exportPltByProduct.set(pn, r.pltNeeded);
+    }
+    // PLT당 예상중량 = (박스 중량 / 이 품목이 쓰는 PLT 수) + 빈 PLT 자체무게
+    // 혼적일 때는 이 품목이 파레트를 점유하는 비율(frac)만큼만 빈 PLT 무게를 나눠 가짐 (수학적으로 동일한 식)
+    // 참고: 혼적일 때 이 값은 "이 품목 혼자 파레트를 채웠다면"의 환산값이며, 실제 물리적 PLT 하나의 무게/규격은
+    // 아래 대표 품목 행에 표시되는 실제 파레트 값을 봐야 합니다 (여러 품목이 같이 실리므로).
+    const weightPerPltKg = (pltCountForThis>0) ? (totalWeightKg/pltCountForThis) + tareKg : 0;
+    // 실제 적재 박스수: 이 품목이 쓰는 PLT 수(올림)에 총 박스수를 고르게 나눈 값 — 이론상 최대치(boxesPerPallet)와 다름
+    const effectivePltCount = Math.max(1, Math.ceil(pltCountForThis||1));
+    const actualBoxesPerPallet = Math.ceil(r.boxesNeeded / effectivePltCount);
+    // 실제 적재 높이: 실제로 실리는 박스수 기준으로 몇 단이 쌓이는지 계산 (박스높이 × 단수)
+    const actualLayers = r.perLayer>0 ? Math.ceil(actualBoxesPerPallet / r.perLayer) : 0;
+    const actualHeightCm = actualLayers * r.boxH;
+    ui.exportPltDetail.set(pn, {boxesPerPallet:r.boxesPerPallet, boxesNeeded:r.boxesNeeded, actualBoxesPerPallet, totalWeightKg, weightPerPltKg, remainderUnits:r.remainderUnits, perBox:r.perBox, actualHeightCm, palletL, palletW});
+  });
+  if(mixed && mixedItems.length>0){
+    ui.exportPltPacking = packPalletsMixed(mixedItems, tareKg, palletL, palletW);
+    ui.exportPltMixedTotal = ui.exportPltPacking.length; // 실제 배정 결과를 최종 PLT 수로 사용
+    // 표시용: 품번마다 소속된 PLT 번호 목록, 그리고 대표(그 파레트의 첫 품목)일 때만 실제중량/실제규격 부여(중복 방지)
+    ui.exportPltNumbersByProduct = new Map();
+    ui.exportPltRepWeightByProduct = new Map();
+    ui.exportPltRepDimsByProduct = new Map();
+    ui.exportPltPacking.forEach(p=>{
+      if(p.items.length===0) return;
+      const repPn = p.items[0].pn;
+      p.items.forEach(it=>{
+        if(!ui.exportPltNumbersByProduct.has(it.pn)) ui.exportPltNumbersByProduct.set(it.pn, []);
+        ui.exportPltNumbersByProduct.get(it.pn).push(p.index);
+      });
+      if(!ui.exportPltRepWeightByProduct.has(repPn)) ui.exportPltRepWeightByProduct.set(repPn, []);
+      ui.exportPltRepWeightByProduct.get(repPn).push(p.weightKg);
+      if(!ui.exportPltRepDimsByProduct.has(repPn)) ui.exportPltRepDimsByProduct.set(repPn, []);
+      ui.exportPltRepDimsByProduct.get(repPn).push(p.dims);
+    });
+  } else {
+    ui.exportPltMixedTotal = (mixed && hasAny) ? Math.ceil(fractionSum) : null;
+    ui.exportPltNumbersByProduct = new Map();
+    ui.exportPltRepWeightByProduct = new Map();
+    ui.exportPltRepDimsByProduct = new Map();
+  }
+  renderExportPanel();
+}
+function downloadExportCsv(){
+  const rows = buildExportRows();
+  if(rows.length===0) return;
+  const mixed = ui.pltMixMode==='O';
+  const headers = ['품번','품명','ERP 바코드','바코드','창고','우선순위','가용재고','할당수량','필요수량','부족/여유','거래처(제조사)','입고예정 일자','입고예정 수량','LOT','유통기한','유통기한 가용재고','아웃박스 규격(mm)','아웃박스 무게(g)','아웃박스 입수','인박스 규격(mm)','인박스 무게(g)','인박스 입수','제품 규격(mm)','제품 무게(g)','예상 총 박스수','잔량(마지막 박스, 개)','예상 총 박스중량(kg)','PLT당 박스수','PLT 최대 적재 가능 박스수','PLT 번호','PLT 예상중량(kg)','PLT 예상 W×D×H(cm)'];
+  const escape = v => {
+    const s = (v===null||v===undefined)?'':String(v);
+    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  };
+  const lines = [headers.join(',')];
+  rows.forEach(x=>{
+    const incDate = incomingDateText(x.품번);
+    const incQty = incomingQtyText(x.품번);
+    const lot = x._expiry ? x._expiry.LOT : '';
+    const expDate = x._expiry ? x._expiry.유통기한 : '';
+    const expQty = x._expiry ? fmt(x._expiry.가용재고수량) : '';
+    const mf = masterFieldsFor(x.품번);
+    const isRealWh = !x.isSynthetic && x.창고 && x.창고!=='재고없음';
+    const priority = isRealWh ? (x.우선순위||1) : '';
+    const alloc = isRealWh ? fmt(x._allocated||0) : '';
+    const needed = x._needed || '';
+    const diff = (x._needed && x._diff!==undefined) ? (x._diff<0?x._diff:'+'+x._diff) : '';
+    const detail = ui.exportPltDetail.get(x.품번);
+    const boxesNeeded = detail ? fmt(detail.boxesNeeded) : '';
+    const remainder = detail ? (detail.remainderUnits>0 ? fmt(detail.remainderUnits) : '0(딱맞음)') : '';
+    const totalWeight = detail && detail.totalWeightKg ? fmt(detail.totalWeightKg) : '';
+    const actualBoxesPerPallet = detail ? fmt(detail.actualBoxesPerPallet) : '';
+    const maxBoxesPerPallet = (!mixed && detail) ? fmt(detail.boxesPerPallet) : '';
+    let pltNumber = '', pltWeight = '', pltDims = '';
+    if(mixed){
+      const nums = ui.exportPltNumbersByProduct.get(x.품번);
+      if(nums && nums.length>0) pltNumber = nums.map(n=>'PLT '+n).join(' / ');
+      const weights = ui.exportPltRepWeightByProduct.get(x.품번);
+      if(weights && weights.length>0) pltWeight = weights.map(w=>fmt(w)).join(' / ');
+      const dimsArr = ui.exportPltRepDimsByProduct.get(x.품번);
+      if(dimsArr && dimsArr.length>0) pltDims = dimsArr.map(d=>`${fmt(d.L)}x${fmt(d.W)}x${fmt(d.H)}`).join(' / ');
+    } else if(ui.exportPltByProduct.has(x.품번)){
+      pltNumber = fmt(ui.exportPltByProduct.get(x.품번)) + ' PLT';
+      pltWeight = detail && detail.weightPerPltKg ? fmt(detail.weightPerPltKg) : '';
+      pltDims = detail ? `${fmt(detail.palletL)}x${fmt(detail.palletW)}x${fmt(detail.actualHeightCm)}` : '';
+    }
+    lines.push([x.품번,x.품명,x.바코드,baseBarcode(x.바코드),x.창고,priority,x.가용재고,alloc,needed,diff,x.거래처,incDate,incQty,lot,expDate,expQty,mf.아웃규격,mf.아웃무게,mf.아웃입수,mf.인규격,mf.인무게,mf.인입수,mf.제품규격,mf.제품무게,boxesNeeded,remainder,totalWeight,actualBoxesPerPallet,maxBoxesPerPallet,pltNumber,pltWeight,pltDims].map(escape).join(','));
+  });
+  if(ui.exportPltByProduct.size>0){
+    const pltTotal = mixed && ui.exportPltMixedTotal!==null
+      ? ui.exportPltMixedTotal
+      : Array.from(new Set(rows.map(r=>r.품번))).reduce((s,pn)=> s + (ui.exportPltByProduct.get(pn)||0), 0);
+    const boxWeightTotal = Array.from(ui.exportPltDetail.values()).reduce((s,d)=>s+d.totalWeightKg,0);
+    const tareKg = ui.exportPltTareKg || 20;
+    const pltTareTotal = pltTotal * tareKg;
+    const grandTotal = boxWeightTotal + pltTareTotal;
+    const blankCols = headers.length - 4;
+    lines.push(['합계'+(mixed?'(혼적 기준)':''), ...Array(blankCols).fill(''), fmt(pltTotal)+' PLT', fmt(grandTotal)+'kg ('+fmt(boxWeightTotal)+'kg 박스+'+fmt(pltTareTotal)+'kg PLT)', ''].map(escape).join(','));
+  }
+  if(mixed && ui.exportPltPacking && ui.exportPltPacking.length>0){
+    lines.push('');
+    lines.push('PLT 구성 상세 (혼적)');
+    lines.push(['PLT 번호','포함 품목(비중)','사용률','예상 중량(kg)'].map(escape).join(','));
+    ui.exportPltPacking.forEach(p=>{
+      const itemsText = p.items.map(it=>`${it.pn} (${Math.round(it.frac*100)}%)`).join(' / ');
+      lines.push([`PLT ${p.index}`, itemsText, Math.round(p.used*100)+'%', fmt(p.weightKg)].map(escape).join(','));
+    });
+  }
+  const csv = '\uFEFF' + lines.join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().slice(0,10);
+  a.href = url; a.download = `재고선택목록_${ts}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ---------------- Event wiring ---------------- */
+document.getElementById('nav').addEventListener('click', e=>{
+  const btn = e.target.closest('button[data-view]'); if(!btn) return;
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+btn.dataset.view).classList.add('active');
+});
+
+function renderBrandToggle(){
+  const el = document.getElementById('brandToggle');
+  const brands = ['성분에디터','밀크터치','마미케어'];
+  el.innerHTML = brands.map(b=>{
+    const active = ui.brandSelected.has(b);
+    const c = BRAND_COLORS[b];
+    return `<button type="button" class="brand-chip" data-brand="${b}" style="${active?`background:${c};border-color:${c};color:#fff;`:''}">${b}</button>`;
+  }).join('');
+}
+document.getElementById('brandToggle').addEventListener('click', e=>{
+  const btn = e.target.closest('.brand-chip'); if(!btn) return;
+  const b = btn.dataset.brand;
+  if(ui.brandSelected.has(b)) ui.brandSelected.delete(b); else ui.brandSelected.add(b);
+  ui.forecastPage = 50; ui.customerPage = 50;
+  renderBrandToggle();
+  renderAll();
+});
+renderBrandToggle();
+
+document.getElementById('gradeSelect').addEventListener('change', e=>{ ui.forecastGrade=e.target.value; ui.forecastPage=50; renderForecast(); });
+document.getElementById('forecastCustomer').addEventListener('change', e=>{ ui.forecastCustomer=e.target.value; ui.forecastPage=50; renderForecast(); });
+document.getElementById('forecastOverstockScope').addEventListener('change', e=>{
+  const r = e.target.closest('input[name="forecastOverstockScope"]');
+  if(!r) return;
+  ui.forecastOverstockScope = r.value;
+  renderForecast();
+});
+document.getElementById('forecastSearch').addEventListener('input', e=>{ ui.forecastSearch=e.target.value; ui.forecastPage=50; renderForecast(); });
+document.getElementById('forecastShowNoSales').addEventListener('change', e=>{ ui.forecastShowNoSales=e.target.checked; ui.forecastPage=50; renderForecast(); });
+document.getElementById('forecastPnInput').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(e.target.value.trim()){ addForecastPnTokens(e.target.value); e.target.value=''; }
+  }
+});
+document.getElementById('forecastPnChipRow').addEventListener('click', e=>{
+  const clr = e.target.closest('[data-action="clear-forecast-pn-chips"]');
+  if(clr){ ui.forecastPnChips.clear(); renderForecast(); return; }
+  const x = e.target.closest('[data-action="remove-forecast-pn-chip"]'); if(!x) return;
+  ui.forecastPnChips.delete(x.dataset.key);
+  renderForecast();
+});
+document.getElementById('view-forecast').addEventListener('click', e=>{
+  if(e.target.closest('[data-action="forecast-more"]')){ ui.forecastPage+=50; renderForecast(); return; }
+  const toggle = e.target.closest('[data-action="toggle-forecast-detail"]');
+  if(toggle){
+    const pn = toggle.dataset.pn;
+    if(ui.forecastExpanded.has(pn)) ui.forecastExpanded.delete(pn); else ui.forecastExpanded.add(pn);
+    renderForecast();
+    return;
+  }
+  const clr = e.target.closest('[data-action="forecast-clear-select"]');
+  if(clr){ ui.forecastSelected.clear(); renderForecast(); return; }
+  const dl = e.target.closest('[data-action="forecast-download-select"]');
+  if(dl){ downloadForecastCsv(); return; }
+  const rm = e.target.closest('[data-action="forecast-remove-select"]');
+  if(rm){ ui.forecastSelected.delete(rm.dataset.pn); renderForecast(); return; }
+  const selAll = e.target.closest('[data-action="forecast-select-all"]');
+  if(selAll){ ui.forecastVisiblePns.forEach(pn=>ui.forecastSelected.add(pn)); renderForecast(); return; }
+  const selNone = e.target.closest('[data-action="forecast-select-none"]');
+  if(selNone){ ui.forecastVisiblePns.forEach(pn=>ui.forecastSelected.delete(pn)); renderForecast(); return; }
+});
+document.getElementById('view-forecast').addEventListener('change', e=>{
+  const cb = e.target.closest('[data-action="toggle-forecast-select"]');
+  if(cb){
+    if(cb.checked) ui.forecastSelected.add(cb.dataset.pn); else ui.forecastSelected.delete(cb.dataset.pn);
+    renderForecastSelectPanel();
+    return;
+  }
+  const all = e.target.closest('[data-action="toggle-forecast-select-all"]');
+  if(all){
+    if(all.checked) ui.forecastVisiblePns.forEach(pn=>ui.forecastSelected.add(pn));
+    else ui.forecastVisiblePns.forEach(pn=>ui.forecastSelected.delete(pn));
+    renderForecast();
+  }
+});
+
+function closeAllMselPanels(except){
+  ['cust','pn'].forEach(w=>{
+    if(w===except) return;
+    document.getElementById(w==='cust'?'custMselPanel':'pnMselPanel').hidden = true;
+  });
+}
+document.getElementById('custMselTrigger').addEventListener('click', e=>{
+  e.stopPropagation();
+  const panel = document.getElementById('custMselPanel');
+  const willOpen = panel.hidden;
+  closeAllMselPanels();
+  panel.hidden = !willOpen;
+  if(willOpen) renderMselList('cust');
+});
+document.getElementById('pnMselTrigger').addEventListener('click', e=>{
+  e.stopPropagation();
+  const panel = document.getElementById('pnMselPanel');
+  const willOpen = panel.hidden;
+  closeAllMselPanels();
+  panel.hidden = !willOpen;
+  if(willOpen) renderMselList('pn');
+});
+document.addEventListener('click', e=>{
+  if(!e.target.closest('.msel')) closeAllMselPanels();
+});
+document.getElementById('custMselSearch').addEventListener('input', e=>{ ui.custMselSearch = e.target.value; renderMselList('cust'); });
+document.getElementById('customerPnSearch').addEventListener('input', e=>{ ui.customerPnSearch = e.target.value; ui.customerPage=50; renderCustomerTable(); });
+
+document.getElementById('skuStatusSearch').addEventListener('input', e=>{ ui.skuStatusSearch = e.target.value; renderSkuStatusSearchResults(); });
+document.getElementById('skuStatusSearch').addEventListener('focus', ()=>{ if(ui.skuStatusSearch) renderSkuStatusSearchResults(); });
+document.getElementById('skuStatusSearch').addEventListener('keydown', e=>{
+  if(e.key==='Enter' && !e.shiftKey){
+    e.preventDefault();
+    if(ui.skuStatusLastMatches.length>0){
+      ui.skuStatusLastMatches.forEach(pn=>ui.skuStatusSelected.add(pn));
+    }
+    ui.skuStatusSearch = '';
+    e.target.value = '';
+    document.getElementById('skuStatusResults').style.display = 'none';
+    renderSkuStatusTable();
+  }
+});
+document.getElementById('skuStatusResults').addEventListener('click', e=>{
+  const pickAll = e.target.closest('[data-action="pick-all-sku-status"]');
+  if(pickAll){
+    e.stopPropagation();
+    ui.skuStatusLastMatches.forEach(pn=>ui.skuStatusSelected.add(pn));
+    renderSkuStatusSearchResults();
+    renderSkuStatusTable();
+    return;
+  }
+  const row = e.target.closest('[data-action="pick-sku-status"]');
+  if(!row) return;
+  e.stopPropagation(); // 리렌더로 클릭된 요소가 DOM에서 사라져서 '바깥 클릭'으로 오인되는 것 방지
+  const pn = row.dataset.pn;
+  if(ui.skuStatusSelected.has(pn)) ui.skuStatusSelected.delete(pn); else ui.skuStatusSelected.add(pn);
+  renderSkuStatusSearchResults(); // 체크 표시 갱신, 드롭다운은 열린 채 유지 (여러 개 연속 선택 가능)
+  renderSkuStatusTable();
+});
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#skuStatusSearch') && !e.target.closest('#skuStatusResults')){
+    const el = document.getElementById('skuStatusResults');
+    if(el) el.style.display = 'none';
+  }
+});
+document.getElementById('skuStatusSelectedInfo').addEventListener('click', e=>{
+  if(e.target.closest('[data-action="clear-sku-status"]')){
+    ui.skuStatusSelected = new Set();
+    renderSkuStatusTable();
+    return;
+  }
+  const rm = e.target.closest('[data-action="remove-sku-status"]');
+  if(rm){
+    ui.skuStatusSelected.delete(rm.dataset.pn);
+    renderSkuStatusTable();
+  }
+});
+document.getElementById('skuStatusTableWrap').addEventListener('click', e=>{
+  if(e.target.closest('[data-action="download-sku-status"]')) downloadSkuStatusCsv();
+});
+document.getElementById('pnMselSearch').addEventListener('input', e=>{ ui.pnMselSearch = e.target.value; renderMselList('pn'); });
+document.getElementById('pnMselSearch').addEventListener('keydown', e=>{
+  if(e.key==='Enter'){
+    e.preventDefault();
+    if(e.target.value.trim()){ addPnTokens(e.target.value); e.target.value=''; ui.pnMselSearch=''; renderMselList('pn'); }
+  }
+});
+document.getElementById('custMselList').addEventListener('change', e=>{
+  const cb = e.target.closest('input[type="checkbox"]'); if(!cb) return;
+  if(cb.checked) ui.custSelected.add(cb.dataset.key); else ui.custSelected.delete(cb.dataset.key);
+  updateMselTrigger('cust'); ui.customerPage=50; renderCustomerTable();
+});
+document.getElementById('pnMselList').addEventListener('click', e=>{
+  const row = e.target.closest('[data-action="pn-row-click"]'); if(!row) return;
+  e.stopPropagation(); // 리렌더로 클릭된 요소가 사라져서 '바깥 클릭'으로 오인되는 것 방지
+  const key = row.dataset.key;
+  if(ui.pnSelected.has(key)) ui.pnSelected.delete(key); else ui.pnSelected.add(key);
+  updateMselTrigger('pn'); renderMselList('pn'); ui.customerPage=50; renderCustomerTable();
+});
+document.getElementById('pnChipRow').addEventListener('click', e=>{
+  const x = e.target.closest('[data-action="remove-pn-chip"]'); if(!x) return;
+  ui.pnSelected.delete(x.dataset.key);
+  updateMselTrigger('pn'); renderMselList('pn'); ui.customerPage=50; renderCustomerTable();
+});
+document.querySelectorAll('.msel-actionrow [data-action="msel-clear"]').forEach(btn=>{
+  btn.addEventListener('click', e=>{
+    const which = e.target.dataset.which;
+    (which==='cust'?ui.custSelected:ui.pnSelected).clear();
+    updateMselTrigger(which); renderMselList(which);
+    ui.customerPage=50; renderCustomerTable();
+  });
+});
+document.getElementById('view-customer').addEventListener('click', e=>{
+  if(e.target.closest('[data-action="customer-more"]')){ ui.customerPage+=50; renderCustomerTable(); }
+});
+
+document.getElementById('view-overview').addEventListener('click', e=>{
+  const card = e.target.closest('.card'); // no-op currently, reserved
+});
+
+document.getElementById('lookupForm').addEventListener('submit', e=>{
+  e.preventDefault();
+  if(!state.loaded){
+    document.getElementById('lookupResults').innerHTML = `<div class="banner info" style="margin-top:16px;">먼저 '데이터 가져오기' 탭에서 CSV를 업로드해주세요.</div>`;
+    return;
+  }
+  const bc = document.getElementById('lookupBarcode').value.trim();
+  const nq = document.getElementById('lookupNameQuery').value.trim();
+  const cu = document.getElementById('lookupCustomer').value.trim();
+  if(!bc && !nq) return;
+  doLookupBatch(bc, nq, cu);
+});
+document.getElementById('lookupForm').addEventListener('click', e=>{
+  const clr = e.target.closest('[data-action="clear-lookup-barcode"]');
+  if(clr){
+    document.getElementById('lookupBarcode').value = '';
+    ui.lookupItems = [];
+    renderLookupBatch();
+  }
+});
+
+document.getElementById('lookupResults').addEventListener('click', e=>{
+  const autoAll = e.target.closest('[data-action="auto-select-recommended-all"]');
+  if(autoAll){ autoSelectRecommendedAll(); return; }
+  const autoOne = e.target.closest('[data-action="auto-select-recommended"]');
+  if(autoOne){
+    autoSelectRecommended(Number(autoOne.dataset.batchIdx));
+    return;
+  }
+  const collapse = e.target.closest('[data-action="toggle-collapse"]');
+  if(collapse){
+    const idx = Number(collapse.dataset.batchIdx);
+    if(ui.collapsedItems.has(idx)) ui.collapsedItems.delete(idx); else ui.collapsedItems.add(idx);
+    renderLookupBatch();
+    return;
+  }
+  const masterToggle = e.target.closest('[data-action="toggle-master-info"]');
+  if(masterToggle){
+    const pn = masterToggle.dataset.pn;
+    if(ui.masterInfoExpanded.has(pn)) ui.masterInfoExpanded.delete(pn); else ui.masterInfoExpanded.add(pn);
+    renderLookupBatch();
+    return;
+  }
+  const prod = e.target.closest('[data-action="toggle-product"]');
+  if(prod){ toggleActiveProduct(Number(prod.dataset.batchIdx)); return; }
+  const wh = e.target.closest('[data-action="add-to-export"]');
+  if(wh){
+    const d = wh.dataset;
+    addToExport(d.pn, d.name, d.barcode, d.vendor, d.warehouse, Number(d.avail));
+    return;
+  }
+  const inc = e.target.closest('[data-action="toggle-incoming"]');
+  if(inc){
+    const d = inc.dataset;
+    toggleIncoming(d.pn, d.name, d.barcode, d.vendor, d.month, d.date, Number(d.qty));
+    return;
+  }
+  const exp = e.target.closest('[data-action="toggle-expiry"]');
+  if(exp){
+    const d = exp.dataset;
+    toggleExpiry(d.pn, d.name, d.barcode, d.vendor, d.lot, d.date, Number(d.avail));
+    return;
+  }
+});
+document.getElementById('lookupResults').addEventListener('change', e=>{
+  const altToggle = e.target.closest('#autoSelectAltToggle');
+  if(altToggle){
+    ui.autoSelectIncludeAlternatives = altToggle.checked;
+    return; // 리렌더 불필요 (다음 추천 선택부터 반영)
+  }
+  const needInput = e.target.closest('[data-action="set-needed-qty"]');
+  if(needInput){
+    const pn = needInput.dataset.pn;
+    const v = num(needInput.value);
+    if(v>0) ui.neededQty.set(pn, v); else ui.neededQty.delete(pn);
+    const scrollY = window.scrollY;
+    renderLookupBatch();
+    window.scrollTo(0, scrollY);
+    return;
+  }
+  const boxDimInput = e.target.closest('[data-action="set-box-dim"]');
+  if(boxDimInput){
+    setBoxDim(boxDimInput.dataset.pn, boxDimInput.dataset.field, boxDimInput.value);
+  }
+});
+document.getElementById('exportPanel').addEventListener('click', e=>{
+  const rm = e.target.closest('[data-action="remove-export"]');
+  if(rm){ removeFromExport(rm.dataset.key); return; }
+  const rmInc = e.target.closest('[data-action="remove-incoming"]');
+  if(rmInc){ removeIncoming(rmInc.dataset.key); return; }
+  const rmExp = e.target.closest('[data-action="remove-expiry"]');
+  if(rmExp){ removeExpiry(rmExp.dataset.key); return; }
+  const clr = e.target.closest('[data-action="clear-export"]');
+  if(clr){ ui.exportList=[]; ui.incomingList=[]; ui.expiryList=[]; ui.exportPltByProduct=new Map(); ui.exportPltDetail=new Map(); ui.exportPltMixedTotal=null; ui.exportPltPacking=[]; ui.exportPltNumbersByProduct=new Map(); ui.exportPltRepWeightByProduct=new Map(); ui.showPltPackingDetail=false; renderLookupBatch(); return; }
+  const dl = e.target.closest('[data-action="download-export"]');
+  if(dl){ downloadExportCsv(); return; }
+  const plt = e.target.closest('[data-action="calc-export-plt"]');
+  if(plt){ calcExportPlt(); return; }
+  const pltDetailToggle = e.target.closest('[data-action="toggle-plt-detail"]');
+  if(pltDetailToggle){ ui.showPltPackingDetail = !ui.showPltPackingDetail; renderExportPanel(); return; }
+});
+document.getElementById('exportPanel').addEventListener('change', e=>{
+  const needInput = e.target.closest('[data-action="set-needed-qty"]');
+  if(needInput){
+    const pn = needInput.dataset.pn;
+    const v = num(needInput.value);
+    if(v>0) ui.neededQty.set(pn, v); else ui.neededQty.delete(pn);
+    const scrollY = window.scrollY;
+    renderLookupBatch();
+    window.scrollTo(0, scrollY);
+    return;
+  }
+  const prioInput = e.target.closest('[data-action="set-priority"]');
+  if(prioInput){
+    const key = prioInput.dataset.key;
+    const v = num(prioInput.value) || 1;
+    const entry = ui.exportList.find(x=>x.key===key);
+    if(entry) entry.우선순위 = v;
+    const scrollY = window.scrollY;
+    renderLookupBatch();
+    window.scrollTo(0, scrollY);
+    return;
+  }
+  const boxDimInput = e.target.closest('[data-action="set-box-dim"]');
+  if(boxDimInput){
+    setBoxDim(boxDimInput.dataset.pn, boxDimInput.dataset.field, boxDimInput.value);
+  }
+});
+
+/* ---------------- File upload handling ---------------- */
+function readFileAsText(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>resolve(reader.result);
+    reader.onerror = ()=>reject(new Error('READ_FAIL'));
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+function readFileAsArrayBuffer(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>resolve(reader.result);
+    reader.onerror = ()=>reject(new Error('READ_FAIL'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+function detectSheetType(rows){
+  for(const sig of SHEET_SIGNATURES){
+    if(findHeaderRow(rows, sig.must)) return sig.key;
+  }
+  return null;
+}
+async function handleFiles(fileList){
+  const files = Array.from(fileList).filter(f=>/\.(csv|xlsx|xls)$/i.test(f.name));
+  if(files.length===0) return;
+  for(const file of files){
+    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
+    try{
+      if(isExcel){
+        if(typeof XLSX === 'undefined'){
+          throw new Error('엑셀 처리 라이브러리(XLSX)를 불러오지 못했습니다. 네트워크/광고차단 확장프로그램을 확인 후 페이지를 새로고침 해주세요.');
+        }
+        const buf = await readFileAsArrayBuffer(file);
+        let wb;
+        try{
+          wb = XLSX.read(buf, {type:'array'});
+        }catch(readErr){
+          // 일부 구글시트 내보내기 xlsx에서 스타일 파싱 중 오류가 나는 경우가 있어, 옵션을 낮춰 재시도
+          try{
+            wb = XLSX.read(buf, {type:'array', cellStyles:false, bookVBA:false, cellHTML:false, dense:true});
+          }catch(retryErr){
+            throw new Error(`엑셀 파일 파싱에 실패했습니다 (${readErr.message}). 구글 시트에서 '파일 → 다운로드 → 쉼표로 구분된 값(.csv)'로 다시 받아서 올려주시면 확실합니다.`);
+          }
+        }
+        if(!wb.SheetNames || wb.SheetNames.length===0){
+          throw new Error('엑셀 파일 안에서 시트를 찾지 못했습니다.');
+        }
+        wb.SheetNames.forEach(sheetName=>{
+          const ws = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, {header:1, raw:false, defval:''});
+          const detected = detectSheetType(rows);
+          unresolvedFiles.push({fileName:`${file.name} — ${sheetName}`, rows, key:detected});
+        });
+      } else {
+        const text = await readFileAsText(file);
+        const rows = Papa.parse(text, {skipEmptyLines:false}).data;
+        const detected = detectSheetType(rows);
+        unresolvedFiles.push({fileName:file.name, rows, key:detected});
+      }
+    }catch(e){
+      unresolvedFiles.push({fileName:file.name, rows:null, key:null, error:true, errorMsg:(e&&e.message)||String(e)});
+    }
+  }
+  renderUploadStatus();
+}
+function renderUploadStatus(){
+  const zone = document.getElementById('uploadStatus');
+  if(unresolvedFiles.length===0){ zone.innerHTML=''; return; }
+  const sigLabel = k => (SHEET_SIGNATURES.find(s=>s.key===k)||{}).label;
+  zone.innerHTML = unresolvedFiles.map((f,i)=>{
+    if(f.error){
+      return `<div class="file-row"><span class="fn">${f.fileName}</span><span class="tag warn">읽기 실패</span><span style="font-size:11px;color:var(--danger);flex-basis:100%;">${f.errorMsg||''}</span></div>`;
+    }
+    const options = SHEET_SIGNATURES.map(s=>`<option value="${s.key}" ${f.key===s.key?'selected':''}>${s.label}</option>`).join('');
+    return `<div class="file-row">
+      <span class="fn">${f.fileName}</span>
+      <span class="tag ${f.key?'ok':'warn'}">${f.key? '인식됨: '+sigLabel(f.key) : '자동 인식 실패 — 직접 선택'}</span>
+      <select data-action="set-file-type" data-idx="${i}">
+        <option value="">-- 시트 선택 --</option>
+        ${options}
+      </select>
+    </div>`;
+  }).join('') + `<div class="upload-actions">
+      <button class="btn" id="applyDataBtn">대시보드에 적용</button>
+      <button class="btn ghost" id="clearUploadBtn">목록 지우기</button>
+    </div>`;
+  document.getElementById('applyDataBtn').addEventListener('click', applyUploadedData);
+  document.getElementById('clearUploadBtn').addEventListener('click', ()=>{ unresolvedFiles.length=0; renderUploadStatus(); });
+}
+document.getElementById('uploadStatus').addEventListener('change', e=>{
+  const sel = e.target.closest('[data-action="set-file-type"]'); if(!sel) return;
+  unresolvedFiles[Number(sel.dataset.idx)].key = sel.value || null;
+  renderUploadStatus();
+});
+function applyUploadedData(mode){
+  const byKey = {};
+  unresolvedFiles.forEach(f=>{ if(f.key && f.rows) byKey[f.key] = f.rows; });
+  // 필수 시트라도, 이번에 안 올라왔지만 예전에 이미 로드된 데이터가 있으면 그걸 그대로 재사용 (진짜 부족한 경우만 에러)
+  const stillMissing = SHEET_SIGNATURES.filter(s=>s.required && !byKey[s.key] && (!state[s.key] || state[s.key].length===0)).map(s=>s.label);
+  if(stillMissing.length>0){
+    state.error = `다음 시트 데이터가 없습니다: ${stillMissing.join(', ')}. 파일을 추가로 올리거나 드롭다운에서 시트 종류를 선택해주세요.`;
+    renderBanner();
+    return;
+  }
+  try{
+    if(byKey.inventory) state.inventory = parseInventory(byKey.inventory);
+    if(byKey.schedule) state.schedule = parseSchedule(byKey.schedule);
+    if(byKey.sales) state.sales = parseSales(byKey.sales);
+    if(byKey.expiry) state.expiry = parseExpiry(byKey.expiry);
+    if(byKey.productMaster) state.productMaster = parseProductMaster(byKey.productMaster);
+    computeDerived();
+    state.loaded = true;
+    state.error = null;
+    state.lastSync = new Date();
+    state.fetchMode = mode || 'upload';
+    unresolvedFiles.length = 0;
+    const updatedList = SHEET_SIGNATURES.filter(s=>byKey[s.key]).map(s=>s.label);
+    const reusedList = SHEET_SIGNATURES.filter(s=>!byKey[s.key] && state[s.key] && state[s.key].length>0).map(s=>s.label);
+    const msg = `<div class="banner info">업데이트 완료 — 새로 반영: <b>${updatedList.join(', ')||'없음'}</b>${reusedList.length?` · 이전 데이터 그대로 유지: ${reusedList.join(', ')}`:''}. 좌측 메뉴에서 Main을 확인하세요.</div>`;
+    if(mode==='googlesheet'){
+      const gEl = document.getElementById('googleSheetStatus'); if(gEl) gEl.innerHTML = msg;
+    } else {
+      document.getElementById('uploadStatus').innerHTML = msg;
+    }
+    renderAll();
+    document.querySelector('#nav button[data-view="overview"]').click();
+  }catch(e){
+    state.error = '데이터 계산 중 오류가 발생했습니다: ' + e.message;
+    renderBanner();
+  }
+}
+
+const dropzone = document.getElementById('dropzone');
+
+/* ---------------- 구글시트 자동 새로고침 (Apps Script 웹앱, JSON) ---------------- */
+function renderGoogleSheetProgress(p){
+  const statusEl = document.getElementById('googleSheetStatus');
+  const syncText = document.getElementById('syncText');
+  if(p && p.status==='processing' && p.totalCount>0){
+    const pct = Math.max(0, Math.min(100, Math.round((p.doneCount/p.totalCount)*100)));
+    if(statusEl) statusEl.innerHTML = `<div class="banner info">
+      <div style="margin-bottom:8px;">파일 처리 중: <b>${p.currentFile||'...'}</b> (${fmt(p.doneCount)}/${fmt(p.totalCount)}, ${pct}%)</div>
+      <div style="background:var(--surface-alt);border-radius:6px;height:8px;overflow:hidden;">
+        <div style="background:var(--accent);height:100%;width:${pct}%;transition:width .4s ease;"></div>
+      </div>
+    </div>`;
+    if(syncText) syncText.textContent = `처리 중 ${fmt(p.doneCount)}/${fmt(p.totalCount)} (${pct}%) — ${p.currentFile||''}`;
+  } else if(p && p.status==='idle'){
+    if(statusEl) statusEl.innerHTML = `<div class="banner info">새로 처리할 파일이 없습니다. 최신 데이터를 불러오는 중...</div>`;
+    if(syncText) syncText.textContent = '최신 데이터 불러오는 중...';
+  } else {
+    if(statusEl) statusEl.innerHTML = `<div class="banner info">구글시트에서 최신 데이터를 가져오는 중입니다...</div>`;
+    if(syncText) syncText.textContent = '구글시트 연결 중...';
+  }
+}
+async function refreshFromGoogleSheet(){
+  const urlInput = document.getElementById('googleSheetIdInput');
+  const webAppUrl = (urlInput.value||'').trim();
+  const statusEl = document.getElementById('googleSheetStatus');
+  const btns = [document.getElementById('refreshSheetBtn'), document.getElementById('refreshSheetBtnInline')].filter(Boolean);
+  if(!webAppUrl){
+    if(statusEl) statusEl.innerHTML = `<div class="banner info">Apps Script 웹앱 URL을 먼저 입력해주세요.</div>`;
+    return;
+  }
+  btns.forEach(b=>{ b.disabled = true; b.dataset.origText = b.dataset.origText || b.textContent; b.textContent = '가져오는 중...'; });
+  renderGoogleSheetProgress(null);
+
+  let polling = true;
+  const sep = webAppUrl.includes('?') ? '&' : '?';
+  (async function pollProgress(){
+    while(polling){
+      try{
+        const pr = await fetch(webAppUrl + sep + 'action=progress');
+        if(pr.ok){
+          const pj = await pr.json();
+          if(polling) renderGoogleSheetProgress(pj);
+        }
+      }catch(_e){ /* 폴링 실패는 무시하고 계속 시도 */ }
+      if(!polling) break;
+      await new Promise(r=>setTimeout(r, 1200));
+    }
+  })();
+
+  try{
+    const res = await fetch(webAppUrl);
+    polling = false;
+    if(!res.ok){
+      throw new Error(`웹앱 호출에 실패했습니다 (상태 ${res.status}). 배포 시 액세스 권한이 "모든 사용자"로 되어있는지, URL이 정확한지 확인해주세요.`);
+    }
+    const json = await res.json();
+    const sheetNames = Object.keys(json);
+    if(sheetNames.length===0){
+      throw new Error('웹앱 응답에서 시트를 찾지 못했습니다.');
+    }
+    unresolvedFiles.length = 0;
+    sheetNames.forEach(sheetName=>{
+      const rows = json[sheetName];
+      const detected = detectSheetType(rows);
+      unresolvedFiles.push({fileName:`구글시트 — ${sheetName}`, rows, key:detected});
+    });
+    applyUploadedData('googlesheet');
+  }catch(e){
+    polling = false;
+    const msg = `<div class="banner info" style="border-color:var(--danger);color:var(--danger);">새로고침 실패: ${(e&&e.message)||String(e)}</div>`;
+    if(statusEl) statusEl.innerHTML = msg;
+  }finally{
+    polling = false;
+    btns.forEach(b=>{ b.disabled = false; b.textContent = b.dataset.origText; });
+  }
+}
+document.getElementById('refreshSheetBtn').addEventListener('click', refreshFromGoogleSheet);
+document.getElementById('refreshSheetBtnInline').addEventListener('click', refreshFromGoogleSheet);
+
+const fileInput = document.getElementById('fileInput');
+dropzone.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>{ handleFiles(e.target.files); fileInput.value=''; });
+['dragenter','dragover'].forEach(evt=>dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave','drop'].forEach(evt=>dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', e=>{ if(e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files); });
+
+/* ---------------- Init ---------------- */
+renderAll();
+</script>
+</body>
+</html>
