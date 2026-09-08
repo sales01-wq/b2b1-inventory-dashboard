@@ -397,6 +397,7 @@ const fmtDec = (n, digits) => nf.format(Math.round((n||0)*Math.pow(10,digits))/M
 const state = {
   loaded: false,
   inventory: [], schedule: [], sales: [], expiry: [], productMaster: [],
+  scheduleMonthLabels: ['8월','9월','10월'], // 실제 업로드된 제품일정표의 월로 자동 갱신됨
   expiryByProduct: new Map(),
   masterByProduct: new Map(),
   invByProduct: new Map(), schByProduct: new Map(),
@@ -446,7 +447,7 @@ const ui = {
 /* ---------------- Sheet type signatures for auto-detection (CSV/엑셀 업로드) ---------------- */
 const SHEET_SIGNATURES = [
   {key:'inventory', label:'가용재고조회', must:['창고','품번','품명','바코드'], required:true},
-  {key:'schedule',  label:'제품일정표',   must:['품번','거래처','바코드','8월 입고일정'], required:true},
+  {key:'schedule',  label:'제품일정표',   must:['품번','거래처','바코드', /^\d{1,2}월\s*입고일정$/], required:false},
   {key:'sales',     label:'일자별판매실적분석', must:['실적번호','거래처','품번','수량'], required:true},
   {key:'expiry',    label:'유통기한', must:['상품코드','LOT','유통기한','가용재고수량'], required:false},
   {key:'productMaster', label:'상품마스터', must:['상품코드','아웃무게g','인무게g','제품무게g'], required:false},
@@ -458,11 +459,35 @@ const unresolvedFiles = []; // {fileName, rows, chosenKey}
 function findHeaderRow(rows, mustContain){
   for(let i=0;i<Math.min(rows.length,12);i++){
     const row = (rows[i]||[]).map(c=>(c||'').toString().trim());
-    if(mustContain.every(m=>row.includes(m))) return {idx:i, header:row};
+    const ok = mustContain.every(m=>{
+      if(m instanceof RegExp) return row.some(cell=>m.test(cell));
+      return row.includes(m);
+    });
+    if(ok) return {idx:i, header:row};
   }
   return null;
 }
-function colIdx(header,name){ return header.indexOf(name); }
+function colIdx(header,name){
+  if(name instanceof RegExp) return header.findIndex(cell=>name.test(cell));
+  return header.indexOf(name);
+}
+// "N월 입고일정" 형태의 컬럼들을 순서대로 찾아서, 몇 월이든 상관없이 첫 3개월치를 매핑
+function findMonthColumns(header){
+  const found = [];
+  header.forEach((cell, idx)=>{
+    const m = /^(\d{1,2})월\s*입고일정$/.exec(cell);
+    if(m) found.push({month:parseInt(m[1],10), dIdx:idx});
+  });
+  found.sort((a,b)=>{
+    // 연말/연초 걸치는 경우(예: 12월,1월,2월)도 순서 꼬이지 않게, 큰 달이 먼저 나오면 그 뒤는 다음해로 취급
+    return 0; // 원본 파일에 이미 왼쪽부터 미래 순서로 정렬되어 있으므로 등장 순서(idx) 그대로 사용
+  });
+  found.sort((a,b)=>a.dIdx-b.dIdx);
+  return found.slice(0,3).map(f=>{
+    const qIdx = header.findIndex((cell,i)=> i>f.dIdx && new RegExp(`^${f.month}월\\s*입고수량$`).test(cell));
+    return {month:f.month, dIdx:f.dIdx, qIdx};
+  });
+}
 function num(v){
   if(v===null||v===undefined) return 0;
   const s = String(v).replace(/,/g,'').trim();
@@ -522,16 +547,19 @@ function parseInventory(rows){
 }
 
 function parseSchedule(rows){
-  const hit = findHeaderRow(rows, ['품번','거래처','바코드','8월 입고일정']);
+  const hit = findHeaderRow(rows, ['품번','거래처','바코드', /^\d{1,2}월\s*입고일정$/]);
   if(!hit) return [];
   const {idx,header} = hit;
+  const months = findMonthColumns(header); // 파일에 실제 있는 월들을 등장 순서대로, 최대 3개
+  const labels = months.map(m=>m.month+'월');
+  while(labels.length<3) labels.push('-');
   const c = {
     품번:colIdx(header,'품번'), 품명:colIdx(header,'품명'), 거래처:colIdx(header,'거래처'),
     바코드:colIdx(header,'바코드'), 품목상태:colIdx(header,'품목상태'),
     가용재고:colIdx(header,'가용재고'), 재고합계:colIdx(header,'재고합계'),
-    aug_d:colIdx(header,'8월 입고일정'), aug_q:colIdx(header,'8월 입고수량'),
-    sep_d:colIdx(header,'9월 입고일정'), sep_q:colIdx(header,'9월 입고수량'),
-    oct_d:colIdx(header,'10월 입고일정'), oct_q:colIdx(header,'10월 입고수량'),
+    aug_d: months[0]?months[0].dIdx:-1, aug_q: months[0]?months[0].qIdx:-1,
+    sep_d: months[1]?months[1].dIdx:-1, sep_q: months[1]?months[1].qIdx:-1,
+    oct_d: months[2]?months[2].dIdx:-1, oct_q: months[2]?months[2].qIdx:-1,
   };
   const out = [];
   for(let i=idx+1;i<rows.length;i++){
@@ -542,11 +570,12 @@ function parseSchedule(rows){
       품번:pn, 품명:(r[c.품명]||'').toString().trim(), 거래처:(r[c.거래처]||'').toString().trim(),
       바코드:(r[c.바코드]||'').toString().trim(), 품목상태:(r[c.품목상태]||'').toString().trim(),
       가용재고:num(r[c.가용재고]), 재고합계:num(r[c.재고합계]),
-      aug_d:(r[c.aug_d]||'').toString().trim(), aug_q:num(r[c.aug_q]),
-      sep_d:(r[c.sep_d]||'').toString().trim(), sep_q:num(r[c.sep_q]),
-      oct_d:(r[c.oct_d]||'').toString().trim(), oct_q:num(r[c.oct_q]),
+      aug_d: c.aug_d>=0?(r[c.aug_d]||'').toString().trim():'', aug_q: c.aug_q>=0?num(r[c.aug_q]):0,
+      sep_d: c.sep_d>=0?(r[c.sep_d]||'').toString().trim():'', sep_q: c.sep_q>=0?num(r[c.sep_q]):0,
+      oct_d: c.oct_d>=0?(r[c.oct_d]||'').toString().trim():'', oct_q: c.oct_q>=0?num(r[c.oct_q]):0,
     });
   }
+  out.monthLabels = labels; // 예: ['9월','10월','11월'] — 실제 파일에 있던 월 그대로
   return out;
 }
 
@@ -963,9 +992,10 @@ function forecastDetailRow(x){
 
   const incomingRows = [];
   if(x.sched){
-    if(x.sched.aug_q>0) incomingRows.push({m:'8월', d:x.sched.aug_d, q:x.sched.aug_q});
-    if(x.sched.sep_q>0) incomingRows.push({m:'9월', d:x.sched.sep_d, q:x.sched.sep_q});
-    if(x.sched.oct_q>0) incomingRows.push({m:'10월', d:x.sched.oct_d, q:x.sched.oct_q});
+    const ml = state.scheduleMonthLabels;
+    if(x.sched.aug_q>0) incomingRows.push({m:ml[0], d:x.sched.aug_d, q:x.sched.aug_q});
+    if(x.sched.sep_q>0) incomingRows.push({m:ml[1], d:x.sched.sep_d, q:x.sched.sep_q});
+    if(x.sched.oct_q>0) incomingRows.push({m:ml[2], d:x.sched.oct_d, q:x.sched.oct_q});
   }
 
   return `<tr class="detail-row"><td colspan="13" style="background:var(--surface-alt);padding:16px 18px;">
@@ -992,7 +1022,7 @@ function forecastDetailRow(x){
         <div style="font-size:11px;color:var(--muted);margin-top:10px;">위 표는 전체 창고 기준이며, 상단의 "현재 가용재고" 숫자는 B2B1팀 + EMP 정상창고만 합산한 값입니다.</div>
       </div>
       <div>
-        <div class="section-title t-incoming" style="margin-bottom:8px;">입고예정 상세 (8~10월)</div>
+        <div class="section-title t-incoming" style="margin-bottom:8px;">입고예정 상세 (${state.scheduleMonthLabels[0]}~${state.scheduleMonthLabels[2]})</div>
         ${incomingRows.length===0 ? `<div class="empty" style="padding:10px 0;">예정된 입고가 없습니다.</div>` : `
         <table><thead><tr><th>월</th><th>날짜</th><th class="num">수량</th></tr></thead>
         <tbody>${incomingRows.map(r=>`<tr><td>${r.m}</td><td class="mono">${r.d||'날짜 미정'}</td><td class="num">${fmt(r.q)}</td></tr>`).join('')}</tbody></table>`}
@@ -1699,9 +1729,10 @@ function selectionSummaryFor(pn){
 
 function incomingChipsHtml(prod, compact){
   const chips = [];
-  if(prod.aug_q>0) chips.push({m:'8월', d:prod.aug_d, q:prod.aug_q});
-  if(prod.sep_q>0) chips.push({m:'9월', d:prod.sep_d, q:prod.sep_q});
-  if(prod.oct_q>0) chips.push({m:'10월', d:prod.oct_d, q:prod.oct_q});
+  const ml = state.scheduleMonthLabels;
+  if(prod.aug_q>0) chips.push({m:ml[0], d:prod.aug_d, q:prod.aug_q});
+  if(prod.sep_q>0) chips.push({m:ml[1], d:prod.sep_d, q:prod.sep_q});
+  if(prod.oct_q>0) chips.push({m:ml[2], d:prod.oct_d, q:prod.oct_q});
   if(chips.length===0) return `<div class="empty" style="padding:${compact?'14px':'30px'};">예정된 입고가 없습니다.</div>`;
   return chips.map(c=>{
     const key = prod.품번+'||'+c.m;
@@ -1847,7 +1878,7 @@ function renderResultBlock(row, batchIdx, alternatives){
     </div>
 
     <div class="panel">
-      <div class="section-title t-incoming">입고예정 (제품일정표 기준, 8~10월)</div>
+      <div class="section-title t-incoming">입고예정 (제품일정표 기준, ${state.scheduleMonthLabels[0]}~${state.scheduleMonthLabels[2]})</div>
       <div style="font-size:11.5px;color:var(--muted);margin:-6px 0 10px 0;">칩을 클릭하면 다운로드 목록의 '입고예정' 칸에 추가됩니다</div>
       ${incomingChipsHtml(row, false)}
     </div>
@@ -3032,7 +3063,7 @@ function applyUploadedData(mode){
   }
   try{
     if(byKey.inventory) state.inventory = parseInventory(byKey.inventory);
-    if(byKey.schedule) state.schedule = parseSchedule(byKey.schedule);
+    if(byKey.schedule){ state.schedule = parseSchedule(byKey.schedule); state.scheduleMonthLabels = state.schedule.monthLabels || ['8월','9월','10월']; }
     if(byKey.sales) state.sales = parseSales(byKey.sales);
     if(byKey.expiry) state.expiry = parseExpiry(byKey.expiry);
     if(byKey.productMaster) state.productMaster = parseProductMaster(byKey.productMaster);
