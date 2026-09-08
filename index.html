@@ -109,12 +109,12 @@
   tbody td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;}
   tbody tr:nth-child(even){background:rgba(0,0,0,0.012);}
   tbody tr:hover{background:var(--surface-alt);}
-  .sticky-col{position:sticky;z-index:2;background:var(--surface);box-shadow:2px 0 4px -2px rgba(0,0,0,0.08);}
+  .sticky-col{position:sticky;z-index:2;background:var(--surface);box-shadow:2px 0 4px -2px rgba(0,0,0,0.08);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   thead .sticky-col{z-index:3;background:var(--surface-alt);}
   tbody tr:hover .sticky-col{background:var(--surface-alt);}
-  .sticky-col-1{left:0;width:76px;min-width:76px;max-width:76px;}
-  .sticky-col-2{left:76px;width:90px;min-width:90px;max-width:90px;}
-  .sticky-col-3{left:166px;width:190px;min-width:190px;max-width:190px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .col-resizable{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .col-resize-handle{position:absolute;top:0;right:-3px;width:7px;height:100%;cursor:col-resize;z-index:6;}
+  .col-resize-handle:hover, .col-resize-handle.resizing{background:var(--accent);opacity:.4;}
   .drag-scroll-x{cursor:grab;}
   .drag-scroll-x.dragging{cursor:grabbing;user-select:none;}
   tr.forecast-row:hover{background:var(--accent-soft);}
@@ -445,6 +445,7 @@ const ui = {
   exportPltRepWeightByProduct: new Map(), // 혼적모드: 품번 -> 대표로 표시할 PLT 실제중량 배열 (중복 계산 방지)
   exportPltRepDimsByProduct: new Map(), // 혼적모드: 품번 -> 대표로 표시할 PLT 실제규격 배열
   manualBoxInfo: new Map(), // 품번 -> {아웃W,아웃D,아웃H,아웃무게g,아웃입수} (상품마스터에 없을 때 직접 입력)
+  exportColWidths: {}, // 다운로드 목록 표: 사용자가 드래그로 조정한 컬럼 너비(px), 키는 컬럼 식별자
   pltMixMode: 'X', // 'O'(혼적) | 'X'(품목별 개별)
   exportPltMixedTotal: null,
   exportList: [], // {key, 품번, 품명, 바코드, 창고, 가용재고, 거래처}
@@ -1754,6 +1755,45 @@ function incomingChipsHtml(prod, compact){
   }).join('');
 }
 
+/* ---------------- 다운로드 목록 표: 엑셀처럼 컬럼 너비 조정 ---------------- */
+const EXPORT_COL_DEFAULTS = {
+  del:76, pn:90, name:190, erpBarcode:150, barcode:130, warehouse:150, priority:80, avail:90, alloc:90,
+  needed:90, diff:90, vendor:130, incDate:110, incQty:100, lot:110, expiry:100, expiryQty:120,
+  outDims:130, outWeight:100, outCount:80, inDims:130, inWeight:100, inCount:80,
+  prodDims:130, prodWeight:100, boxesNeeded:100, remainder:130, totalWeight:130,
+  actualBoxes:100, maxBoxes:150, pltNumber:90, pltWeight:120, pltDims:150,
+};
+function colWidth(key){ return ui.exportColWidths[key] || EXPORT_COL_DEFAULTS[key] || 120; }
+function stickyLeftOf(key){
+  if(key==='pn') return colWidth('del');
+  if(key==='name') return colWidth('del') + colWidth('pn');
+  return 0;
+}
+function isStickyExportCol(key){ return key==='del' || key==='pn' || key==='name'; }
+function stickyClassOf(key){ return key==='del'?'sticky-col-1':(key==='pn'?'sticky-col-2':'sticky-col-3'); }
+function exportTh(key, label, opts){
+  opts = opts || {};
+  const sticky = isStickyExportCol(key);
+  const cls = ['col-resizable'];
+  if(opts.num) cls.push('num');
+  if(sticky) cls.push('sticky-col', stickyClassOf(key));
+  const leftStyle = sticky ? `left:${stickyLeftOf(key)}px;` : (opts.color ? '' : '');
+  const posStyle = sticky ? '' : 'position:relative;';
+  const colorStyle = opts.color ? `color:${opts.color};` : '';
+  return `<th class="${cls.join(' ')}" data-col="${key}" style="width:${colWidth(key)}px;min-width:${colWidth(key)}px;${leftStyle}${posStyle}${colorStyle}">${label}<span class="col-resize-handle" data-col="${key}"></span></th>`;
+}
+function exportTd(key, innerHtml, opts){
+  opts = opts || {};
+  const sticky = isStickyExportCol(key);
+  const cls = [];
+  if(opts.num) cls.push('num');
+  if(opts.mono) cls.push('mono');
+  if(sticky) cls.push('sticky-col', stickyClassOf(key));
+  const leftStyle = sticky ? `left:${stickyLeftOf(key)}px;` : '';
+  const titleAttr = opts.title ? ` title="${opts.title}"` : '';
+  const styleAttr = opts.extraStyle || '';
+  return `<td class="${cls.join(' ')}" data-col="${key}" style="width:${colWidth(key)}px;min-width:${colWidth(key)}px;${leftStyle}${styleAttr}"${titleAttr}>${innerHtml}</td>`;
+}
 function boxInfoFor(pn){
   const manual = ui.manualBoxInfo.get(pn) || {};
   const m = state.masterByProduct.get(pn) || {};
@@ -2311,24 +2351,24 @@ function renderExportPanel(){
       })() : ''}
       <div class="drag-scroll-x" style="overflow-x:auto;">
       <table><thead><tr>
-        <th class="sticky-col sticky-col-1"></th>
-        <th class="sticky-col sticky-col-2">품번</th><th class="sticky-col sticky-col-3">품명</th><th>ERP 바코드</th><th>바코드</th>
-        <th>창고</th><th class="num">우선순위</th><th class="num">가용재고</th><th class="num">할당수량</th>
-        <th class="num">필요수량</th><th class="num">부족/여유</th>
-        <th>거래처(제조사)</th>
-        <th style="color:var(--cat-incoming);">입고예정 일자</th><th class="num" style="color:var(--cat-incoming);">입고예정 수량</th>
-        <th style="color:var(--cat-expiry);">LOT</th><th style="color:var(--cat-expiry);">유통기한</th><th class="num" style="color:var(--cat-expiry);">유통기한 가용재고</th>
-        <th style="color:var(--cat-master);">아웃박스 규격(mm)</th><th class="num" style="color:var(--cat-master);">아웃박스 무게(g)</th><th class="num" style="color:var(--cat-master);">아웃박스 입수</th>
-        <th style="color:var(--cat-master);">인박스 규격(mm)</th><th class="num" style="color:var(--cat-master);">인박스 무게(g)</th><th class="num" style="color:var(--cat-master);">인박스 입수</th>
-        <th style="color:var(--cat-master);">제품 규격(mm)</th><th class="num" style="color:var(--cat-master);">제품 무게(g)</th>
-        <th class="num" style="color:var(--accent);">예상 총 박스수</th>
-        <th class="num" style="color:var(--accent);">잔량(마지막 박스)</th>
-        <th class="num" style="color:var(--accent);">예상 총 박스중량(kg)</th>
-        <th class="num" style="color:var(--accent);">PLT당 박스수</th>
-        ${!mixed ? `<th class="num" style="color:var(--accent);">PLT 최대 적재 가능 박스수</th>` : ''}
-        <th style="color:var(--accent);">PLT 번호</th>
-        <th class="num" style="color:var(--accent);">PLT 예상중량(kg)</th>
-        <th style="color:var(--accent);">PLT 예상 W×D×H(cm)</th>
+        ${exportTh('del','')}
+        ${exportTh('pn','품번')}${exportTh('name','품명')}${exportTh('erpBarcode','ERP 바코드')}${exportTh('barcode','바코드')}
+        ${exportTh('warehouse','창고')}${exportTh('priority','우선순위',{num:true})}${exportTh('avail','가용재고',{num:true})}${exportTh('alloc','할당수량',{num:true})}
+        ${exportTh('needed','필요수량',{num:true})}${exportTh('diff','부족/여유',{num:true})}
+        ${exportTh('vendor','거래처(제조사)')}
+        ${exportTh('incDate','입고예정 일자',{color:'var(--cat-incoming)'})}${exportTh('incQty','입고예정 수량',{num:true,color:'var(--cat-incoming)'})}
+        ${exportTh('lot','LOT',{color:'var(--cat-expiry)'})}${exportTh('expiry','유통기한',{color:'var(--cat-expiry)'})}${exportTh('expiryQty','유통기한 가용재고',{num:true,color:'var(--cat-expiry)'})}
+        ${exportTh('outDims','아웃박스 규격(mm)',{color:'var(--cat-master)'})}${exportTh('outWeight','아웃박스 무게(g)',{num:true,color:'var(--cat-master)'})}${exportTh('outCount','아웃박스 입수',{num:true,color:'var(--cat-master)'})}
+        ${exportTh('inDims','인박스 규격(mm)',{color:'var(--cat-master)'})}${exportTh('inWeight','인박스 무게(g)',{num:true,color:'var(--cat-master)'})}${exportTh('inCount','인박스 입수',{num:true,color:'var(--cat-master)'})}
+        ${exportTh('prodDims','제품 규격(mm)',{color:'var(--cat-master)'})}${exportTh('prodWeight','제품 무게(g)',{num:true,color:'var(--cat-master)'})}
+        ${exportTh('boxesNeeded','예상 총 박스수',{num:true,color:'var(--accent)'})}
+        ${exportTh('remainder','잔량(마지막 박스)',{num:true,color:'var(--accent)'})}
+        ${exportTh('totalWeight','예상 총 박스중량(kg)',{num:true,color:'var(--accent)'})}
+        ${exportTh('actualBoxes','PLT당 박스수',{num:true,color:'var(--accent)'})}
+        ${!mixed ? exportTh('maxBoxes','PLT 최대 적재 가능 박스수',{num:true,color:'var(--accent)'}) : ''}
+        ${exportTh('pltNumber','PLT 번호',{color:'var(--accent)'})}
+        ${exportTh('pltWeight','PLT 예상중량(kg)',{num:true,color:'var(--accent)'})}
+        ${exportTh('pltDims','PLT 예상 W×D×H(cm)',{color:'var(--accent)'})}
       </tr></thead>
       <tbody>${rows.map(x=>{
         let delBtn = '';
@@ -2372,29 +2412,29 @@ function renderExportPanel(){
           pltDimsCell = detail ? `${fmt(detail.palletL)}×${fmt(detail.palletW)}×${fmt(detail.actualHeightCm)}` : '-';
         }
         return `<tr>
-        <td class="sticky-col sticky-col-1">${delBtn}</td>
-        <td class="sticky-col sticky-col-2"><code class="pn">${x.품번}</code></td><td class="sticky-col sticky-col-3" title="${escAttr(x.품명)}">${x.품명}</td><td class="mono">${x.바코드}</td><td class="mono">${baseBarcode(x.바코드)}</td>
-        <td>${x.창고}</td><td class="num">${priorityCell}</td>
-        <td class="num">${x.가용재고==='-'?'-':fmt(x.가용재고)}</td><td class="num">${allocCell}</td>
-        <td class="num"><input type="number" min="0" value="${ui.neededQty.get(x.품번)||''}" placeholder="0" data-action="set-needed-qty" data-pn="${escAttr(x.품번)}" style="width:70px;padding:4px 6px;border-radius:6px;border:1.5px solid var(--line);text-align:right;font-family:inherit;"></td>
-        <td class="num">${diffCell}</td>
-        <td>${x.거래처||'-'}</td>
-        <td>${incomingDateCellHtml(x.품번)}</td>
-        <td class="num">${incomingQtyCellHtml(x.품번)}</td>
-        <td>${x._expiry ? `${x._expiry.LOT}<span data-action="remove-expiry" data-key="${x._expiry.key}" style="cursor:pointer;font-weight:800;color:var(--cat-expiry);margin-left:5px;">×</span>` : '<span style="color:var(--muted);">-</span>'}</td>
-        <td>${x._expiry ? x._expiry.유통기한 : '<span style="color:var(--muted);">-</span>'}</td>
-        <td class="num">${x._expiry ? fmt(x._expiry.가용재고수량) : '<span style="color:var(--muted);">-</span>'}</td>
-        <td class="mono">${editableDimsCell(x.품번,'아웃')}</td><td class="num">${editableNumCell(x.품번,'아웃무게g','무게(g)')}</td><td class="num">${editableNumCell(x.품번,'아웃입수','입수')}</td>
-        <td class="mono">${editableDimsCell(x.품번,'인')}</td><td class="num">${editableNumCell(x.품번,'인무게g','무게(g)')}</td><td class="num">${editableNumCell(x.품번,'인입수','입수')}</td>
-        <td class="mono">${editableDimsCell(x.품번,'제품')}</td><td class="num">${editableNumCell(x.품번,'제품무게g','무게(g)')}</td>
-        <td class="num">${boxesNeededCell}</td>
-        <td class="num">${remainderCell}</td>
-        <td class="num">${totalWeightCell}</td>
-        <td class="num">${actualBoxesPerPalletCell}</td>
-        ${!mixed ? `<td class="num">${maxBoxesPerPalletCell}</td>` : ''}
-        <td>${pltNumberCell}</td>
-        <td class="num" style="font-weight:700;color:var(--accent);">${pltWeightCell}</td>
-        <td class="mono">${pltDimsCell}</td>
+        ${exportTd('del', delBtn)}
+        ${exportTd('pn', `<code class="pn">${x.품번}</code>`)}${exportTd('name', x.품명, {title:x.품명})}${exportTd('erpBarcode', x.바코드, {mono:true})}${exportTd('barcode', baseBarcode(x.바코드), {mono:true})}
+        ${exportTd('warehouse', x.창고)}${exportTd('priority', priorityCell, {num:true})}
+        ${exportTd('avail', x.가용재고==='-'?'-':fmt(x.가용재고), {num:true})}${exportTd('alloc', allocCell, {num:true})}
+        ${exportTd('needed', `<input type="number" min="0" value="${ui.neededQty.get(x.품번)||''}" placeholder="0" data-action="set-needed-qty" data-pn="${escAttr(x.품번)}" style="width:70px;padding:4px 6px;border-radius:6px;border:1.5px solid var(--line);text-align:right;font-family:inherit;">`, {num:true})}
+        ${exportTd('diff', diffCell, {num:true})}
+        ${exportTd('vendor', x.거래처||'-')}
+        ${exportTd('incDate', incomingDateCellHtml(x.품번))}
+        ${exportTd('incQty', incomingQtyCellHtml(x.품번), {num:true})}
+        ${exportTd('lot', x._expiry ? `${x._expiry.LOT}<span data-action="remove-expiry" data-key="${x._expiry.key}" style="cursor:pointer;font-weight:800;color:var(--cat-expiry);margin-left:5px;">×</span>` : '<span style="color:var(--muted);">-</span>')}
+        ${exportTd('expiry', x._expiry ? x._expiry.유통기한 : '<span style="color:var(--muted);">-</span>')}
+        ${exportTd('expiryQty', x._expiry ? fmt(x._expiry.가용재고수량) : '<span style="color:var(--muted);">-</span>', {num:true})}
+        ${exportTd('outDims', editableDimsCell(x.품번,'아웃'), {mono:true})}${exportTd('outWeight', editableNumCell(x.품번,'아웃무게g','무게(g)'), {num:true})}${exportTd('outCount', editableNumCell(x.품번,'아웃입수','입수'), {num:true})}
+        ${exportTd('inDims', editableDimsCell(x.품번,'인'), {mono:true})}${exportTd('inWeight', editableNumCell(x.품번,'인무게g','무게(g)'), {num:true})}${exportTd('inCount', editableNumCell(x.품번,'인입수','입수'), {num:true})}
+        ${exportTd('prodDims', editableDimsCell(x.품번,'제품'), {mono:true})}${exportTd('prodWeight', editableNumCell(x.품번,'제품무게g','무게(g)'), {num:true})}
+        ${exportTd('boxesNeeded', boxesNeededCell, {num:true})}
+        ${exportTd('remainder', remainderCell, {num:true})}
+        ${exportTd('totalWeight', totalWeightCell, {num:true})}
+        ${exportTd('actualBoxes', actualBoxesPerPalletCell, {num:true})}
+        ${!mixed ? exportTd('maxBoxes', maxBoxesPerPalletCell, {num:true}) : ''}
+        ${exportTd('pltNumber', pltNumberCell)}
+        ${exportTd('pltWeight', pltWeightCell, {num:true, extraStyle:'font-weight:700;color:var(--accent);'})}
+        ${exportTd('pltDims', pltDimsCell, {mono:true})}
       </tr>`;
       }).join('')}</tbody></table>
       </div>
@@ -2922,10 +2962,21 @@ document.getElementById('lookupResults').addEventListener('change', e=>{
 });
 
 /* ---------------- 다운로드 목록 표: 마우스로 잡고 옆으로 끄는 드래그 스크롤 ---------------- */
-(function setupDragScrollX(){
+(function setupDragScrollAndResize(){
   let dragging = false, startX = 0, startScrollLeft = 0, scrollEl = null;
+  let resizing = false, resizeCol = null, resizeStartX = 0, resizeStartWidth = 0;
   const panel = document.getElementById('exportPanel');
   panel.addEventListener('mousedown', e=>{
+    const handle = e.target.closest('.col-resize-handle');
+    if(handle){
+      resizing = true;
+      resizeCol = handle.dataset.col;
+      resizeStartX = e.pageX;
+      resizeStartWidth = colWidth(resizeCol);
+      handle.classList.add('resizing');
+      e.preventDefault();
+      return;
+    }
     // 입력창/버튼/체크박스 등을 클릭한 거면 원래 동작(입력, 클릭)이 되게 드래그 시작 안 함
     if(e.target.closest('input, button, a, select, textarea')) return;
     const scrollWrap = e.target.closest('.drag-scroll-x');
@@ -2937,11 +2988,34 @@ document.getElementById('lookupResults').addEventListener('change', e=>{
     scrollWrap.classList.add('dragging');
   });
   document.addEventListener('mousemove', e=>{
+    if(resizing && resizeCol){
+      const dx = e.pageX - resizeStartX;
+      const newWidth = Math.max(40, Math.round(resizeStartWidth + dx));
+      ui.exportColWidths[resizeCol] = newWidth;
+      // 리렌더 없이 해당 컬럼의 모든 th/td 너비를 바로 반영 (부드러운 드래그를 위해)
+      document.querySelectorAll(`#exportPanel [data-col="${resizeCol}"]`).forEach(el=>{
+        el.style.width = newWidth+'px';
+        el.style.minWidth = newWidth+'px';
+      });
+      // del/pn 컬럼을 조정하면, 그 뒤에 고정된(sticky) pn/name 컬럼의 위치도 같이 갱신
+      if(resizeCol==='del' || resizeCol==='pn'){
+        ['pn','name'].forEach(k=>{
+          if(!isStickyExportCol(k)) return;
+          const leftVal = stickyLeftOf(k);
+          document.querySelectorAll(`#exportPanel [data-col="${k}"]`).forEach(el=>{
+            el.style.left = leftVal+'px';
+          });
+        });
+      }
+      return;
+    }
     if(!dragging || !scrollEl) return;
     const dx = e.pageX - startX;
     scrollEl.scrollLeft = startScrollLeft - dx;
   });
   document.addEventListener('mouseup', ()=>{
+    if(resizing) document.querySelectorAll('.col-resize-handle.resizing').forEach(el=>el.classList.remove('resizing'));
+    resizing = false; resizeCol = null;
     if(scrollEl) scrollEl.classList.remove('dragging');
     dragging = false; scrollEl = null;
   });
