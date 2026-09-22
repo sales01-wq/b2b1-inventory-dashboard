@@ -261,11 +261,12 @@
       </div>
 
       <div class="panel">
-        <h3>CSV / 엑셀 업로드 (백업용 수동 업로드)</h3>
+        <h3>CSV / 엑셀 업로드 (공용 데이터 업데이트)</h3>
         <p style="color:var(--muted);font-size:12.8px;line-height:1.7;">
           구글 시트에서 CSV로 각 탭을 내려받아 올리거나, <b>엑셀 파일(.xlsx)을 통째로 다운받아 올려도</b> 됩니다 — 엑셀 파일 안에 시트가 여러 개 있어도 자동으로 각 시트를 인식합니다.<br>
           파일 이름과 상관없이 <b>내용을 보고 자동으로 어떤 탭인지 인식</b>합니다 (가용재고조회 / 제품일정표 / 일자별판매실적분석 / 유통기한(선택) / 상품마스터(선택)).<br>
-          <b>한 번 데이터를 올린 뒤에는, 바뀐 파일만 다시 올리면 됩니다</b> — 예를 들어 가용재고조회만 새로 올리면 나머지(제품일정표, 판매실적 등)는 이전에 올린 데이터가 그대로 유지됩니다.
+          <b>한 번 데이터를 올린 뒤에는, 바뀐 파일만 다시 올리면 됩니다</b> — 예를 들어 가용재고조회만 새로 올리면 나머지(제품일정표, 판매실적 등)는 이전 데이터가 그대로 유지됩니다.<br>
+          <b>대시보드에 적용</b>을 누르면 공용 최신 데이터로 저장되며, 다른 사람이 같은 링크에 접속할 때 자동으로 불러옵니다.
         </p>
         <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls" style="display:none">
@@ -3066,6 +3067,65 @@ document.getElementById('exportPanel').addEventListener('change', e=>{
 });
 
 /* ---------------- File upload handling ---------------- */
+const SUPABASE_URL = 'https://bcyshrnvbaymsmrrkmoh.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_bRCqLnqxOn0LbOJuh1UOVA_Ld67xMr_Codex';
+const SHARED_BUCKET = 'dashboard-data';
+const SHARED_OBJECT = 'latest/dashboard-data.json';
+const sharedRawRows = {};
+
+function sharedObjectUrl(){
+  return `${SUPABASE_URL}/storage/v1/object/${SHARED_BUCKET}/${SHARED_OBJECT}`;
+}
+
+async function saveSharedSnapshot(byKey){
+  Object.keys(byKey).forEach(key=>{ sharedRawRows[key] = byKey[key]; });
+  const payload = JSON.stringify({version:1, updatedAt:new Date().toISOString(), sheets:sharedRawRows});
+  const res = await fetch(sharedObjectUrl(), {
+    method:'POST',
+    headers:{
+      'Authorization':`Bearer ${SUPABASE_KEY}`,
+      'apikey':SUPABASE_KEY,
+      'Content-Type':'application/json',
+      'x-upsert':'true'
+    },
+    body:payload
+  });
+  if(!res.ok){
+    const detail = await res.text().catch(()=> '');
+    throw new Error(`공용 저장 실패 (${res.status})${detail ? ': '+detail : ''}`);
+  }
+}
+
+async function loadSharedSnapshot(){
+  const syncText = document.getElementById('syncText');
+  if(syncText) syncText.textContent = '공용 최신 데이터 불러오는 중...';
+  try{
+    const res = await fetch(sharedObjectUrl(), {
+      headers:{'Authorization':`Bearer ${SUPABASE_KEY}`, 'apikey':SUPABASE_KEY},
+      cache:'no-store'
+    });
+    if(res.status===404){
+      if(syncText) syncText.textContent = '공용 데이터 없음 — 파일을 처음 업로드해주세요';
+      return;
+    }
+    if(!res.ok) throw new Error(`불러오기 실패 (${res.status})`);
+    const snapshot = await res.json();
+    const sheets = snapshot && snapshot.sheets;
+    if(!sheets || typeof sheets!=='object') throw new Error('저장된 데이터 형식이 올바르지 않습니다.');
+    Object.keys(sheets).forEach(key=>{ sharedRawRows[key] = sheets[key]; });
+    unresolvedFiles.length = 0;
+    SHEET_SIGNATURES.forEach(sig=>{
+      if(sheets[sig.key]) unresolvedFiles.push({fileName:`공용 데이터 — ${sig.label}`, rows:sheets[sig.key], key:sig.key});
+    });
+    await applyUploadedData('supabase');
+    if(syncText && snapshot.updatedAt) syncText.textContent = `공용 데이터 · ${new Date(snapshot.updatedAt).toLocaleString('ko-KR')}`;
+  }catch(e){
+    state.error = '공용 데이터 불러오기 오류: ' + ((e&&e.message)||String(e));
+    renderBanner();
+    if(syncText) syncText.textContent = '공용 데이터 연결 오류';
+  }
+}
+
 function readFileAsText(file){
   return new Promise((resolve,reject)=>{
     const reader = new FileReader();
@@ -3160,7 +3220,7 @@ document.getElementById('uploadStatus').addEventListener('change', e=>{
   unresolvedFiles[Number(sel.dataset.idx)].key = sel.value || null;
   renderUploadStatus();
 });
-function applyUploadedData(mode){
+async function applyUploadedData(mode){
   const byKey = {};
   unresolvedFiles.forEach(f=>{ if(f.key && f.rows) byKey[f.key] = f.rows; });
   // 필수 시트라도, 이번에 안 올라왔지만 예전에 이미 로드된 데이터가 있으면 그걸 그대로 재사용 (진짜 부족한 경우만 에러)
@@ -3184,7 +3244,9 @@ function applyUploadedData(mode){
     unresolvedFiles.length = 0;
     const updatedList = SHEET_SIGNATURES.filter(s=>byKey[s.key]).map(s=>s.label);
     const reusedList = SHEET_SIGNATURES.filter(s=>!byKey[s.key] && state[s.key] && state[s.key].length>0).map(s=>s.label);
-    const msg = `<div class="banner info">업데이트 완료 — 새로 반영: <b>${updatedList.join(', ')||'없음'}</b>${reusedList.length?` · 이전 데이터 그대로 유지: ${reusedList.join(', ')}`:''}. 좌측 메뉴에서 Main을 확인하세요.</div>`;
+    if(mode==='upload') await saveSharedSnapshot(byKey);
+    const sharedNote = mode==='upload' ? ' · 공용 최신 데이터로 저장됨' : '';
+    const msg = `<div class="banner info">업데이트 완료${sharedNote} — 새로 반영: <b>${updatedList.join(', ')||'없음'}</b>${reusedList.length?` · 이전 데이터 그대로 유지: ${reusedList.join(', ')}`:''}. 좌측 메뉴에서 Main을 확인하세요.</div>`;
     if(mode==='googlesheet'){
       const gEl = document.getElementById('googleSheetStatus'); if(gEl) gEl.innerHTML = msg;
     } else {
@@ -3288,6 +3350,7 @@ dropzone.addEventListener('drop', e=>{ if(e.dataTransfer && e.dataTransfer.files
 
 /* ---------------- Init ---------------- */
 renderAll();
+loadSharedSnapshot();
 </script>
 </body>
 </html>
