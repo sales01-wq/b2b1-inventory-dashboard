@@ -3244,8 +3244,15 @@ async function applyUploadedData(mode){
     unresolvedFiles.length = 0;
     const updatedList = SHEET_SIGNATURES.filter(s=>byKey[s.key]).map(s=>s.label);
     const reusedList = SHEET_SIGNATURES.filter(s=>!byKey[s.key] && state[s.key] && state[s.key].length>0).map(s=>s.label);
-    if(mode==='upload') await saveSharedSnapshot(byKey);
-    const sharedNote = mode==='upload' ? ' · 공용 최신 데이터로 저장됨' : '';
+    let sharedNote = '';
+    if(mode==='upload'){
+      try{
+        await saveSharedSnapshot(byKey);
+        sharedNote = ' · 공용 최신 데이터로 저장됨';
+      }catch(saveErr){
+        sharedNote = ` · <b style="color:var(--danger)">대시보드 적용 완료 / 공용 저장 실패: ${String((saveErr&&saveErr.message)||saveErr).replace(/</g,'&lt;')}</b>`;
+      }
+    }
     const msg = `<div class="banner info">업데이트 완료${sharedNote} — 새로 반영: <b>${updatedList.join(', ')||'없음'}</b>${reusedList.length?` · 이전 데이터 그대로 유지: ${reusedList.join(', ')}`:''}. 좌측 메뉴에서 Main을 확인하세요.</div>`;
     if(mode==='googlesheet'){
       const gEl = document.getElementById('googleSheetStatus'); if(gEl) gEl.innerHTML = msg;
