@@ -3212,7 +3212,7 @@ function renderUploadStatus(){
       <button class="btn" id="applyDataBtn">대시보드에 적용</button>
       <button class="btn ghost" id="clearUploadBtn">목록 지우기</button>
     </div>`;
-  document.getElementById('applyDataBtn').addEventListener('click', applyUploadedData);
+  document.getElementById('applyDataBtn').addEventListener('click', ()=>applyUploadedData('upload'));
   document.getElementById('clearUploadBtn').addEventListener('click', ()=>{ unresolvedFiles.length=0; renderUploadStatus(); });
 }
 document.getElementById('uploadStatus').addEventListener('change', e=>{
