@@ -3401,37 +3401,76 @@ function renderUserChip(){
   document.getElementById('sharedInfoPanel').style.display = '';
   document.getElementById('gsPanel').style.display = 'none';
 }
+function onAuthExpired(){
+  storeToken(null); shared.token = null;
+  showGate('로그인 시간이 만료되었습니다. 다시 로그인해 주세요.', true);
+  tryPrompt();
+}
+/* 이 컴퓨터에 남겨두는 저장본 사본 (같은 버전이면 다시 받지 않음) */
+function idbOpen(){ return new Promise((res,rej)=>{ const r = indexedDB.open('inv_cache',1); r.onupgradeneeded = ()=>r.result.createObjectStore('snap'); r.onsuccess = ()=>res(r.result); r.onerror = ()=>rej(r.error); }); }
+async function idbGet(k){ try{ const db = await idbOpen(); return await new Promise(res=>{ const q = db.transaction('snap').objectStore('snap').get(k); q.onsuccess = ()=>res(q.result||null); q.onerror = ()=>res(null); }); }catch(_e){ return null; } }
+async function idbSet(k,v){ try{ const db = await idbOpen(); await new Promise(res=>{ const t = db.transaction('snap','readwrite'); if(v===null) t.objectStore('snap').delete(k); else t.objectStore('snap').put(v,k); t.oncomplete = ()=>res(); t.onerror = ()=>res(); }); }catch(_e){} }
+async function fetchSnapshot(){
+  const r = await fetch('/api/snapshot', {headers:{Authorization:'Bearer '+shared.token}});
+  if(r.status===401){ onAuthExpired(); throw new Error('로그인이 만료되었습니다.'); }
+  if(!r.ok) throw new Error('저장본 다운로드 실패 ('+r.status+')');
+  if(typeof DecompressionStream === 'undefined') throw new Error('이 브라우저는 저장본 압축 해제를 지원하지 않습니다.');
+  return await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).json();
+}
+function verOf(meta){ return (meta && meta.snapshot && meta.snapshot.at) || (meta && meta.lastUpdate && meta.lastUpdate.at) || 0; }
 async function loadSharedData(){
   if(shared.loading) return;
   shared.loading = true;
   try{
     setSharedBar('info','공유 데이터를 불러오는 중입니다...');
     const meta = await sApi('/api/data?action=meta');
-    const CH = 1000, jobs = [], store = {};
-    (meta.sheets||[]).forEach(sh=>{
-      if(!sh.rows) return;
-      const n = Math.ceil(sh.rows/CH);
-      store[sh.name] = new Array(n);
-      for(let i=0;i<n;i++) jobs.push({name:sh.name, from:i*CH, idx:i});
-    });
-    if(jobs.length===0) throw new Error('공유 시트에 데이터가 없습니다. 업로드 폴더에 엑셀을 올려 업데이트해 주세요.');
-    let done = 0, ptr = 0;
-    async function worker(){
-      while(ptr < jobs.length){
-        const j = jobs[ptr++];
-        const url = `/api/data?action=rows&sheet=${encodeURIComponent(j.name)}&from=${j.from}&count=${CH}`;
-        let r;
-        try{ r = await sApi(url); }catch(e){ if(/만료/.test(e.message)) throw e; r = await sApi(url); }
-        store[j.name][j.idx] = r.rows || [];
-        done++;
-        setSharedBar('info', `공유 데이터 불러오는 중... ${done}/${jobs.length}`);
+    let data = null;
+    const snap = meta.snapshot;
+    if(snap && snap.size && snap.size < 4000000){
+      const cached = await idbGet('snapshot');
+      if(cached && cached.at === snap.at && cached.data){
+        data = cached.data;
+      } else {
+        try{
+          setSharedBar('info','최신 공유 데이터를 받는 중입니다...');
+          data = await fetchSnapshot();
+          idbSet('snapshot', {at:snap.at, data});
+        }catch(e){ if(/만료/.test(e.message)) throw e; data = null; }
       }
     }
-    await Promise.all([worker(),worker(),worker(),worker()]);
+    if(!data){
+      // 저장본이 없거나 받지 못했을 때: 시트를 나눠서 직접 읽는 방식으로 대신 불러옴
+      data = {};
+      const CH = 1000, jobs = [], store = {};
+      (meta.sheets||[]).forEach(sh=>{
+        if(!sh.rows) return;
+        const n = Math.ceil(sh.rows/CH);
+        store[sh.name] = new Array(n);
+        for(let i=0;i<n;i++) jobs.push({name:sh.name, from:i*CH, idx:i});
+      });
+      if(jobs.length===0) throw new Error('공유 시트에 데이터가 없습니다. 업로드 폴더에 엑셀을 올려 업데이트해 주세요.');
+      let done = 0, ptr = 0;
+      async function worker(){
+        while(ptr < jobs.length){
+          const j = jobs[ptr++];
+          const url = `/api/data?action=rows&sheet=${encodeURIComponent(j.name)}&from=${j.from}&count=${CH}`;
+          let r;
+          try{ r = await sApi(url); }catch(e){ if(/만료/.test(e.message)) throw e; r = await sApi(url); }
+          store[j.name][j.idx] = r.rows || [];
+          done++;
+          setSharedBar('info', `공유 데이터 불러오는 중... ${done}/${jobs.length}`);
+        }
+      }
+      await Promise.all([worker(),worker(),worker(),worker()]);
+      Object.keys(store).forEach(name=>{
+        const rows = [];
+        store[name].forEach(chunk=>{ for(let i=0;i<chunk.length;i++) rows.push(chunk[i]); });
+        data[name] = rows;
+      });
+    }
     unresolvedFiles.length = 0;
-    Object.keys(store).forEach(name=>{
-      const rows = [];
-      store[name].forEach(chunk=>{ for(let i=0;i<chunk.length;i++) rows.push(chunk[i]); });
+    Object.keys(data).forEach(name=>{
+      const rows = data[name];
       unresolvedFiles.push({fileName:`구글시트 — ${name}`, rows, key:detectSheetType(rows)});
     });
     shared.meta = meta;
@@ -3480,9 +3519,9 @@ async function checkForNewSharedData(){
   if(!shared.active || !shared.token || shared.loading || shared.updating || document.hidden) return;
   try{
     const meta = await sApi('/api/data?action=meta');
-    const a = meta.lastUpdate && meta.lastUpdate.at, b = shared.meta && shared.meta.lastUpdate && shared.meta.lastUpdate.at;
+    const a = verOf(meta), b = verOf(shared.meta);
     if(a && a !== b){
-      const lu = meta.lastUpdate;
+      const lu = meta.lastUpdate || {at:a, by:''};
       setSharedBar('info', `🔔 새 데이터가 있습니다 (${new Date(lu.at).toLocaleString('ko-KR')} · ${lu.by}) <button class="btn" type="button" id="loadNewBtn" style="margin-left:10px;">지금 불러오기</button>`);
       document.getElementById('loadNewBtn').addEventListener('click', ()=>loadSharedData());
     }
@@ -3500,8 +3539,9 @@ async function initSharedMode(){
     return;
   }
   shared.active = true; shared.clientId = cfg.clientId; shared.domain = cfg.domain || '';
-  document.getElementById('logoutBtn').addEventListener('click', ()=>{
+  document.getElementById('logoutBtn').addEventListener('click', async ()=>{
     storeToken(null);
+    await idbSet('snapshot', null);
     try{ google.accounts.id.disableAutoSelect(); }catch(_e){}
     location.reload();
   });
