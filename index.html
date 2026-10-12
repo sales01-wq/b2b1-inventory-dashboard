@@ -3343,7 +3343,7 @@ function setSharedBar(kind, html){
   const el = document.getElementById('sharedBar');
   if(!html){ el.innerHTML = ''; return; }
   const danger = kind==='err' ? ' style="border-color:var(--danger);color:var(--danger);"' : '';
-  el.innerHTML = `<div class="banner info"${danger}>${html}</div>`;
+  el.innerHTML = `<div class="banner info"${danger}><div>${html}</div></div>`;
 }
 async function sApi(path, opts){
   const r = await fetch(path, {headers:{Authorization:'Bearer '+shared.token}});
