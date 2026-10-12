@@ -3424,7 +3424,7 @@ async function loadSharedData(){
   try{
     setSharedBar('info','공유 데이터를 불러오는 중입니다...');
     const meta = await sApi('/api/data?action=meta');
-    let data = null;
+    let data = null, snapErr = '';
     const snap = meta.snapshot;
     if(snap && snap.size && snap.size < 4000000){
       const cached = await idbGet('snapshot');
@@ -3435,9 +3435,10 @@ async function loadSharedData(){
           setSharedBar('info','최신 공유 데이터를 받는 중입니다...');
           data = await fetchSnapshot();
           idbSet('snapshot', {at:snap.at, data});
-        }catch(e){ if(/만료/.test(e.message)) throw e; data = null; }
+        }catch(e){ if(/만료/.test(e.message)) throw e; data = null; snapErr = e.message; console.warn('저장본 받기 실패', e); }
       }
-    }
+    } else if(!snap){ snapErr = '서버에 저장본이 아직 없음'; }
+    else { snapErr = '저장본이 너무 큼 ('+snap.size+' bytes)'; }
     if(!data){
       // 저장본이 없거나 받지 못했을 때: 시트를 나눠서 직접 읽는 방식으로 대신 불러옴
       data = {};
@@ -3458,7 +3459,7 @@ async function loadSharedData(){
           try{ r = await sApi(url); }catch(e){ if(/만료/.test(e.message)) throw e; r = await sApi(url); }
           store[j.name][j.idx] = r.rows || [];
           done++;
-          setSharedBar('info', `공유 데이터 불러오는 중... ${done}/${jobs.length}`);
+          setSharedBar('info', `공유 데이터 불러오는 중... ${done}/${jobs.length}` + (snapErr ? `<div style="font-size:11.5px;margin-top:4px;opacity:.8;">저장본 사용 불가 사유: ${snapErr}</div>` : ''));
         }
       }
       await Promise.all([worker(),worker(),worker(),worker()]);
@@ -3468,6 +3469,7 @@ async function loadSharedData(){
         data[name] = rows;
       });
     }
+    if(!snap){ sApi('/api/data?action=ensure').catch(()=>{}); } // 저장본이 아직 없으면 서버가 자동으로 만들어 둠 (다음 접속부터 빠름)
     unresolvedFiles.length = 0;
     Object.keys(data).forEach(name=>{
       const rows = data[name];
