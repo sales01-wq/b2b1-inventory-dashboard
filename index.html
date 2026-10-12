@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<script>(function(){try{var h=location.hostname;if(/^https?:$/.test(location.protocol)&&h!=='localhost'&&h!=='127.0.0.1')document.documentElement.classList.add('gate');}catch(e){}})();</script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 <style>
@@ -215,9 +217,31 @@
   .file-row .tag.ok{background:var(--safe-bg);color:var(--safe);}
   .file-row .tag.warn{background:var(--caution-bg);color:var(--caution);}
   .upload-actions{margin-top:16px;display:flex;align-items:center;gap:12px;}
+  /* ---- 로그인 게이트 / 공유 모드 ---- */
+  #loginGate{display:none;position:fixed;inset:0;z-index:9999;background:#fff;align-items:center;justify-content:center;padding:20px;}
+  html.gate #loginGate{display:flex;}
+  html.gate #app{visibility:hidden;}
+  .gate-card{width:100%;max-width:400px;text-align:center;border:1px solid var(--line);border-radius:16px;padding:36px 28px;background:var(--surface);}
+  .gate-card h2{margin:6px 0 10px;font-size:24px;font-weight:900;letter-spacing:-0.02em;color:var(--ink);}
+  .gate-card p{font-size:13.5px;color:var(--muted);line-height:1.7;margin:0 0 20px;}
+  .gate-card p.err{color:var(--danger);font-weight:600;}
+  #gsiBtn{display:flex;justify-content:center;min-height:44px;}
+  .user-chip{display:none;align-items:center;gap:8px;font-size:12px;color:var(--muted);}
+  .user-chip.on{display:flex;}
+  .user-chip .role{padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;background:var(--surface-alt);color:var(--muted);}
+  .user-chip .role.upd{background:var(--accent-soft);color:var(--accent);}
+  .user-chip button{all:unset;cursor:pointer;font-size:11.5px;text-decoration:underline;color:var(--muted);}
+  #sharedBar:empty{display:none;}
+  #sharedBar{margin:14px 0 0;}
 </style>
 </head>
 <body>
+<div id="loginGate"><div class="gate-card">
+  <div class="eyebrow">B2B1팀 · INVENTORY INTELLIGENCE</div>
+  <h2>재고 관리 대시보드</h2>
+  <p id="gateMsg">로그인 정보를 확인하는 중입니다...</p>
+  <div id="gsiBtn"></div>
+</div></div>
 <div id="app">
   <header class="page-header">
     <div class="eyebrow">B2B1팀 · INVENTORY INTELLIGENCE</div>
@@ -226,6 +250,7 @@
     <div class="header-actions">
       <div class="brand-toggle" id="brandToggle"></div>
       <div class="spacer"></div>
+      <div class="user-chip" id="userChip"><span id="userEmail"></span><span class="role" id="userRole"></span><button type="button" id="logoutBtn">로그아웃</button></div>
       <button class="btn ghost" type="button" id="refreshSheetBtn" title="연결된 구글시트에서 최신 데이터 다시 가져오기">🔄 새로고침</button>
       <div class="sync-status"><span class="dot" id="syncDot"></span><span id="syncText">업로드된 데이터 없음</span></div>
     </div>
@@ -240,11 +265,19 @@
   </header>
 
   <main>
+    <div id="sharedBar"></div>
     <div id="bannerZone"></div>
 
     <!-- DATA IMPORT -->
     <section class="view active" id="view-data">
-      <div class="panel">
+      <div class="panel" id="sharedInfoPanel" style="display:none;">
+        <h3>공유 데이터 (구글 로그인)</h3>
+        <p style="color:var(--muted);font-size:12.8px;line-height:1.7;margin:0;">
+          로그인한 회사 계정은 모두 같은 최신 데이터를 봅니다. 업데이트 권한이 있는 담당자가 ERP 엑셀을 업로드 폴더에 올리고 <b>🔄 새로고침</b>을 누르면 모든 사용자에게 반영됩니다. 다른 사람이 업데이트하면 상단에 "새 데이터가 있습니다" 알림이 뜹니다.
+        </p>
+        <div id="sharedInfoText" style="margin-top:8px;font-size:12.5px;"></div>
+      </div>
+      <div class="panel" id="gsPanel">
         <h3>구글시트 자동 연결</h3>
         <p style="color:var(--muted);font-size:12.8px;line-height:1.7;">
           Apps Script를 웹 앱으로 배포해두면, 헤더의 <b>🔄 새로고침</b> 버튼 한 번으로 그 웹앱을 통해 최신 데이터를 바로 가져옵니다. 아래 파일 업로드는 이 방법 대신 쓰거나, 이 방법이 안 될 때 백업용으로 쓰시면 됩니다.
@@ -261,12 +294,11 @@
       </div>
 
       <div class="panel">
-        <h3>CSV / 엑셀 업로드 (공용 데이터 업데이트)</h3>
+        <h3>CSV / 엑셀 업로드 (백업용 수동 업로드)</h3>
         <p style="color:var(--muted);font-size:12.8px;line-height:1.7;">
           구글 시트에서 CSV로 각 탭을 내려받아 올리거나, <b>엑셀 파일(.xlsx)을 통째로 다운받아 올려도</b> 됩니다 — 엑셀 파일 안에 시트가 여러 개 있어도 자동으로 각 시트를 인식합니다.<br>
           파일 이름과 상관없이 <b>내용을 보고 자동으로 어떤 탭인지 인식</b>합니다 (가용재고조회 / 제품일정표 / 일자별판매실적분석 / 유통기한(선택) / 상품마스터(선택)).<br>
-          <b>한 번 데이터를 올린 뒤에는, 바뀐 파일만 다시 올리면 됩니다</b> — 예를 들어 가용재고조회만 새로 올리면 나머지(제품일정표, 판매실적 등)는 이전 데이터가 그대로 유지됩니다.<br>
-          <b>대시보드에 적용</b>을 누르면 공용 최신 데이터로 저장되며, 다른 사람이 같은 링크에 접속할 때 자동으로 불러옵니다.
+          <b>한 번 데이터를 올린 뒤에는, 바뀐 파일만 다시 올리면 됩니다</b> — 예를 들어 가용재고조회만 새로 올리면 나머지(제품일정표, 판매실적 등)는 이전에 올린 데이터가 그대로 유지됩니다.
         </p>
         <div class="dropzone" id="dropzone">
           <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls" style="display:none">
@@ -882,8 +914,13 @@ function renderSyncStatus(){
   if(state.error){
     text.textContent = '파일 처리 오류';
   } else if(state.lastSync){
-    const label = state.fetchMode==='googlesheet' ? '구글시트 새로고침' : '마지막 업로드';
-    text.textContent = label + ' ' + state.lastSync.toLocaleTimeString('ko-KR');
+    if(shared.active && shared.meta && shared.meta.lastUpdate){
+      const lu = shared.meta.lastUpdate;
+      text.textContent = '최신 데이터 ' + new Date(lu.at).toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}) + ' · ' + lu.by;
+    } else {
+      const label = state.fetchMode==='googlesheet' ? '구글시트 새로고침' : '마지막 업로드';
+      text.textContent = label + ' ' + state.lastSync.toLocaleTimeString('ko-KR');
+    }
   } else {
     text.textContent = '업로드된 데이터 없음';
   }
@@ -3067,65 +3104,6 @@ document.getElementById('exportPanel').addEventListener('change', e=>{
 });
 
 /* ---------------- File upload handling ---------------- */
-const SUPABASE_URL = 'https://bcyshrnvbaymsmrrkmoh.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_bRCqLnqxOn0LbOJuh1UOVA_Ld67xMr_Codex';
-const SHARED_BUCKET = 'dashboard-data';
-const SHARED_OBJECT = 'latest/dashboard-data.json';
-const sharedRawRows = {};
-
-function sharedObjectUrl(){
-  return `${SUPABASE_URL}/storage/v1/object/${SHARED_BUCKET}/${SHARED_OBJECT}`;
-}
-
-async function saveSharedSnapshot(byKey){
-  Object.keys(byKey).forEach(key=>{ sharedRawRows[key] = byKey[key]; });
-  const payload = JSON.stringify({version:1, updatedAt:new Date().toISOString(), sheets:sharedRawRows});
-  const res = await fetch(sharedObjectUrl(), {
-    method:'POST',
-    headers:{
-      'Authorization':`Bearer ${SUPABASE_KEY}`,
-      'apikey':SUPABASE_KEY,
-      'Content-Type':'application/json',
-      'x-upsert':'true'
-    },
-    body:payload
-  });
-  if(!res.ok){
-    const detail = await res.text().catch(()=> '');
-    throw new Error(`공용 저장 실패 (${res.status})${detail ? ': '+detail : ''}`);
-  }
-}
-
-async function loadSharedSnapshot(){
-  const syncText = document.getElementById('syncText');
-  if(syncText) syncText.textContent = '공용 최신 데이터 불러오는 중...';
-  try{
-    const res = await fetch(sharedObjectUrl(), {
-      headers:{'Authorization':`Bearer ${SUPABASE_KEY}`, 'apikey':SUPABASE_KEY},
-      cache:'no-store'
-    });
-    if(res.status===404){
-      if(syncText) syncText.textContent = '공용 데이터 없음 — 파일을 처음 업로드해주세요';
-      return;
-    }
-    if(!res.ok) throw new Error(`불러오기 실패 (${res.status})`);
-    const snapshot = await res.json();
-    const sheets = snapshot && snapshot.sheets;
-    if(!sheets || typeof sheets!=='object') throw new Error('저장된 데이터 형식이 올바르지 않습니다.');
-    Object.keys(sheets).forEach(key=>{ sharedRawRows[key] = sheets[key]; });
-    unresolvedFiles.length = 0;
-    SHEET_SIGNATURES.forEach(sig=>{
-      if(sheets[sig.key]) unresolvedFiles.push({fileName:`공용 데이터 — ${sig.label}`, rows:sheets[sig.key], key:sig.key});
-    });
-    await applyUploadedData('supabase');
-    if(syncText && snapshot.updatedAt) syncText.textContent = `공용 데이터 · ${new Date(snapshot.updatedAt).toLocaleString('ko-KR')}`;
-  }catch(e){
-    state.error = '공용 데이터 불러오기 오류: ' + ((e&&e.message)||String(e));
-    renderBanner();
-    if(syncText) syncText.textContent = '공용 데이터 연결 오류';
-  }
-}
-
 function readFileAsText(file){
   return new Promise((resolve,reject)=>{
     const reader = new FileReader();
@@ -3212,7 +3190,7 @@ function renderUploadStatus(){
       <button class="btn" id="applyDataBtn">대시보드에 적용</button>
       <button class="btn ghost" id="clearUploadBtn">목록 지우기</button>
     </div>`;
-  document.getElementById('applyDataBtn').addEventListener('click', ()=>applyUploadedData('upload'));
+  document.getElementById('applyDataBtn').addEventListener('click', applyUploadedData);
   document.getElementById('clearUploadBtn').addEventListener('click', ()=>{ unresolvedFiles.length=0; renderUploadStatus(); });
 }
 document.getElementById('uploadStatus').addEventListener('change', e=>{
@@ -3220,7 +3198,7 @@ document.getElementById('uploadStatus').addEventListener('change', e=>{
   unresolvedFiles[Number(sel.dataset.idx)].key = sel.value || null;
   renderUploadStatus();
 });
-async function applyUploadedData(mode){
+function applyUploadedData(mode){
   const byKey = {};
   unresolvedFiles.forEach(f=>{ if(f.key && f.rows) byKey[f.key] = f.rows; });
   // 필수 시트라도, 이번에 안 올라왔지만 예전에 이미 로드된 데이터가 있으면 그걸 그대로 재사용 (진짜 부족한 경우만 에러)
@@ -3244,16 +3222,7 @@ async function applyUploadedData(mode){
     unresolvedFiles.length = 0;
     const updatedList = SHEET_SIGNATURES.filter(s=>byKey[s.key]).map(s=>s.label);
     const reusedList = SHEET_SIGNATURES.filter(s=>!byKey[s.key] && state[s.key] && state[s.key].length>0).map(s=>s.label);
-    let sharedNote = '';
-    if(mode==='upload'){
-      try{
-        await saveSharedSnapshot(byKey);
-        sharedNote = ' · 공용 최신 데이터로 저장됨';
-      }catch(saveErr){
-        sharedNote = ` · <b style="color:var(--danger)">대시보드 적용 완료 / 공용 저장 실패: ${String((saveErr&&saveErr.message)||saveErr).replace(/</g,'&lt;')}</b>`;
-      }
-    }
-    const msg = `<div class="banner info">업데이트 완료${sharedNote} — 새로 반영: <b>${updatedList.join(', ')||'없음'}</b>${reusedList.length?` · 이전 데이터 그대로 유지: ${reusedList.join(', ')}`:''}. 좌측 메뉴에서 Main을 확인하세요.</div>`;
+    const msg = `<div class="banner info">업데이트 완료 — 새로 반영: <b>${updatedList.join(', ')||'없음'}</b>${reusedList.length?` · 이전 데이터 그대로 유지: ${reusedList.join(', ')}`:''}. 좌측 메뉴에서 Main을 확인하세요.</div>`;
     if(mode==='googlesheet'){
       const gEl = document.getElementById('googleSheetStatus'); if(gEl) gEl.innerHTML = msg;
     } else {
@@ -3291,6 +3260,7 @@ function renderGoogleSheetProgress(p){
   }
 }
 async function refreshFromGoogleSheet(){
+  if(shared.active){ return sharedRefresh(); }
   const urlInput = document.getElementById('googleSheetIdInput');
   const webAppUrl = (urlInput.value||'').trim();
   const statusEl = document.getElementById('googleSheetStatus');
@@ -3355,9 +3325,200 @@ fileInput.addEventListener('change', e=>{ handleFiles(e.target.files); fileInput
 ['dragleave','drop'].forEach(evt=>dropzone.addEventListener(evt, e=>{ e.preventDefault(); dropzone.classList.remove('drag'); }));
 dropzone.addEventListener('drop', e=>{ if(e.dataTransfer && e.dataTransfer.files) handleFiles(e.dataTransfer.files); });
 
+/* ---------------- 구글 로그인 + 공유 데이터 (Vercel API) ---------------- */
+const shared = {active:false, token:null, user:null, clientId:'', domain:'', meta:null, loading:false, updating:false};
+const TOKEN_KEY = 'inv_idtoken';
+function jwtExp(t){ try{ return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))).exp*1000; }catch(_e){ return 0; } }
+function storeToken(t){ try{ if(t) localStorage.setItem(TOKEN_KEY,t); else localStorage.removeItem(TOKEN_KEY); }catch(_e){} }
+function loadStoredToken(){ try{ const t = localStorage.getItem(TOKEN_KEY); return (t && jwtExp(t) > Date.now()+60000) ? t : null; }catch(_e){ return null; } }
+function setGate(msg, isErr){
+  const el = document.getElementById('gateMsg');
+  el.textContent = msg; el.className = isErr ? 'err' : '';
+}
+function showGate(msg, isErr){
+  document.documentElement.classList.add('gate');
+  setGate(msg, isErr);
+}
+function setSharedBar(kind, html){
+  const el = document.getElementById('sharedBar');
+  if(!html){ el.innerHTML = ''; return; }
+  const danger = kind==='err' ? ' style="border-color:var(--danger);color:var(--danger);"' : '';
+  el.innerHTML = `<div class="banner info"${danger}>${html}</div>`;
+}
+async function sApi(path, opts){
+  const r = await fetch(path, {headers:{Authorization:'Bearer '+shared.token}});
+  if(r.status===401){
+    storeToken(null); shared.token = null;
+    showGate('로그인 시간이 만료되었습니다. 다시 로그인해 주세요.', true);
+    tryPrompt();
+    throw new Error('로그인이 만료되었습니다.');
+  }
+  let j = null; try{ j = await r.json(); }catch(_e){}
+  if(!r.ok) throw new Error((j && j.error) || ('서버 오류 ('+r.status+')'));
+  return j;
+}
+function tryPrompt(){ try{ google.accounts.id.prompt(); }catch(_e){} }
+function waitForGsi(){
+  return new Promise(res=>{ let n=0; (function t(){ if(window.google && google.accounts && google.accounts.id) return res(true); if(++n>100) return res(false); setTimeout(t,100); })(); });
+}
+async function onGoogleCredential(resp){
+  const token = resp && resp.credential;
+  if(!token) return;
+  shared.token = token;
+  setGate('확인 중입니다...');
+  try{
+    const r = await fetch('/api/me', {headers:{Authorization:'Bearer '+token}});
+    const j = await r.json().catch(()=>({}));
+    if(r.status===403){
+      shared.token = null; storeToken(null);
+      showGate(`${j.email||'이 계정'}은(는) 접근 권한이 없습니다. 회사 계정(@${shared.domain})으로 로그인해 주세요.`, true);
+      try{ google.accounts.id.disableAutoSelect(); }catch(_e){}
+      return;
+    }
+    if(!r.ok) throw new Error(j.error || r.status);
+    storeToken(token);
+    const firstTime = !shared.user;
+    shared.user = j;
+    document.documentElement.classList.remove('gate');
+    renderUserChip();
+    if(firstTime || !state.loaded) loadSharedData();
+  }catch(e){
+    shared.token = null;
+    showGate('로그인 확인 중 오류가 발생했습니다: ' + e.message, true);
+  }
+}
+function renderUserChip(){
+  const u = shared.user; if(!u) return;
+  document.getElementById('userChip').classList.add('on');
+  document.getElementById('userEmail').textContent = u.email;
+  const role = document.getElementById('userRole');
+  role.textContent = u.isUpdater ? '업데이트 권한' : '보기 전용';
+  role.className = 'role' + (u.isUpdater ? ' upd' : '');
+  const btn = document.getElementById('refreshSheetBtn');
+  btn.textContent = u.isUpdater ? '🔄 새로고침 (업데이트)' : '🔄 최신 데이터 불러오기';
+  btn.title = u.isUpdater ? '업로드 폴더의 새 엑셀을 반영하고 모두에게 최신 데이터를 공유합니다' : '다른 담당자가 업데이트한 최신 데이터를 다시 불러옵니다';
+  btn.dataset.origText = btn.textContent;
+  document.getElementById('sharedInfoPanel').style.display = '';
+  document.getElementById('gsPanel').style.display = 'none';
+}
+async function loadSharedData(){
+  if(shared.loading) return;
+  shared.loading = true;
+  try{
+    setSharedBar('info','공유 데이터를 불러오는 중입니다...');
+    const meta = await sApi('/api/data?action=meta');
+    const CH = 1000, jobs = [], store = {};
+    (meta.sheets||[]).forEach(sh=>{
+      if(!sh.rows) return;
+      const n = Math.ceil(sh.rows/CH);
+      store[sh.name] = new Array(n);
+      for(let i=0;i<n;i++) jobs.push({name:sh.name, from:i*CH, idx:i});
+    });
+    if(jobs.length===0) throw new Error('공유 시트에 데이터가 없습니다. 업로드 폴더에 엑셀을 올려 업데이트해 주세요.');
+    let done = 0, ptr = 0;
+    async function worker(){
+      while(ptr < jobs.length){
+        const j = jobs[ptr++];
+        const url = `/api/data?action=rows&sheet=${encodeURIComponent(j.name)}&from=${j.from}&count=${CH}`;
+        let r;
+        try{ r = await sApi(url); }catch(e){ if(/만료/.test(e.message)) throw e; r = await sApi(url); }
+        store[j.name][j.idx] = r.rows || [];
+        done++;
+        setSharedBar('info', `공유 데이터 불러오는 중... ${done}/${jobs.length}`);
+      }
+    }
+    await Promise.all([worker(),worker(),worker(),worker()]);
+    unresolvedFiles.length = 0;
+    Object.keys(store).forEach(name=>{
+      const rows = [];
+      store[name].forEach(chunk=>{ for(let i=0;i<chunk.length;i++) rows.push(chunk[i]); });
+      unresolvedFiles.push({fileName:`구글시트 — ${name}`, rows, key:detectSheetType(rows)});
+    });
+    shared.meta = meta;
+    applyUploadedData('googlesheet');
+    setSharedBar('', '');
+    const info = document.getElementById('sharedInfoText');
+    if(info){
+      const lu = meta.lastUpdate;
+      info.textContent = lu ? `마지막 업데이트: ${new Date(lu.at).toLocaleString('ko-KR')} · ${lu.by}` : '아직 업데이트 기록이 없습니다.';
+    }
+  }catch(e){
+    if(!/만료/.test(e.message)) setSharedBar('err', '데이터를 불러오지 못했습니다: ' + e.message);
+  }finally{
+    shared.loading = false;
+  }
+}
+async function sharedRefresh(){
+  const u = shared.user; if(!u || shared.updating) return;
+  if(!u.isUpdater){ return loadSharedData(); }
+  shared.updating = true;
+  const btn = document.getElementById('refreshSheetBtn');
+  btn.disabled = true; btn.textContent = '업데이트 중...';
+  try{
+    setSharedBar('info','업로드 폴더의 새 파일을 확인하고 있습니다...');
+    await sApi('/api/data?action=update');
+    let guard = 0;
+    while(guard++ < 400){
+      await new Promise(r=>setTimeout(r,1500));
+      const p = await sApi('/api/data?action=progress');
+      if(p.status==='processing' && p.totalCount>0){
+        const pct = Math.round(p.doneCount/p.totalCount*100);
+        setSharedBar('info', `파일 처리 중: <b>${p.currentFile||'...'}</b> (${p.doneCount}/${p.totalCount}, ${pct}%)<div style="background:var(--surface-alt);border-radius:6px;height:8px;overflow:hidden;margin-top:8px;"><div style="background:var(--accent);height:100%;width:${pct}%;transition:width .4s ease;"></div></div>`);
+      } else if(p.status==='done' || p.status==='idle'){ break; }
+      else if(p.status==='error'){ throw new Error('서버에서 파일 처리 중 오류가 발생했습니다. Apps Script 실행 로그를 확인해 주세요.'); }
+    }
+    shared.loading = false;
+    await loadSharedData();
+  }catch(e){
+    if(!/만료/.test(e.message)) setSharedBar('err', '업데이트 실패: ' + e.message);
+  }finally{
+    shared.updating = false;
+    btn.disabled = false; btn.textContent = btn.dataset.origText;
+  }
+}
+async function checkForNewSharedData(){
+  if(!shared.active || !shared.token || shared.loading || shared.updating || document.hidden) return;
+  try{
+    const meta = await sApi('/api/data?action=meta');
+    const a = meta.lastUpdate && meta.lastUpdate.at, b = shared.meta && shared.meta.lastUpdate && shared.meta.lastUpdate.at;
+    if(a && a !== b){
+      const lu = meta.lastUpdate;
+      setSharedBar('info', `🔔 새 데이터가 있습니다 (${new Date(lu.at).toLocaleString('ko-KR')} · ${lu.by}) <button class="btn" type="button" id="loadNewBtn" style="margin-left:10px;">지금 불러오기</button>`);
+      document.getElementById('loadNewBtn').addEventListener('click', ()=>loadSharedData());
+    }
+  }catch(_e){}
+}
+async function initSharedMode(){
+  if(!document.documentElement.classList.contains('gate')) return; // 로컬 파일로 열었을 때는 기존 방식
+  let cfg = null;
+  try{
+    const r = await fetch('/api/config', {cache:'no-store'});
+    if(r.ok) cfg = await r.json();
+  }catch(_e){}
+  if(!cfg || !cfg.clientId){
+    document.documentElement.classList.remove('gate'); // 서버 설정이 없으면 기존 업로드 방식으로 동작
+    return;
+  }
+  shared.active = true; shared.clientId = cfg.clientId; shared.domain = cfg.domain || '';
+  document.getElementById('logoutBtn').addEventListener('click', ()=>{
+    storeToken(null);
+    try{ google.accounts.id.disableAutoSelect(); }catch(_e){}
+    location.reload();
+  });
+  const ok = await waitForGsi();
+  if(!ok){ showGate('구글 로그인 스크립트를 불러오지 못했습니다. 네트워크를 확인하고 새로고침해 주세요.', true); return; }
+  google.accounts.id.initialize({client_id:shared.clientId, callback:onGoogleCredential, auto_select:true, hd:shared.domain||undefined, cancel_on_tap_outside:false});
+  google.accounts.id.renderButton(document.getElementById('gsiBtn'), {theme:'outline', size:'large', text:'signin_with', shape:'pill', locale:'ko', width:260});
+  const stored = loadStoredToken();
+  if(stored){ setGate('로그인 정보를 확인하는 중입니다...'); onGoogleCredential({credential:stored}); }
+  else { setGate(`회사 구글 계정${shared.domain?` (@${shared.domain})`:''}으로 로그인해 주세요.`); tryPrompt(); }
+  setInterval(checkForNewSharedData, 120000);
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkForNewSharedData(); });
+}
+
 /* ---------------- Init ---------------- */
 renderAll();
-loadSharedSnapshot();
+initSharedMode();
 </script>
 </body>
 </html>
