@@ -248,6 +248,7 @@
     <h1>재고 관리 대시보드</h1>
     <div class="meta-line" id="metaLine">파일을 업로드해주세요.</div>
     <div class="header-actions">
+      <div class="brand-toggle" id="teamToggle" title="팀별로 보기"></div>
       <div class="brand-toggle" id="brandToggle"></div>
       <div class="spacer"></div>
       <div class="user-chip" id="userChip"><span id="userEmail"></span><span class="role" id="userRole"></span><button type="button" id="logoutBtn">로그아웃</button></div>
@@ -436,6 +437,7 @@ const fmt = n => nf.format(Math.round(n||0));
 const fmtDec = (n, digits) => nf.format(Math.round((n||0)*Math.pow(10,digits))/Math.pow(10,digits));
 
 const state = {
+  salesByTeam: {}, // {'B2B1팀': [...], 'B2B2팀': [...]} 팀별 판매실적
   loaded: false,
   inventory: [], schedule: [], sales: [], expiry: [], productMaster: [],
   scheduleMonthLabels: ['8월','9월','10월'], // 실제 업로드된 제품일정표의 월로 자동 갱신됨
@@ -447,6 +449,7 @@ const state = {
   lastSync: null, loading: false, error: null, fetchMode: null,
 };
 const ui = {
+  team: (function(){ try{ const t = localStorage.getItem('inv_team'); if(['전체','B2B1팀','B2B2팀'].includes(t)) return t; }catch(_e){} return 'B2B1팀'; })(), // 팀 필터
   forecastPage: 50, customerPage: 50,
   forecastExpanded: new Set(),
   forecastSelected: new Set(),
@@ -724,9 +727,29 @@ function brandPasses(brand){
   return ui.brandSelected.size===0 || ui.brandSelected.has(brand);
 }
 
+function teamWarehouseTokens(){ return ui.team==='전체' ? ['B2B1팀','B2B2팀','EMP'] : [ui.team,'EMP']; }
+function teamOwnTokens(){ return ui.team==='전체' ? ['B2B1팀','B2B2팀'] : [ui.team]; }
+function teamLabel(){ return ui.team==='전체' ? 'B2B1팀+B2B2팀+EMP' : ui.team+' + EMP'; }
 function isUsableWarehouse(name){
   const n = String(name||'');
-  return n.includes('B2B1팀') || n.includes('EMP');
+  return teamWarehouseTokens().some(t=>n.includes(t));
+}
+function teamFromName(n){ const m = String(n||'').match(/B2B\s*([12])\s*팀/i); return m ? 'B2B'+m[1]+'팀' : null; }
+function teamFromRows(rows){
+  const hit = findHeaderRow(rows, ['실적번호','거래처','품번','수량']); if(!hit) return null;
+  const ci = colIdx(hit.header,'부서'); if(ci<0) return null;
+  const cnt = {};
+  for(let i=hit.idx+1;i<rows.length && i<hit.idx+300;i++){
+    const m = String((rows[i]||[])[ci]||'').match(/B2B\s*([12])\s*팀/i);
+    if(m){ const k='B2B'+m[1]+'팀'; cnt[k]=(cnt[k]||0)+1; }
+  }
+  const ks = Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]);
+  return ks[0]||null;
+}
+function salesForTeam(){
+  const m = state.salesByTeam || {};
+  if(ui.team==='전체') return [].concat(m['B2B1팀']||[], m['B2B2팀']||[]);
+  return m[ui.team]||[];
 }
 function usableAvailable(inv){
   if(!inv) return 0;
@@ -736,7 +759,7 @@ const OVERSTOCK_MULTIPLIER = 2; // 예상 분기수요의 몇 배 이상이면 �
 function scopedAvailable(pn, scope){
   const inv = state.invByProduct.get(pn);
   if(!inv) return 0;
-  if(scope==='b2b1') return inv.rows.filter(r=>String(r.창고||'').includes('B2B1팀')).reduce((s,r)=>s+r.가용재고,0);
+  if(scope==='b2b1') return inv.rows.filter(r=>teamOwnTokens().some(t=>String(r.창고||'').includes(t))).reduce((s,r)=>s+r.가용재고,0);
   if(scope==='emp') return inv.rows.filter(r=>String(r.창고||'').includes('EMP')).reduce((s,r)=>s+r.가용재고,0);
   return usableAvailable(inv);
 }
@@ -933,7 +956,7 @@ function renderMetaLine(){
   const custCount = state.customers.length;
   const salesCount = state.sales.length;
   const ts = state.lastSync ? state.lastSync.toLocaleString('ko-KR') : '-';
-  el.textContent = `품목 ${fmt(pnCount)}개 · 거래처 ${fmt(custCount)}곳 · 판매실적 ${fmt(salesCount)}건 · 마지막 업로드 ${ts}`;
+  el.textContent = `[${ui.team}] 품목 ${fmt(pnCount)}개 · 거래처 ${fmt(custCount)}곳 · 판매실적 ${fmt(salesCount)}건${salesCount===0?' (이 팀의 판매 파일이 아직 없습니다)':''} · 마지막 업로드 ${ts}`;
 }
 
 function renderBanner(){
@@ -1026,8 +1049,8 @@ function renderForecastOverstockScope(show){
   </label>`;
   el.innerHTML = `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;background:var(--surface-alt);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:14px;">
     <span style="font-size:12px;color:var(--muted);font-weight:700;">과잉재고 기준 창고</span>
-    ${opt('all','전체 (B2B1팀+EMP)')}
-    ${opt('b2b1','B2B1팀 창고만')}
+    ${opt('all','전체 ('+teamLabel()+')')}
+    ${opt('b2b1',(ui.team==='전체'?'B2B1·B2B2팀':ui.team)+' 창고만')}
     ${opt('emp','EMP 정상창고만')}
     <span style="font-size:11px;color:var(--muted);margin-left:auto;">최근 6개월간 판매 이력이 없으면서 재고가 남아있는 품목입니다</span>
   </div>`;
@@ -1066,7 +1089,7 @@ function forecastDetailRow(x){
       <div>
         <div class="section-title t-warehouse" style="margin-bottom:8px;">창고별 가용재고 (전체 창고)</div>
         <div style="pointer-events:none;">${warehouseTableHtml(x.품번, x.품명, x.바코드, '', true)}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:10px;">위 표는 전체 창고 기준이며, 상단의 "현재 가용재고" 숫자는 B2B1팀 + EMP 정상창고만 합산한 값입니다.</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:10px;">위 표는 전체 창고 기준이며, 상단의 "현재 가용재고" 숫자는 ${teamLabel()} 정상창고만 합산한 값입니다.</div>
       </div>
       <div>
         <div class="section-title t-incoming" style="margin-bottom:8px;">입고예정 상세 (${state.scheduleMonthLabels[0]}~${state.scheduleMonthLabels[2]})</div>
@@ -1209,7 +1232,7 @@ function renderForecast(){
   } else {
     const allSelected = list.length>0 && list.every(x=>ui.forecastSelected.has(x.품번));
     const custNotice = ui.forecastCustomer ? `<div class="banner info" style="margin-bottom:10px;">현재 <b>${ui.forecastCustomer}</b> 거래처 기준으로 재계산된 예상 분기수요·재고비율·추가발주 필요·등급입니다 (전체 거래처 합산이 아닙니다).</div>` : '';
-    el.innerHTML = custNotice + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">가용재고는 <b>B2B1팀 + EMP 정상창고</b> 재고만 반영합니다 (다른 팀 전용 창고 재고는 제외). 예상 분기수요는 거래처별 평균 발주수량·발주주기 기반입니다. 행을 클릭하면 근거를 볼 수 있습니다. 체크박스로 발주할 품목을 선택하세요.</div>
+    el.innerHTML = custNotice + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">가용재고는 <b>${teamLabel()} 정상창고</b> 재고만 반영합니다 (다른 팀 전용 창고 재고는 제외). 예상 분기수요는 거래처별 평균 발주수량·발주주기 기반입니다. 행을 클릭하면 근거를 볼 수 있습니다. 체크박스로 발주할 품목을 선택하세요.</div>
     <div style="margin-bottom:8px;">
       <button class="btn ghost" type="button" data-action="forecast-select-all">전체 선택 (${fmt(list.length)}개)</button>
       <button class="btn ghost" type="button" data-action="forecast-select-none" style="margin-left:6px;">선택 해제</button>
@@ -2150,7 +2173,7 @@ function pickRecommendedLot(pn){
 function autoSelectRecommendedFor(pn, name, barcode, vendor){
   let addedWarehouse = false, addedLot = false;
 
-  // 창고: 사용 가능한(B2B1팀/EMP) 창고 중 가용재고가 가장 많은 곳을 추천
+  // 창고: 사용 가능한(선택한 팀/EMP) 창고 중 가용재고가 가장 많은 곳을 추천
   const invInfo = state.invByProduct.get(pn);
   if(invInfo && invInfo.rows.length>0){
     const usableRows = invInfo.rows.filter(r=>isUsableWarehouse(r.창고) && r.가용재고>0);
@@ -2716,6 +2739,24 @@ document.getElementById('nav').addEventListener('click', e=>{
   document.getElementById('view-'+btn.dataset.view).classList.add('active');
 });
 
+function renderTeamToggle(){
+  const el = document.getElementById('teamToggle');
+  el.innerHTML = ['전체','B2B1팀','B2B2팀'].map(t=>{
+    const active = ui.team===t;
+    return `<button type="button" class="brand-chip" data-team="${t}" style="${active?'background:var(--ink);border-color:var(--ink);color:#fff;':''}">${t}</button>`;
+  }).join('') + '<span style="width:1px;background:var(--line);margin:0 4px;"></span>';
+}
+document.getElementById('teamToggle').addEventListener('click', e=>{
+  const btn = e.target.closest('.brand-chip'); if(!btn) return;
+  ui.team = btn.dataset.team;
+  try{ localStorage.setItem('inv_team', ui.team); }catch(_e){}
+  ui.forecastPage = 50; ui.customerPage = 50; ui.forecastCustomer = '';
+  state.sales = salesForTeam();
+  if(state.loaded){ computeDerived(); }
+  renderTeamToggle();
+  renderAll();
+});
+renderTeamToggle();
 function renderBrandToggle(){
   const el = document.getElementById('brandToggle');
   const brands = ['성분에디터','밀크터치','마미케어'];
@@ -3202,7 +3243,8 @@ function applyUploadedData(mode){
   const byKey = {};
   unresolvedFiles.forEach(f=>{ if(f.key && f.rows) byKey[f.key] = f.rows; });
   // 필수 시트라도, 이번에 안 올라왔지만 예전에 이미 로드된 데이터가 있으면 그걸 그대로 재사용 (진짜 부족한 경우만 에러)
-  const stillMissing = SHEET_SIGNATURES.filter(s=>s.required && !byKey[s.key] && (!state[s.key] || state[s.key].length===0)).map(s=>s.label);
+  const hasSalesAny = Object.keys(state.salesByTeam||{}).some(k=>(state.salesByTeam[k]||[]).length>0);
+  const stillMissing = SHEET_SIGNATURES.filter(s=>s.required && !byKey[s.key] && (s.key==='sales' ? !hasSalesAny : (!state[s.key] || state[s.key].length===0))).map(s=>s.label);
   if(stillMissing.length>0){
     state.error = `다음 시트 데이터가 없습니다: ${stillMissing.join(', ')}. 파일을 추가로 올리거나 드롭다운에서 시트 종류를 선택해주세요.`;
     renderBanner();
@@ -3211,7 +3253,16 @@ function applyUploadedData(mode){
   try{
     if(byKey.inventory) state.inventory = parseInventory(byKey.inventory);
     if(byKey.schedule){ state.schedule = parseSchedule(byKey.schedule); state.scheduleMonthLabels = state.schedule.monthLabels || ['8월','9월','10월']; }
-    if(byKey.sales) state.sales = parseSales(byKey.sales);
+    const salesSrc = unresolvedFiles.filter(f=>f.key==='sales' && f.rows);
+    if(salesSrc.length){
+      // 파일 이름의 팀(B2B1팀/B2B2팀) → 없으면 '부서' 열 → 없으면 B2B1팀. 이름에 팀이 적힌 파일이 우선
+      const tagged = salesSrc.map(f=>{ const nm = teamFromName(f.fileName); return {team: nm || teamFromRows(f.rows) || 'B2B1팀', explicit: !!nm, rows: f.rows}; });
+      tagged.sort((a,b)=>(a.explicit?1:0)-(b.explicit?1:0));
+      const fresh = {};
+      tagged.forEach(t=>{ fresh[t.team] = parseSales(t.rows); });
+      state.salesByTeam = Object.assign({}, state.salesByTeam, fresh);
+    }
+    state.sales = salesForTeam();
     if(byKey.expiry) state.expiry = parseExpiry(byKey.expiry);
     if(byKey.productMaster) state.productMaster = parseProductMaster(byKey.productMaster);
     computeDerived();
