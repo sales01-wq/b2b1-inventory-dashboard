@@ -10,6 +10,8 @@ module.exports = async (req, res) => {
     switch (q.action) {
       case 'meta':
         return res.status(200).json(await callGas({ action: 'meta' }));
+      case 'ensure':
+        return res.status(200).json(await callGas({ action: 'ensure' }));
       case 'progress':
         return res.status(200).json(await callGas({ action: 'progress' }));
       case 'rows': {

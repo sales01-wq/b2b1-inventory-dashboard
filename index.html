@@ -3417,6 +3417,7 @@ async function onGoogleCredential(resp){
   if(!token) return;
   shared.token = token;
   setGate('확인 중입니다...');
+  const firstLoad = (!shared.user && !state.loaded) ? loadSharedData() : null; // 로그인 확인과 동시에 데이터 받기 시작
   try{
     const r = await fetch('/api/me', {headers:{Authorization:'Bearer '+token}});
     const j = await r.json().catch(()=>({}));
@@ -3432,7 +3433,7 @@ async function onGoogleCredential(resp){
     shared.user = j;
     document.documentElement.classList.remove('gate');
     renderUserChip();
-    if(firstTime || !state.loaded) loadSharedData();
+    if(!firstLoad && (firstTime || !state.loaded)) loadSharedData();
   }catch(e){
     shared.token = null;
     showGate('로그인 확인 중 오류가 발생했습니다: ' + e.message, true);
@@ -3469,71 +3470,108 @@ async function fetchSnapshot(){
   return await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).json();
 }
 function verOf(meta){ return (meta && meta.snapshot && meta.snapshot.at) || (meta && meta.lastUpdate && meta.lastUpdate.at) || 0; }
-async function loadSharedData(){
+function parseBundleMeta(r){ try{ return JSON.parse(decodeURIComponent(r.headers.get('X-Meta')||'')); }catch(_e){ return {}; } }
+/* 서버에 저장본 요청 (구글 서버 호출 1번). have = 이 컴퓨터가 가진 저장본 버전, 같으면 본문 없이 204로 답함 */
+async function fetchBundle(have, fresh){
+  const r = await fetch('/api/snapshot?have='+encodeURIComponent(have||'')+(fresh?'&fresh=1':''), {headers:{Authorization:'Bearer '+shared.token}});
+  if(r.status===401){ onAuthExpired(); throw new Error('로그인이 만료되었습니다.'); }
+  if(r.status===204) return {unchanged:true, meta:parseBundleMeta(r)};
+  if(r.status===409) return {none:true};
+  if(!r.ok) throw new Error('저장본 다운로드 실패 ('+r.status+')');
+  if(typeof DecompressionStream === 'undefined') throw new Error('이 브라우저는 저장본 압축 해제를 지원하지 않습니다.');
+  const meta = parseBundleMeta(r);
+  const data = await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).json();
+  return {data, meta};
+}
+function applySharedData(data, meta, t0){
+  shared.meta = meta || {};
+  shared.pending = null;
+  unresolvedFiles.length = 0;
+  Object.keys(data).forEach(name=>{
+    const rows = data[name];
+    unresolvedFiles.push({fileName:`구글시트 — ${name}`, rows, key:detectSheetType(rows)});
+  });
+  const t1 = performance.now();
+  applyUploadedData('googlesheet');
+  const info = document.getElementById('sharedInfoText');
+  if(info){
+    const lu = shared.meta.lastUpdate;
+    info.textContent = (lu ? `마지막 업데이트: ${new Date(lu.at).toLocaleString('ko-KR')} · ${lu.by}` : '아직 업데이트 기록이 없습니다.')
+      + (t0 ? ` · 화면 준비 ${((performance.now()-t0)/1000).toFixed(1)}초 (계산 ${((performance.now()-t1)/1000).toFixed(1)}초)` : '');
+  }
+}
+/* opts.noCache: 컴퓨터에 남은 사본을 쓰지 않고 새로 받아서 바로 적용 / opts.fresh: 서버 임시저장도 건너뛰고 최신 확인 */
+async function loadSharedData(opts){
+  opts = opts || {};
   if(shared.loading) return;
   shared.loading = true;
+  const t0 = performance.now();
   try{
-    setSharedBar('info','공유 데이터를 불러오는 중입니다...');
-    const meta = await sApi('/api/data?action=meta');
-    let data = null, snapErr = '';
-    const snap = meta.snapshot;
-    if(snap && snap.size && snap.size < 4000000){
-      const cached = await idbGet('snapshot');
-      if(cached && cached.at === snap.at && cached.data){
-        data = cached.data;
+    const cached = opts.noCache ? null : await idbGet('snapshot');
+    const haveCache = !!(cached && cached.data && cached.meta && cached.meta.snapshot);
+    if(haveCache){
+      applySharedData(cached.data, cached.meta, t0);   // 남아있던 사본을 먼저 바로 보여줌
+      setSharedBar('', '');
+    } else {
+      setSharedBar('info','최신 공유 데이터를 받는 중입니다...');
+    }
+    let res = null, snapErr = '';
+    try{
+      res = await fetchBundle(haveCache ? cached.meta.snapshot.at : '', opts.fresh);
+    }catch(e){ if(/만료/.test(e.message)) throw e; snapErr = e.message; console.warn('저장본 받기 실패', e); }
+
+    if(res && res.unchanged){ shared.meta = res.meta || shared.meta; return; }
+    if(res && res.data){
+      idbSet('snapshot', {data:res.data, meta:res.meta});
+      if(haveCache){
+        shared.pending = res;
+        setSharedBar('info', `🔔 새 데이터가 있습니다 <button class="btn" type="button" id="applyPendingBtn" style="margin-left:10px;">지금 적용</button>`);
+        document.getElementById('applyPendingBtn').addEventListener('click', ()=>{
+          if(shared.pending){ applySharedData(shared.pending.data, shared.pending.meta); setSharedBar('', ''); }
+        });
       } else {
-        try{
-          setSharedBar('info','최신 공유 데이터를 받는 중입니다...');
-          data = await fetchSnapshot();
-          idbSet('snapshot', {at:snap.at, data});
-        }catch(e){ if(/만료/.test(e.message)) throw e; data = null; snapErr = e.message; console.warn('저장본 받기 실패', e); }
+        applySharedData(res.data, res.meta, t0);
+        setSharedBar('', '');
       }
-    } else if(!snap){ snapErr = '서버에 저장본이 아직 없음'; }
-    else { snapErr = '저장본이 너무 큼 ('+snap.size+' bytes)'; }
-    if(!data){
-      // 저장본이 없거나 받지 못했을 때: 시트를 나눠서 직접 읽는 방식으로 대신 불러옴
-      data = {};
-      const CH = 1000, jobs = [], store = {};
-      (meta.sheets||[]).forEach(sh=>{
-        if(!sh.rows) return;
-        const n = Math.ceil(sh.rows/CH);
-        store[sh.name] = new Array(n);
-        for(let i=0;i<n;i++) jobs.push({name:sh.name, from:i*CH, idx:i});
-      });
-      if(jobs.length===0) throw new Error('공유 시트에 데이터가 없습니다. 업로드 폴더에 엑셀을 올려 업데이트해 주세요.');
-      let done = 0, ptr = 0;
-      async function worker(){
-        while(ptr < jobs.length){
-          const j = jobs[ptr++];
-          const url = `/api/data?action=rows&sheet=${encodeURIComponent(j.name)}&from=${j.from}&count=${CH}`;
-          let r;
-          try{ r = await sApi(url); }catch(e){ if(/만료/.test(e.message)) throw e; r = await sApi(url); }
-          store[j.name][j.idx] = r.rows || [];
-          done++;
-          setSharedBar('info', `공유 데이터 불러오는 중... ${done}/${jobs.length}` + (snapErr ? `<div style="font-size:11.5px;margin-top:4px;opacity:.8;">저장본 사용 불가 사유: ${snapErr}</div>` : ''));
-        }
-      }
-      await Promise.all([worker(),worker(),worker(),worker()]);
-      Object.keys(store).forEach(name=>{
-        const rows = [];
-        store[name].forEach(chunk=>{ for(let i=0;i<chunk.length;i++) rows.push(chunk[i]); });
-        data[name] = rows;
-      });
+      return;
     }
-    if(!snap){ sApi('/api/data?action=ensure').catch(()=>{}); } // 저장본이 아직 없으면 서버가 자동으로 만들어 둠 (다음 접속부터 빠름)
-    unresolvedFiles.length = 0;
-    Object.keys(data).forEach(name=>{
-      const rows = data[name];
-      unresolvedFiles.push({fileName:`구글시트 — ${name}`, rows, key:detectSheetType(rows)});
+    if(haveCache){
+      if(snapErr) setSharedBar('info', `저장된 데이터를 보여드리는 중입니다 (최신 확인 실패: ${snapErr})`);
+      return;
+    }
+    if(res && res.none){ snapErr = '서버에 저장본이 아직 없음'; sApi('/api/data?action=ensure').catch(()=>{}); }
+
+    // 저장본이 없거나 받지 못했을 때: 시트를 나눠서 직접 읽는 방식으로 대신 불러옴
+    const meta = await sApi('/api/data?action=meta');
+    const data = {};
+    const CH = 1000, jobs = [], store = {};
+    (meta.sheets||[]).forEach(sh=>{
+      if(!sh.rows) return;
+      const n = Math.ceil(sh.rows/CH);
+      store[sh.name] = new Array(n);
+      for(let i=0;i<n;i++) jobs.push({name:sh.name, from:i*CH, idx:i});
     });
-    shared.meta = meta;
-    applyUploadedData('googlesheet');
-    setSharedBar('', '');
-    const info = document.getElementById('sharedInfoText');
-    if(info){
-      const lu = meta.lastUpdate;
-      info.textContent = lu ? `마지막 업데이트: ${new Date(lu.at).toLocaleString('ko-KR')} · ${lu.by}` : '아직 업데이트 기록이 없습니다.';
+    if(jobs.length===0) throw new Error('공유 시트에 데이터가 없습니다. 업로드 폴더에 엑셀을 올려 업데이트해 주세요.');
+    let done = 0, ptr = 0;
+    async function worker(){
+      while(ptr < jobs.length){
+        const j = jobs[ptr++];
+        const url = `/api/data?action=rows&sheet=${encodeURIComponent(j.name)}&from=${j.from}&count=${CH}`;
+        let r;
+        try{ r = await sApi(url); }catch(e){ if(/만료/.test(e.message)) throw e; r = await sApi(url); }
+        store[j.name][j.idx] = r.rows || [];
+        done++;
+        setSharedBar('info', `공유 데이터 불러오는 중... ${done}/${jobs.length}` + (snapErr ? `<div style="font-size:11.5px;margin-top:4px;opacity:.8;">저장본 사용 불가 사유: ${snapErr}</div>` : ''));
+      }
     }
+    await Promise.all([worker(),worker(),worker(),worker()]);
+    Object.keys(store).forEach(name=>{
+      const rows = [];
+      store[name].forEach(chunk=>{ for(let i=0;i<chunk.length;i++) rows.push(chunk[i]); });
+      data[name] = rows;
+    });
+    applySharedData(data, meta, t0);
+    setSharedBar('', '');
   }catch(e){
     if(!/만료/.test(e.message)) setSharedBar('err', '데이터를 불러오지 못했습니다: ' + e.message);
   }finally{
@@ -3542,7 +3580,7 @@ async function loadSharedData(){
 }
 async function sharedRefresh(){
   const u = shared.user; if(!u || shared.updating) return;
-  if(!u.isUpdater){ return loadSharedData(); }
+  if(!u.isUpdater){ return loadSharedData({noCache:true, fresh:true}); }
   shared.updating = true;
   const btn = document.getElementById('refreshSheetBtn');
   btn.disabled = true; btn.textContent = '업데이트 중...';
@@ -3560,7 +3598,7 @@ async function sharedRefresh(){
       else if(p.status==='error'){ throw new Error('서버에서 파일 처리 중 오류가 발생했습니다. Apps Script 실행 로그를 확인해 주세요.'); }
     }
     shared.loading = false;
-    await loadSharedData();
+    await loadSharedData({noCache:true, fresh:true});
   }catch(e){
     if(!/만료/.test(e.message)) setSharedBar('err', '업데이트 실패: ' + e.message);
   }finally{
@@ -3576,7 +3614,7 @@ async function checkForNewSharedData(){
     if(a && a !== b){
       const lu = meta.lastUpdate || {at:a, by:''};
       setSharedBar('info', `🔔 새 데이터가 있습니다 (${new Date(lu.at).toLocaleString('ko-KR')} · ${lu.by}) <button class="btn" type="button" id="loadNewBtn" style="margin-left:10px;">지금 불러오기</button>`);
-      document.getElementById('loadNewBtn').addEventListener('click', ()=>loadSharedData());
+      document.getElementById('loadNewBtn').addEventListener('click', ()=>loadSharedData({noCache:true, fresh:true}));
     }
   }catch(_e){}
 }
