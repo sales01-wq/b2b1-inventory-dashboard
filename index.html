@@ -236,6 +236,55 @@
   .user-chip button{all:unset;cursor:pointer;font-size:11.5px;text-decoration:underline;color:var(--muted);}
   #sharedBar:empty{display:none;}
   #sharedBar{margin:14px 0 0;}
+
+  /* ===== 2026 리디자인: 정돈된 업무용 톤 ===== */
+  :root{--bg:#F4F6F9;--surface:#fff;--surface-alt:#F0F3F7;--ink:#17202B;--muted:#667385;--line:#E2E7EE;--line-strong:#E2E7EE;
+    --danger:#C93A31;--danger-bg:#FDECEB;--caution:#B7791F;--caution-bg:#FFF3D6;--safe:#2E7D55;--safe-bg:#E5F3EB;--none:#8793A3;--none-bg:#EDF0F4;
+    --accent-soft:#FBEAEE;--radius:12px;--shadow:0 1px 2px rgba(16,24,40,.05);}
+  body{background:var(--bg);font-size:13.5px;line-height:1.5;}
+  #app{max-width:1520px;padding:0 32px;}
+  .page-header{padding:22px 0 0 0;}
+  .eyebrow{font-size:10.5px;letter-spacing:.12em;margin-bottom:4px;}
+  .page-header h1{font-size:23px;font-weight:800;margin:0 0 4px 0;}
+  .meta-line{font-size:12px;margin-bottom:14px;}
+  .header-actions{margin-bottom:14px;}
+  .tab-nav{gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px;}
+  .tab-nav button{padding:10px 16px;font-size:13.5px;font-weight:600;border-radius:8px 8px 0 0;margin-bottom:-1px;}
+  .tab-nav button:hover{background:rgba(0,0,0,.03);}
+  .tab-nav button.active{color:var(--accent);border-bottom-width:2px;font-weight:700;}
+  .panel{border:1px solid var(--line);padding:20px 22px;box-shadow:var(--shadow);}
+  .panel::before{display:none;}
+  .panel h3{font-size:16px;font-weight:800;margin-bottom:14px;}
+  .signal-wrap,.card{border:1px solid var(--line);box-shadow:var(--shadow);}
+  .card{padding:16px 18px;}
+  .card:hover{border-color:var(--line);box-shadow:var(--shadow);}
+  .card .k{text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--muted);opacity:1;font-weight:600;}
+  .card .v{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums;}
+  .btn{border-radius:8px;box-shadow:none;padding:8px 14px;}
+  .btn.ghost{border:1px solid var(--line);}
+  .filters select,.filters input,.field input{border:1px solid #D5DBE4;border-radius:8px;padding:8px 11px;font-size:13px;}
+  .brand-chip{padding:6px 12px;border-width:1px;font-size:12.5px;font-weight:600;}
+  /* 표 */
+  table{font-size:13px;font-variant-numeric:tabular-nums;}
+  thead th{background:var(--surface-alt);color:var(--muted);font-size:12px;font-weight:700;text-transform:none;letter-spacing:0;padding:10px 12px;border-bottom:1px solid var(--line);}
+  tbody td{padding:11px 12px;border-bottom:1px solid #EDF0F4;}
+  tbody tr:nth-child(even){background:transparent;}
+  tbody tr:hover{background:#F7F9FC;}
+  tr.forecast-row:hover{background:#F7F9FC;}
+  td.num,th.num{font-family:inherit;font-variant-numeric:tabular-nums;text-align:right;}
+  code.pn{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface-alt);}
+  .badge{padding:3px 10px;font-size:12px;font-weight:700;border-radius:6px;}
+  .badge.danger{background:var(--danger-bg);color:var(--danger);border-color:transparent;}
+  .badge.urgent{background:var(--danger);color:#fff;}
+  .badge.caution{background:var(--caution-bg);color:var(--caution);border-color:transparent;}
+  .badge.safe{background:var(--safe-bg);color:var(--safe);border-color:transparent;}
+  .badge.none{background:var(--none-bg);color:var(--none);border-color:transparent;}
+  .empty{background:var(--surface-alt);border:1px dashed #D5DBE4;}
+  /* 스크롤 영역: 잡아서 끌어도 이동 + 헤더 고정 */
+  #forecastTable div[style*="overflow-x:auto"],#customerTable div[style*="overflow-x:auto"],#skuStatusTableWrap div[style*="overflow-x:auto"]{overflow:auto!important;max-height:68vh;border:1px solid var(--line);border-radius:10px;background:var(--surface);}
+  #forecastTable div[style*="overflow-x:auto"] thead th,#customerTable div[style*="overflow-x:auto"] thead th,#skuStatusTableWrap div[style*="overflow-x:auto"] thead th{position:sticky;top:0;z-index:3;}
+  div[style*="overflow-x:auto"],.tab-nav{cursor:grab;}
+  .grabbing,.grabbing *{cursor:grabbing!important;user-select:none!important;}
 </style>
 </head>
 <body>
@@ -880,6 +929,26 @@ function orderEntry(cust, datesIn, totalQty){
   } else q = totalQty * (QUARTER_DAYS/365); // 주문 1건뿐: 과대추정 방지
   return {거래처:cust, 주문횟수:n, 총수량:totalQty, 평균발주수량:avgQtyPerOrder, 평균발주주기:avgCycleDays, 최근발주일:dates[n-1], 분기환산수량:q};
 }
+/* 주기 기반 수요: 거래처는 한 번에 많이 가져가고 한동안 안 가져갈 수 있어서,
+   '마지막 주문일 + 평균 주문주기'로 다음 주문 시점을 예측하고, 앞으로 W일 안에 들어올 주문량만 수요로 잡는다.
+   - 주문이 1건뿐이라 주기를 모르면: 12개월 판매량을 W일로 환산 (기존 방식)
+   - 예정일이 지났어도 (주기·45일 중 큰 값) 이내면 '곧 주문 올 시점'으로 보고, 그보다 오래 지났으면 거래 중단으로 보고 0 */
+const DAY_MS = 86400000;
+function nextOrderOf(ent){
+  if(!(ent.평균발주주기>0)) return null;
+  const now = Date.now(), nxt = ent.최근발주일.getTime() + ent.평균발주주기*DAY_MS;
+  const overdue = (now - nxt)/DAY_MS;
+  if(overdue > Math.max(ent.평균발주주기, 45)) return null; // 거래 중단으로 판단
+  return {date:new Date(Math.max(nxt, now)), qty:ent.평균발주수량, overdue:overdue>0, lateDays:Math.max(0, Math.round(overdue))};
+}
+function windowDemand(ent, W){
+  if(!(ent.평균발주주기>0)) return ent.총수량 * W / 365;
+  const n = nextOrderOf(ent); if(!n) return 0;
+  const end = Date.now() + W*DAY_MS, step = ent.평균발주주기*DAY_MS;
+  let t = n.date.getTime(), cnt = 0;
+  while(t <= end && cnt < 400){ cnt++; t += step; }
+  return cnt * ent.평균발주수량;
+}
 function computeOrderPattern(pn){
   const cutoff = new Date(); cutoff.setFullYear(cutoff.getFullYear()-1); // 최근 12개월 기준
   const rows = (state.salesRowsByProduct.get(pn)||[]).filter(r=>r.실적일자>=cutoff);
@@ -897,7 +966,13 @@ function computeOrderPattern(pn){
     totalQuarterly += ent.분기환산수량;
     result.set(cust, ent);
   });
-  return {byCustomer:result, totalQuarterly};
+  const R = getRules();
+  let horizon = 0, lead = 0, next = null;
+  result.forEach(e=>{
+    horizon += windowDemand(e, QUARTER_DAYS); lead += windowDemand(e, R.leadDays);
+    const n = nextOrderOf(e); if(n && (!next || n.date < next.date)) next = {...n, cust:e.거래처};
+  });
+  return {byCustomer:result, totalQuarterly, horizon, lead, next};
 }
 
 /* 같은 회사의 다른 표기(한글/영문 법인명)를 하나의 거래처로 합침 */
@@ -994,11 +1069,19 @@ function computeDerived(){
     const pattern = computeOrderPattern(code);
     const avgQuarterly = pattern.totalQuarterly;
     const incoming = sched ? (sched.aug_q + sched.sep_q + sched.oct_q) : 0;
-    const orderQty = Math.max(0, Math.round(avgQuarterly - available - incoming));
+    const orderQty = Math.max(0, Math.round(pattern.horizon - available - incoming));
     const orderCount = Array.from(pattern.byCustomer.values()).reduce((s,e)=>s+e.주문횟수,0);
     const lastSale = Array.from(pattern.byCustomer.values()).reduce((m,e)=>(!m||e.최근발주일>m)?e.최근발주일:m, null);
     const g = gradeFor({pn:code, available, incoming, avgQuarterly, orderCount, lastSale});
-    forecast.push({품번:code, 품명, 바코드, brand, available, sold6, avgQuarterly, incoming, orderQty, ratio:g.ratio, grade:g.grade,
+    let grade = g.grade, bumped = false;
+    if(!g.hero && ['안전','안전(입고예정)','관찰','주의'].includes(grade)){
+      const R = getRules(), have = available + incoming, cut = new Date(); cut.setMonth(cut.getMonth()-R.dormantMonths);
+      if(orderCount >= R.minOrders && !(R.dormantMonths>0 && lastSale && lastSale<cut)){
+        if(pattern.lead > have){ grade='위험'; bumped=true; }          // 리드타임 안에 올 주문을 못 받음
+        else if(pattern.horizon > have && grade!=='주의'){ grade='주의'; bumped=true; } // 3개월 안 주문을 못 받음
+      }
+    }
+    forecast.push({품번:code, 품명, 바코드, brand, available, sold6, avgQuarterly, incoming, orderQty, horizon:pattern.horizon, leadDemand:pattern.lead, nextOrder:pattern.next, bumped, ratio:g.ratio, grade,
       coverNow:g.coverNow, coverAll:g.coverAll, orderGap:g.orderGap, orderCount, lastSale, hero:!!g.hero, heroMin:g.heroMin||0, heroWarn:g.heroWarn||0, sched, orderPattern:pattern.byCustomer});
   });
   forecast.sort((a,b)=>{
@@ -1178,17 +1261,18 @@ function forecastDetailRow(x){
     if(x.sched.oct_q>0) incomingRows.push({m:ml[2], d:x.sched.oct_d, q:x.sched.oct_q});
   }
 
-  return `<tr class="detail-row"><td colspan="15" style="background:var(--surface-alt);padding:16px 18px;">
+  return `<tr class="detail-row"><td colspan="16" style="background:var(--surface-alt);padding:16px 18px;">
     <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:20px;">
       <div>
-        <div class="section-title" style="margin-bottom:8px;">거래처별 발주 패턴 (최근 12개월, 예상 분기수요의 근거)</div>
+        <div class="section-title" style="margin-bottom:8px;">거래처별 발주 패턴 (최근 12개월 · 주기로 다음 주문 예측)</div>
         ${pattern.length===0 ? `<div class="empty" style="padding:10px 0;">최근 12개월간 판매 이력이 없습니다.</div>` : `
-        <table style="margin-bottom:10px;"><thead><tr><th>거래처</th><th class="num">주문횟수</th><th class="num">평균 발주수량</th><th class="num">평균 발주주기</th><th class="num">분기 환산</th></tr></thead>
+        <table style="margin-bottom:10px;"><thead><tr><th>거래처</th><th class="num">주문횟수</th><th class="num">평균 발주수량</th><th class="num">평균 발주주기</th><th class="num">다음 예상 주문</th><th class="num">분기 환산</th></tr></thead>
         <tbody>${pattern.map(p=>{
           const isFiltered = ui.forecastCustomer && p.거래처===ui.forecastCustomer;
           return `<tr style="${isFiltered?'background:var(--accent-soft);':''}">
           <td>${p.거래처}${isFiltered?' <span class="badge safe" style="margin-left:4px;">선택됨</span>':''}</td><td class="num">${fmt(p.주문횟수)}</td><td class="num">${fmt(Math.round(p.평균발주수량))}</td>
           <td class="num">${p.평균발주주기? Math.round(p.평균발주주기)+'일' : '-'}</td>
+          <td class="num">${(()=>{const n=nextOrderOf(p); return n ? (n.overdue?`<span style="color:var(--danger)">도래(${n.lateDays}일 경과)</span>`:`${n.date.getMonth()+1}/${n.date.getDate()}`) : '<span style="color:var(--muted)">—</span>';})()}</td>
           <td class="num" style="font-weight:700;">${fmt(Math.round(p.분기환산수량))}</td>
         </tr>`;
         }).join('')}</tbody></table>
@@ -1258,8 +1342,8 @@ function renderForecastSelectPanel(){
 function downloadForecastListCsv(){
   const rows = ui._forecastCsvRows || []; if(!rows.length) return;
   const esc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
-  const lines=[['구분','품번','품명','월평균','가용재고','입고예정','3개월 후 예상재고','추가발주 필요','상태'].join(',')];
-  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,Math.round(x.avgQuarterly/3),x.available,x.incoming,Math.round(x.available+x.incoming-x.avgQuarterly),x.orderQty,groupOf(x.grade)].map(esc).join(',')));
+  const lines=[['구분','품번','품명','월평균','가용재고','입고예정','3개월 후 예상재고','다음 예상 주문일','추가발주 필요','상태'].join(',')];
+  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,Math.round(x.avgQuarterly/3),x.available,x.incoming,Math.round(x.available+x.incoming-x.horizon),x.nextOrder?x.nextOrder.date.toISOString().slice(0,10):'',x.orderQty,groupOf(x.grade)].map(esc).join(',')));
   const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');
   a.href=url; a.download=`발주현황_${ui.forecastCustomer||'전체'}_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
@@ -1301,8 +1385,8 @@ function renderForecast(){
     list = list.filter(x=> x.orderPattern && x.orderPattern.has(ui.forecastCustomer)).map(x=>{
       const cd = x.orderPattern.get(ui.forecastCustomer);
       const a = custAdjust(x, cd), avgQuarterly = cd.분기환산수량;
-      const orderQty = Math.max(0, Math.round(avgQuarterly - x.available - x.incoming));
-      return {...x, avgQuarterly, ratio:a.ratio, orderQty, grade:a.grade, coverNow:a.coverNow, coverAll:a.coverAll, orderGap:a.orderGap, orderCount:cd.주문횟수, _customerScoped:true, _cd:cd};
+      const orderQty = a.short;
+      return {...x, avgQuarterly, horizon:a.horizon, leadDemand:a.lead, nextOrder:a.next ? {...a.next, cust:ui.forecastCustomer} : null, bumped:a.bumped, ratio:a.ratio, orderQty, grade:a.grade, coverNow:a.coverNow, coverAll:a.coverAll, orderGap:a.orderGap, orderCount:cd.주문횟수, _customerScoped:true, _cd:cd};
     });
   }
 
@@ -1361,12 +1445,13 @@ function renderForecast(){
   if(list.length===0){
     el.innerHTML = bar + chips + `<div class="empty">조건에 맞는 품목이 없습니다.</div>`;
   } else {
-    el.innerHTML = bar + chips + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">3개월 후 예상재고 = 가용재고 + 입고예정 − 3개월 예상 판매(월평균×3). 마이너스면 그만큼 추가발주가 필요합니다. 가용재고는 <b>${teamLabel()}</b> 정상창고 기준이고, 행을 누르면 거래처별 근거가 열립니다.</div>
+    el.innerHTML = bar + chips + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">3개월 후 예상재고 = 가용재고 + 입고예정 − 3개월 안에 올 주문량. 주문량은 <b>마지막 주문일 + 평균 주문주기</b>로 다음 주문 시점을 계산해 반영합니다(거래처가 한 번에 많이 가져가고 쉬는 패턴 반영). 가용재고는 <b>${teamLabel()}</b> 정상창고 기준 · 행을 누르면 거래처별 근거가 열립니다.</div>
     <div style="overflow-x:auto;"><table><thead><tr>
-      <th>구분</th><th>품번</th><th>품명</th>${months.map(mm=>`<th class="num" style="color:var(--muted);font-weight:500;">${mm.m+1}월</th>`).join('')}<th class="num">월평균</th><th class="num">가용재고</th><th class="num">입고예정</th><th class="num">3개월 후<br>예상재고</th><th class="num">추가발주<br>필요</th><th>상태</th>
+      <th>구분</th><th>품번</th><th>품명</th>${months.map(mm=>`<th class="num" style="color:var(--muted);font-weight:500;">${mm.m+1}월</th>`).join('')}<th class="num">월평균</th><th class="num">가용재고</th><th class="num">입고예정</th><th class="num">3개월 후<br>예상재고</th><th title="마지막 주문일 + 평균 주문주기로 예측">다음 예상<br>주문 · 수량</th><th class="num">추가발주<br>필요</th><th>상태</th>
     </tr></thead><tbody>${shown.map(x=>{
       const expanded = ui.forecastExpanded.has(x.품번);
-      const mo = monthly(x), proj = Math.round(x.available + x.incoming - x.avgQuarterly);
+      const mo = monthly(x), proj = Math.round(x.available + x.incoming - x.horizon);
+      const no = x.nextOrder; const noTxt = no ? `<span style="color:${no.overdue?'var(--danger)':'inherit'}">${no.overdue?'도래':(no.date.getMonth()+1)+'/'+no.date.getDate()}</span> <span style="color:var(--muted)">· ${fmt(no.qty)}</span>` : '<span style="color:var(--muted)">—</span>';
       const attr = `style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}"`;
       const row = `<tr class="forecast-row">
         <td ${attr}>${brandBadge(x.brand)}</td>
@@ -1376,6 +1461,7 @@ function renderForecast(){
         <td class="num">${fmt(x.avgQuarterly/3)}</td>
         <td class="num">${fmt(x.available)}</td><td class="num">${x.incoming?fmt(x.incoming):'-'}</td>
         <td class="num" style="font-weight:700;color:${proj<0?'var(--danger)':'inherit'}">${fmt(proj)}</td>
+        <td style="font-size:12px;white-space:nowrap;" title="마지막 주문일 + 평균 주문주기로 예측한 다음 주문 시점과 평균 주문량">${noTxt}</td>
         <td class="num" style="font-weight:${x.orderQty>0?700:400};color:${x.orderQty>0?'var(--danger)':'var(--muted)'}">${x.orderQty>0?fmt(x.orderQty):'-'}</td>
         <td>${gradeBadge(x.grade)}${x.hero?'':''}</td>
       </tr>`;
@@ -1731,17 +1817,16 @@ const CUST_GROUPS = []; // 자동 분류만 사용: 실제 거래처명 그대�
 function custAdjust(x, cd){
   const custQ = cd.분기환산수량;
   const g = gradeFor({pn:'', available:x.available, incoming:x.incoming, avgQuarterly:custQ, orderCount:cd.주문횟수, lastSale:cd.최근발주일});
-  const R = getRules(), daily = custQ/QUARTER_DAYS;
-  const rop = Math.round(Math.max(daily*R.leadDays, cd.평균발주수량) + daily*R.urgentDays); // 자동 발주점
-  const have = x.available + x.incoming;
+  const R = getRules(), have = x.available + x.incoming;
+  const horizon = windowDemand(cd, QUARTER_DAYS), lead = windowDemand(cd, R.leadDays);
   let grade = g.grade, bumped = false;
   const cut = new Date(); cut.setMonth(cut.getMonth()-R.dormantMonths);
   const dormant = R.dormantMonths>0 && cd.최근발주일 < cut;
   if(cd.주문횟수 >= R.minOrders && !dormant && ['안전','안전(입고예정)','관찰','주의'].includes(grade)){
-    if(have < cd.평균발주수량 && grade!=='위험'){ grade='위험'; bumped=true; }
-    else if(have < rop && grade!=='주의'){ grade='주의'; bumped=true; }
+    if(lead > have){ grade='위험'; bumped=true; }
+    else if(horizon > have && grade!=='주의'){ grade='주의'; bumped=true; }
   }
-  return {grade, bumped, rop, short:Math.max(0, Math.round(custQ-have)), coverAll:g.coverAll, orderGap:g.orderGap, ratio:g.ratio, coverNow:g.coverNow};
+  return {grade, bumped, horizon, lead, short:Math.max(0, Math.round(horizon-have)), next:nextOrderOf(cd), coverAll:g.coverAll, orderGap:g.orderGap, ratio:g.ratio, coverNow:g.coverNow};
 }
 function buildCustShort(){
   // 거래처(및 그룹) -> 품목 목록 (그 수요 기준으로 등급 재계산, 히어로 수량기준은 제외하고 수요 기준으로만 판정)
@@ -1751,7 +1836,7 @@ function buildCustShort(){
     const a = custAdjust(x, cd);
     if(!by.has(key)) by.set(key, []);
     by.get(key).push({품번:x.품번, 품명:x.품명, brand:x.brand, hero:x.hero, cd, custQ:cd.분기환산수량, available:x.available, incoming:x.incoming,
-      short:a.short, shortTotal:x.orderQty, rop:a.rop, bumped:a.bumped, grade:a.grade, coverAll:a.coverAll, orderGap:a.orderGap});
+      short:a.short, shortTotal:x.orderQty, bumped:a.bumped, horizon:a.horizon, grade:a.grade, coverAll:a.coverAll, orderGap:a.orderGap});
   };
   (state.forecast||[]).forEach(x=>{
     if(!brandPasses(x.brand) || !x.orderPattern) return;
@@ -2945,6 +3030,32 @@ function syncSubtoggle(){
 }
 document.addEventListener('click', ()=>setTimeout(syncSubtoggle,0));
 syncSubtoggle();
+
+
+/* 표/스크롤 영역을 마우스로 잡고 끌어서 이동 (스크롤바 없이도 가능) */
+(function(){
+  let st=null, suppress=false;
+  document.addEventListener('mousedown', e=>{
+    if(e.button!==0 || e.target.closest('input,button,a,select,textarea,label,.col-resize-handle,.msel-panel,[contenteditable]')) return;
+    let el=e.target;
+    while(el && el!==document.body && el!==document.documentElement){
+      if(el.classList && el.classList.contains('drag-scroll-x')) return; // 기존 전용 처리 사용
+      const cs=getComputedStyle(el);
+      const sx=/(auto|scroll)/.test(cs.overflowX) && el.scrollWidth>el.clientWidth+1;
+      const sy=/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight>el.clientHeight+1;
+      if(sx||sy){ st={el,x:e.clientX,y:e.clientY,l:el.scrollLeft,t:el.scrollTop,moved:false}; return; }
+      el=el.parentElement;
+    }
+  });
+  document.addEventListener('mousemove', e=>{
+    if(!st) return;
+    const dx=e.clientX-st.x, dy=e.clientY-st.y;
+    if(!st.moved){ if(Math.hypot(dx,dy)<6) return; st.moved=true; st.el.classList.add('grabbing'); const g=window.getSelection&&window.getSelection(); if(g) g.removeAllRanges(); }
+    st.el.scrollLeft=st.l-dx; st.el.scrollTop=st.t-dy; e.preventDefault();
+  });
+  document.addEventListener('mouseup', ()=>{ if(!st) return; if(st.moved){ suppress=true; setTimeout(()=>suppress=false,0); } st.el.classList.remove('grabbing'); st=null; });
+  document.addEventListener('click', e=>{ if(suppress){ e.stopPropagation(); e.preventDefault(); } }, true);
+})();
 
 function renderTeamToggle(){
   const el = document.getElementById('teamToggle');
