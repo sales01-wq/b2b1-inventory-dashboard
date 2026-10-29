@@ -1261,7 +1261,7 @@ function forecastDetailRow(x){
     if(x.sched.oct_q>0) incomingRows.push({m:ml[2], d:x.sched.oct_d, q:x.sched.oct_q});
   }
 
-  return `<tr class="detail-row"><td colspan="16" style="background:var(--surface-alt);padding:16px 18px;">
+  return `<tr class="detail-row"><td colspan="7" style="background:var(--surface-alt);padding:16px 18px;">
     <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:20px;">
       <div>
         <div class="section-title" style="margin-bottom:8px;">거래처별 발주 패턴 (최근 12개월 · 주기로 다음 주문 예측)</div>
@@ -1272,7 +1272,7 @@ function forecastDetailRow(x){
           return `<tr style="${isFiltered?'background:var(--accent-soft);':''}">
           <td>${p.거래처}${isFiltered?' <span class="badge safe" style="margin-left:4px;">선택됨</span>':''}</td><td class="num">${fmt(p.주문횟수)}</td><td class="num">${fmt(Math.round(p.평균발주수량))}</td>
           <td class="num">${p.평균발주주기? Math.round(p.평균발주주기)+'일' : '-'}</td>
-          <td class="num">${(()=>{const n=nextOrderOf(p); return n ? (n.overdue?`<span style="color:var(--danger)">도래(${n.lateDays}일 경과)</span>`:`${n.date.getMonth()+1}/${n.date.getDate()}`) : '<span style="color:var(--muted)">—</span>';})()}</td>
+          <td class="num">${(()=>{const n=nextOrderOf(p); return n ? (n.overdue?`<span style="color:var(--danger)">예정일 ${n.lateDays}일 지남</span>`:`${n.date.getMonth()+1}/${n.date.getDate()}`) : '<span style="color:var(--muted)">—</span>';})()}</td>
           <td class="num" style="font-weight:700;">${fmt(Math.round(p.분기환산수량))}</td>
         </tr>`;
         }).join('')}</tbody></table>
@@ -1342,8 +1342,8 @@ function renderForecastSelectPanel(){
 function downloadForecastListCsv(){
   const rows = ui._forecastCsvRows || []; if(!rows.length) return;
   const esc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
-  const lines=[['구분','품번','품명','월평균','가용재고','입고예정','3개월 후 예상재고','다음 예상 주문일','추가발주 필요','상태'].join(',')];
-  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,Math.round(x.avgQuarterly/3),x.available,x.incoming,Math.round(x.available+x.incoming-x.horizon),x.nextOrder?x.nextOrder.date.toISOString().slice(0,10):'',x.orderQty,groupOf(x.grade)].map(esc).join(',')));
+  const lines=[['구분','품번','품명','가용재고','입고예정','지금 발주할 수량','상태'].join(',')];
+  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,x.available,x.incoming,x.orderQty,groupOf(x.grade)].map(esc).join(',')));
   const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');
   a.href=url; a.download=`발주현황_${ui.forecastCustomer||'전체'}_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
@@ -1433,7 +1433,7 @@ function renderForecast(){
     });
     return arr;
   };
-  const sum = needItems>0 ? `<b style="font-size:15px;color:var(--danger);">추가발주 필요 ${fmt(needItems)}개 품목</b> <span style="color:var(--muted);">/ 총</span> <b style="font-size:15px;color:var(--danger);">${fmt(needQty)}개</b>` : `<b style="font-size:15px;color:var(--safe);">추가발주 필요 품목 없음</b>`;
+  const sum = needItems>0 ? `<b style="font-size:15px;color:var(--danger);">지금 발주 필요 ${fmt(needItems)}개 품목</b> <span style="color:var(--muted);">/ 총</span> <b style="font-size:15px;color:var(--danger);">${fmt(needQty)}개</b>` : `<b style="font-size:15px;color:var(--safe);">지금 발주할 품목 없음</b>`;
   const top = custShortSummaryCached().filter(c=>c.shortItems>0).slice(0,8);
   const chips = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px 0;align-items:center;">
     <span style="font-size:11.5px;color:var(--muted);">거래처별 부족 (눌러서 보기)</span>
@@ -1445,24 +1445,19 @@ function renderForecast(){
   if(list.length===0){
     el.innerHTML = bar + chips + `<div class="empty">조건에 맞는 품목이 없습니다.</div>`;
   } else {
-    el.innerHTML = bar + chips + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">3개월 후 예상재고 = 가용재고 + 입고예정 − 3개월 안에 올 주문량. 주문량은 <b>마지막 주문일 + 평균 주문주기</b>로 다음 주문 시점을 계산해 반영합니다(거래처가 한 번에 많이 가져가고 쉬는 패턴 반영). 가용재고는 <b>${teamLabel()}</b> 정상창고 기준 · 행을 누르면 거래처별 근거가 열립니다.</div>
+    el.innerHTML = bar + chips + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">지금 발주할 수량 = 앞으로 3개월 안에 나갈 것으로 예상되는 양 − 가용재고 − 입고예정 (<b>${teamLabel()}</b> 정상창고 기준). 거래처의 주문 주기를 반영해 계산했고, 행을 누르면 거래처별 근거가 열립니다.</div>
     <div style="overflow-x:auto;"><table><thead><tr>
-      <th>구분</th><th>품번</th><th>품명</th>${months.map(mm=>`<th class="num" style="color:var(--muted);font-weight:500;">${mm.m+1}월</th>`).join('')}<th class="num">월평균</th><th class="num">가용재고</th><th class="num">입고예정</th><th class="num">3개월 후<br>예상재고</th><th title="마지막 주문일 + 평균 주문주기로 예측">다음 예상<br>주문 · 수량</th><th class="num">추가발주<br>필요</th><th>상태</th>
+      <th>구분</th><th>품번</th><th>품명</th><th class="num">가용재고</th><th class="num">입고예정</th><th class="num">지금 발주할 수량</th><th>상태</th>
     </tr></thead><tbody>${shown.map(x=>{
       const expanded = ui.forecastExpanded.has(x.품번);
-      const mo = monthly(x), proj = Math.round(x.available + x.incoming - x.horizon);
       const no = x.nextOrder; const noTxt = no ? `<span style="color:${no.overdue?'var(--danger)':'inherit'}">${no.overdue?'도래':(no.date.getMonth()+1)+'/'+no.date.getDate()}</span> <span style="color:var(--muted)">· ${fmt(no.qty)}</span>` : '<span style="color:var(--muted)">—</span>';
       const attr = `style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}"`;
       const row = `<tr class="forecast-row">
         <td ${attr}>${brandBadge(x.brand)}</td>
         <td ${attr}><span style="color:var(--muted);">${expanded?'▼':'▶'}</span> <code class="pn">${x.품번}</code>${x.hero?'<span class="badge hero" title="히어로 품목: 수량 기준으로 판정">★</span>':''}</td>
         <td ${attr}>${x.품명}</td>
-        ${mo.map(v=>`<td class="num" style="color:var(--muted);font-size:11.5px;">${v?fmt(v):'-'}</td>`).join('')}
-        <td class="num">${fmt(x.avgQuarterly/3)}</td>
         <td class="num">${fmt(x.available)}</td><td class="num">${x.incoming?fmt(x.incoming):'-'}</td>
-        <td class="num" style="font-weight:700;color:${proj<0?'var(--danger)':'inherit'}">${fmt(proj)}</td>
-        <td style="font-size:12px;white-space:nowrap;" title="마지막 주문일 + 평균 주문주기로 예측한 다음 주문 시점과 평균 주문량">${noTxt}</td>
-        <td class="num" style="font-weight:${x.orderQty>0?700:400};color:${x.orderQty>0?'var(--danger)':'var(--muted)'}">${x.orderQty>0?fmt(x.orderQty):'-'}</td>
+        <td class="num" style="font-size:14.5px;font-weight:${x.orderQty>0?800:400};color:${x.orderQty>0?'var(--danger)':'var(--muted)'}">${x.orderQty>0?fmt(x.orderQty):'-'}</td>
         <td>${gradeBadge(x.grade)}${x.hero?'':''}</td>
       </tr>`;
       return row + (expanded ? forecastDetailRow(x) : '');
