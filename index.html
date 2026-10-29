@@ -260,10 +260,8 @@
     </div>
     <nav class="tab-nav" id="nav">
       <button data-view="overview">전체 개요</button>
-      <button data-view="customer">거래처별 판매실적</button>
-      <button data-view="skustatus">품목별 판매현황</button>
-      <button data-view="forecast">발주 예측</button>
-      <button data-view="custshort">거래처별 부족</button>
+      <button data-view="forecast">발주 현황</button>
+      <button data-view="customer">판매 현황</button>
       <button data-view="lookup">바코드 · 거래처 조회</button>
       <button data-view="data" class="active">CSV / 엑셀 업로드</button>
     </nav>
@@ -332,7 +330,8 @@
     <!-- CUSTOMER -->
     <section class="view" id="view-customer">
       <div class="panel">
-        <h3>거래처별 · 분기별 판매실적</h3>
+        <h3>판매 현황</h3>
+        <div class="subtoggle" style="display:flex;gap:6px;margin:-4px 0 14px 0;"><button type="button" class="brand-chip" data-subview="customer">거래처별</button><button type="button" class="brand-chip" data-subview="skustatus">품목별</button></div>
         <div style="font-size:11.5px;color:var(--muted);margin-top:-8px;margin-bottom:14px;">품목을 행으로, 분기를 열로 나열한 표입니다. 거래처/품번을 여러 개 선택해서 비교할 수 있습니다.</div>
         <div class="filters" style="align-items:flex-start;position:relative;">
           <div class="msel" id="custMsel">
@@ -362,7 +361,8 @@
     <!-- SKU STATUS -->
     <section class="view" id="view-skustatus">
       <div class="panel">
-        <h3>품목별 판매현황</h3>
+        <h3>판매 현황</h3>
+        <div class="subtoggle" style="display:flex;gap:6px;margin:-4px 0 14px 0;"><button type="button" class="brand-chip" data-subview="customer">거래처별</button><button type="button" class="brand-chip" data-subview="skustatus">품목별</button></div>
         <p style="color:var(--muted);font-size:12.5px;margin-top:-8px;">품번(SKU)이나 품명을 검색해서 선택하면, 그 품목(들)을 거래처별·월별로 얼마나 팔았는지 표로 보여줍니다. 여러 품번을 줄바꿈이나 쉼표로 구분해서 붙여넣고 <b>Enter</b>를 누르면 검색된 품번이 모두 합산되어 바로 선택됩니다. (여러 줄을 입력만 하고 싶을 땐 Shift+Enter)</p>
         <div class="msel" style="display:block;max-width:480px;">
           <textarea id="skuStatusSearch" rows="2" placeholder="품번 또는 품명 검색 (여러 개는 줄바꿈/쉼표로 구분)" autocomplete="off" style="width:100%;padding:9px 11px;border-radius:8px;border:1.5px solid var(--line);font-size:13px;font-family:inherit;box-sizing:border-box;resize:vertical;min-height:40px;"></textarea>
@@ -376,7 +376,7 @@
     <!-- FORECAST -->
     <section class="view" id="view-forecast">
       <div class="panel">
-        <h3>분기별 발주 예측 (거래처별 발주 패턴 기반)</h3>
+        <h3>발주 현황 — 몇 개 품목이 얼마나 부족한가</h3>
         <div id="heroAlertForecast"></div>
         <div id="forecastRules"></div>
         <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;margin:-4px 0 12px 0;cursor:pointer;">
@@ -384,9 +384,9 @@
         </label>
         <div class="filters" style="align-items:flex-start;">
           <select id="gradeSelect">
-            <option value="조치필요" selected>발주 필요 (지금+곧)</option>
-            <option value="지금 발주">지금 발주</option>
-            <option value="곧 발주">곧 발주</option>
+            <option value="조치필요" selected>발주 필요 (위험+주의)</option>
+            <option value="위험">위험</option>
+            <option value="주의">주의</option>
             <option value="여유">여유</option>
             <option value="참고">참고 (휴면·단발성)</option>
             <option value="">전체</option>
@@ -396,7 +396,7 @@
             <option value="">거래처 전체</option>
           </select>
           <input id="forecastSearch" placeholder="품번 / 품명 검색">
-          <div class="field" style="min-width:240px;">
+          <div class="field" style="min-width:240px;display:none;">
             <input type="text" id="forecastPnInput" placeholder="품번 입력 후 Enter (여러 개 가능)">
             <div class="chip-row" id="forecastPnChipRow" style="margin-top:6px;margin-bottom:0;"></div>
           </div>
@@ -405,13 +405,6 @@
         <div id="forecastSelectPanel"></div>
         <div id="forecastTable"></div>
         <div class="more-row" id="forecastMoreWrap"></div>
-      </div>
-    </section>
-
-    <section class="view" id="view-custshort">
-      <div class="panel">
-        <h3>거래처별 부족 현황 (거래처가 사간 품목 기준)</h3>
-        <div id="custShortBody"></div>
       </div>
     </section>
 
@@ -786,7 +779,7 @@ function salesDetailFor(pn){
 const QUARTER_DAYS = 91.25;
 
 /* ---------------- 등급 기준 / 히어로 기준 / 직접 입력 정보 (설정) ---------------- */
-// 리드타임(생산~입고) 기준: 지금 발주하면 leadDays 뒤에 들어온다고 보고, 입고예정까지 더한 재고가 며칠치인지로 판정
+// 리드타임(생산~입고) 기준: 위험하면 leadDays 뒤에 들어온다고 보고, 입고예정까지 더한 재고가 며칠치인지로 판정
 const RULE_DEFAULTS = {leadDays:60, urgentDays:30, cautionExtra:30, safeExtra:60, minOrders:2, dormantMonths:6};
 function ruleThresholds(R){ return {urgent:R.urgentDays, risk:R.leadDays, caution:R.leadDays+R.cautionExtra, watch:R.leadDays+R.safeExtra}; }
 const settings = {rules:{}, hero:{}, box:{}}; // hero: {품번:{minQty, warnQty}}, box: {품번:{아웃W,...}}
@@ -1026,16 +1019,16 @@ function computeDerived(){
 }
 
 /* ---------------- Rendering ---------------- */
-/* 화면에는 4단계만 보여줌 (내부 계산 등급은 그대로 유지): 지금 발주 / 곧 발주 / 여유 / 참고 */
+/* 화면에는 4단계만 보여줌 (내부 계산 등급은 그대로 유지): 위험 / 주의 / 여유 / 참고 */
 function groupOf(g){
-  if(g==='긴급'||g==='위험') return '지금 발주';
-  if(g==='주의') return '곧 발주';
+  if(g==='긴급'||g==='위험') return '위험';
+  if(g==='주의') return '주의';
   if(g==='관찰'||g==='안전'||g==='안전(입고예정)') return '여유';
   return '참고';
 }
 function gradeBadge(g){
   const grp = groupOf(g);
-  const cls = g==='긴급' ? 'urgent' : ({'지금 발주':'danger','곧 발주':'caution','여유':'safe','참고':'none'})[grp];
+  const cls = g==='긴급' ? 'urgent' : ({'위험':'danger','주의':'caution','여유':'safe','참고':'none'})[grp];
   return `<span class="badge ${cls}" title="세부 등급: ${g}">${grp}</span>`;
 }
 function barColor(g){
@@ -1116,8 +1109,8 @@ function renderOverview(){
 
   const nNow = counts.긴급 + counts.위험, nSoon = counts.주의, nOk = counts.관찰 + safeCombined, nRef = counts.단발성 + counts.휴면 + counts.데이터부족;
   const circleDefs = [
-    {label:'지금 발주', count:nNow, color:'var(--danger)'},
-    {label:'곧 발주', count:nSoon, color:'var(--caution)'},
+    {label:'위험', count:nNow, color:'var(--danger)'},
+    {label:'주의', count:nSoon, color:'var(--caution)'},
     {label:'여유', count:nOk, color:'var(--safe)'},
   ];
   const circles = document.getElementById('signalCircles');
@@ -1140,8 +1133,8 @@ function renderOverview(){
   const pnSet = new Set(f.map(x=>x.품번));
   const sold6moTotal = Array.from(state.salesByProduct.entries()).reduce((s,[pn,x])=> pnSet.has(pn) ? s+x.sum6mo : s, 0);
   cardsEl.innerHTML = `
-    <div class="card"><div class="card-dot" style="background:var(--danger);"></div><div class="k">지금 발주</div><div class="v" style="color:var(--danger)">${fmt(nNow)}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--caution);"></div><div class="k">곧 발주</div><div class="v" style="color:var(--caution)">${fmt(nSoon)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--danger);"></div><div class="k">위험</div><div class="v" style="color:var(--danger)">${fmt(nNow)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--caution);"></div><div class="k">주의</div><div class="v" style="color:var(--caution)">${fmt(nSoon)}</div></div>
     <div class="card"><div class="card-dot" style="background:var(--safe);"></div><div class="k">여유</div><div class="v" style="color:var(--safe)">${fmt(nOk)}</div></div>
     <div class="card"><div class="card-dot" style="background:var(--none);"></div><div class="k">참고 (휴면·단발성)</div><div class="v" style="color:var(--none)">${fmt(nRef)}</div></div>
     <div class="card"><div class="card-dot" style="background:var(--accent);"></div><div class="k">거래처 수</div><div class="v">${fmt(totalCustomers)}</div></div>
@@ -1185,7 +1178,7 @@ function forecastDetailRow(x){
     if(x.sched.oct_q>0) incomingRows.push({m:ml[2], d:x.sched.oct_d, q:x.sched.oct_q});
   }
 
-  return `<tr class="detail-row"><td colspan="11" style="background:var(--surface-alt);padding:16px 18px;">
+  return `<tr class="detail-row"><td colspan="15" style="background:var(--surface-alt);padding:16px 18px;">
     <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:20px;">
       <div>
         <div class="section-title" style="margin-bottom:8px;">거래처별 발주 패턴 (최근 12개월, 예상 분기수요의 근거)</div>
@@ -1262,6 +1255,14 @@ function renderForecastSelectPanel(){
     </div>
   `;
 }
+function downloadForecastListCsv(){
+  const rows = ui._forecastCsvRows || []; if(!rows.length) return;
+  const esc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+  const lines=[['구분','품번','품명','월평균','가용재고','입고예정','3개월 후 예상재고','추가발주 필요','상태'].join(',')];
+  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,Math.round(x.avgQuarterly/3),x.available,x.incoming,Math.round(x.available+x.incoming-x.avgQuarterly),x.orderQty,groupOf(x.grade)].map(esc).join(',')));
+  const blob=new Blob(['\uFEFF'+lines.join('\r\n')],{type:'text/csv;charset=utf-8;'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');
+  a.href=url; a.download=`발주현황_${ui.forecastCustomer||'전체'}_${new Date().toISOString().slice(0,10)}.csv`; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
 function downloadForecastCsv(){
   const selected = state.forecast.filter(x=>ui.forecastSelected.has(x.품번));
   if(selected.length===0) return;
@@ -1287,6 +1288,7 @@ function downloadForecastCsv(){
 function renderForecast(){
   if(!state.loaded){ document.getElementById('forecastTable').innerHTML = renderEmptyState(); document.getElementById('forecastMoreWrap').innerHTML=''; return; }
   syncForecastCustomerOptions();
+  { const sel=document.getElementById('forecastCustomer'); if(sel) sel.value=ui.forecastCustomer; }
   const isOverstock = ui.forecastGrade==='과잉재고';
   renderForecastOverstockScope(isOverstock);
   // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
@@ -1298,14 +1300,14 @@ function renderForecast(){
   if(ui.forecastCustomer){
     list = list.filter(x=> x.orderPattern && x.orderPattern.has(ui.forecastCustomer)).map(x=>{
       const cd = x.orderPattern.get(ui.forecastCustomer);
-      const avgQuarterly = cd.분기환산수량;
-      const available = x.available, incoming = x.incoming;
-      const orderQty = Math.max(0, Math.round(avgQuarterly - available - incoming));
-      const g = gradeFor({pn:x.품번, available, incoming, avgQuarterly, orderCount:cd.주문횟수, lastSale:cd.최근발주일});
-      return {...x, avgQuarterly, ratio:g.ratio, orderQty, grade:g.grade, coverNow:g.coverNow, coverAll:g.coverAll, orderGap:g.orderGap, orderCount:cd.주문횟수, _customerScoped:true};
+      const a = custAdjust(x, cd), avgQuarterly = cd.분기환산수량;
+      const orderQty = Math.max(0, Math.round(avgQuarterly - x.available - x.incoming));
+      return {...x, avgQuarterly, ratio:a.ratio, orderQty, grade:a.grade, coverNow:a.coverNow, coverAll:a.coverAll, orderGap:a.orderGap, orderCount:cd.주문횟수, _customerScoped:true, _cd:cd};
     });
   }
 
+  const needList = list.filter(x=>x.orderQty>0 && !['휴면','단발성','데이터부족'].includes(x.grade));
+  const needItems = needList.length, needQty = needList.reduce((a,x)=>a+x.orderQty,0);
   if(isOverstock){
     const scope = ui.forecastOverstockScope;
     list = list.map(x=>{
@@ -1333,39 +1335,49 @@ function renderForecast(){
   } else if(isOverstock){
     list.sort((a,b)=> b.available - a.available); // 재고 많은 순
   }
-  ui.forecastVisiblePns = list.map(x=>x.품번); // 전체 선택 대상 (필터링된 전체, 더보기 이전 포함)
+  ui.forecastVisiblePns = list.map(x=>x.품번); ui._forecastCsvRows = list; // 전체 선택 대상 (필터링된 전체, 더보기 이전 포함)
   const shown = list.slice(0, ui.forecastPage);
   const el = document.getElementById('forecastTable');
-  renderForecastSelectPanel();
   renderForecastPnChips();
+  const months = []; { const n=new Date(); for(let k=5;k>=0;k--){ const d=new Date(n.getFullYear(), n.getMonth()-k, 1); months.push({y:d.getFullYear(), m:d.getMonth()}); } }
+  const monthly = x=>{
+    const arr = months.map(()=>0);
+    (state.salesRowsByProduct.get(x.품번)||[]).forEach(r=>{
+      if(ui.forecastCustomer && r.거래처!==ui.forecastCustomer) return;
+      const d=r.실적일자; const idx = months.findIndex(mm=>mm.y===d.getFullYear() && mm.m===d.getMonth());
+      if(idx>=0) arr[idx]+=r.수량;
+    });
+    return arr;
+  };
+  const sum = needItems>0 ? `<b style="font-size:15px;color:var(--danger);">추가발주 필요 ${fmt(needItems)}개 품목</b> <span style="color:var(--muted);">/ 총</span> <b style="font-size:15px;color:var(--danger);">${fmt(needQty)}개</b>` : `<b style="font-size:15px;color:var(--safe);">추가발주 필요 품목 없음</b>`;
+  const top = custShortSummaryCached().filter(c=>c.shortItems>0).slice(0,8);
+  const chips = `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 12px 0;align-items:center;">
+    <span style="font-size:11.5px;color:var(--muted);">거래처별 부족 (눌러서 보기)</span>
+    ${top.map(c=>`<button type="button" class="brand-chip" data-cs-pick="${escAttr(c.cust)}" style="${ui.forecastCustomer===c.cust?'background:var(--ink);border-color:var(--ink);color:#fff;':''}">${c.cust.length>22?c.cust.slice(0,21)+'…':c.cust} <b>${c.shortItems}개 품목 · ${fmt(c.shortQty)}</b></button>`).join('')}
+    ${ui.forecastCustomer?`<button type="button" class="brand-chip" data-cs-pick="">✕ 전체 보기</button>`:''}
+  </div>`;
+  const bar = `<div style="padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin-bottom:12px;">${ui.forecastCustomer?`<span style="color:var(--muted);font-size:12px;">${ui.forecastCustomer} 기준 · </span>`:''}${sum}
+    <button class="btn ghost" type="button" data-action="forecast-csv" style="float:right;padding:4px 10px;">표 내려받기(CSV)</button></div>`;
   if(list.length===0){
-    el.innerHTML = `<div class="empty">조건에 맞는 품목이 없습니다.</div>`;
+    el.innerHTML = bar + chips + `<div class="empty">조건에 맞는 품목이 없습니다.</div>`;
   } else {
-    const allSelected = list.length>0 && list.every(x=>ui.forecastSelected.has(x.품번));
-    const custNotice = ui.forecastCustomer ? `<div class="banner info" style="margin-bottom:10px;">현재 <b>${ui.forecastCustomer}</b> 거래처 기준으로 재계산된 예상 분기수요·재고비율·추가발주 필요·등급입니다 (전체 거래처 합산이 아닙니다).</div>` : '';
-    el.innerHTML = custNotice + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">가용재고는 <b>${teamLabel()} 정상창고</b> 재고만 반영합니다 (다른 팀 전용 창고 재고는 제외). 예상 분기수요는 거래처별 평균 발주수량·발주주기 기반입니다. 행을 클릭하면 근거를 볼 수 있습니다. 체크박스로 발주할 품목을 선택하세요.</div>
-    <div style="margin-bottom:8px;">
-      <button class="btn ghost" type="button" data-action="forecast-select-all">전체 선택 (${fmt(list.length)}개)</button>
-      <button class="btn ghost" type="button" data-action="forecast-select-none" style="margin-left:6px;">선택 해제</button>
-    </div>
-    <div style="overflow-x:auto;">
-    <table><thead><tr>
-      <th><input type="checkbox" data-action="toggle-forecast-select-all" ${allSelected?'checked':''}></th><th></th><th>품번</th><th>브랜드</th><th>품명</th><th class="num">예상 분기수요</th>
-      <th class="num">현재 가용재고</th><th class="num">입고예정(3개월)</th><th class="num" title="(현재 가용재고+입고예정) ÷ 일평균 수요. 아래 줄: 리드타임을 감안해 며칠 안에 발주해야 하는지">소진예상</th><th class="num">추가발주 필요</th><th>등급</th>
+    el.innerHTML = bar + chips + `<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;">3개월 후 예상재고 = 가용재고 + 입고예정 − 3개월 예상 판매(월평균×3). 마이너스면 그만큼 추가발주가 필요합니다. 가용재고는 <b>${teamLabel()}</b> 정상창고 기준이고, 행을 누르면 거래처별 근거가 열립니다.</div>
+    <div style="overflow-x:auto;"><table><thead><tr>
+      <th>구분</th><th>품번</th><th>품명</th>${months.map(mm=>`<th class="num" style="color:var(--muted);font-weight:500;">${mm.m+1}월</th>`).join('')}<th class="num">월평균</th><th class="num">가용재고</th><th class="num">입고예정</th><th class="num">3개월 후<br>예상재고</th><th class="num">추가발주<br>필요</th><th>상태</th>
     </tr></thead><tbody>${shown.map(x=>{
       const expanded = ui.forecastExpanded.has(x.품번);
-      const checked = ui.forecastSelected.has(x.품번);
+      const mo = monthly(x), proj = Math.round(x.available + x.incoming - x.avgQuarterly);
+      const attr = `style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}"`;
       const row = `<tr class="forecast-row">
-        <td><input type="checkbox" data-action="toggle-forecast-select" data-pn="${escAttr(x.품번)}" ${checked?'checked':''} onclick="event.stopPropagation()"></td>
-        <td style="color:var(--muted);cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${expanded?'▼':'▶'}</td>
-        <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}"><code class="pn">${x.품번}</code>${x.hero?'<span class="badge hero" title="히어로 품목: 수량 기준으로 판정">★히어로</span>':''}</td>
-        <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${brandBadge(x.brand)}</td>
-        <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${x.품명}</td>
-        <td class="num">${fmt(x.avgQuarterly)}</td>
-        <td class="num">${fmt(x.available)}</td><td class="num">${fmt(x.incoming)}</td>
-        <td class="num">${x.hero ? `<span style="font-size:11px;color:var(--muted);">기준 ≤${fmt(x.heroMin)}</span>` : `<span class="mono" style="color:${barColor(x.grade)}">${fmtDays(x.coverAll)}</span>${x.orderGap===null||x.orderGap===undefined||['안전','안전(입고예정)','단발성','휴면','데이터부족'].includes(x.grade)?'':`<div style="font-size:10.5px;color:${x.orderGap<0?'var(--danger)':'var(--muted)'};">${x.orderGap<0?`발주 ${Math.round(-x.orderGap)}일 지연`:`${Math.round(x.orderGap)}일 내 발주`}</div>`}`}</td>
-        <td class="num" style="font-weight:${x.orderQty>0?700:400};color:${x.orderQty>0?'var(--danger)':'inherit'}">${fmt(x.orderQty)}</td>
-        <td>${gradeBadge(x.grade)}</td>
+        <td ${attr}>${brandBadge(x.brand)}</td>
+        <td ${attr}><span style="color:var(--muted);">${expanded?'▼':'▶'}</span> <code class="pn">${x.품번}</code>${x.hero?'<span class="badge hero" title="히어로 품목: 수량 기준으로 판정">★</span>':''}</td>
+        <td ${attr}>${x.품명}</td>
+        ${mo.map(v=>`<td class="num" style="color:var(--muted);font-size:11.5px;">${v?fmt(v):'-'}</td>`).join('')}
+        <td class="num">${fmt(x.avgQuarterly/3)}</td>
+        <td class="num">${fmt(x.available)}</td><td class="num">${x.incoming?fmt(x.incoming):'-'}</td>
+        <td class="num" style="font-weight:700;color:${proj<0?'var(--danger)':'inherit'}">${fmt(proj)}</td>
+        <td class="num" style="font-weight:${x.orderQty>0?700:400};color:${x.orderQty>0?'var(--danger)':'var(--muted)'}">${x.orderQty>0?fmt(x.orderQty):'-'}</td>
+        <td>${gradeBadge(x.grade)}${x.hero?'':''}</td>
       </tr>`;
       return row + (expanded ? forecastDetailRow(x) : '');
     }).join('')}</tbody></table>
@@ -1708,41 +1720,38 @@ function renderAll(){
   renderCustomerFilters(); renderCustomerTable();
   renderSkuStatusTable();
   renderForecast();
-  renderCustShort();
   if(ui.lookupItems.length>0) renderLookupBatch();
 }
 
 
 /* ---------------- 거래처별 부족 현황 ---------------- */
-ui.custShort = { customer:'', grade:'조치필요', search:'', listSearch:'' };
 /* 판매처 그룹: 실제 거래처 이름과 다른 '최종 고객/채널'(TJX, 타겟 등)을 거래처명 또는 품명 태그로 묶는다 */
 const CUST_GROUPS = []; // 자동 분류만 사용: 실제 거래처명 그대로 나눔 (필요 시 여기에 묶음 규칙 추가)
+/* 거래처 기준 판정: 그 거래처 수요로 등급 계산 + 평균 1회 주문도 못 받거나 자동 발주점 미만이면 등급 상향 */
+function custAdjust(x, cd){
+  const custQ = cd.분기환산수량;
+  const g = gradeFor({pn:'', available:x.available, incoming:x.incoming, avgQuarterly:custQ, orderCount:cd.주문횟수, lastSale:cd.최근발주일});
+  const R = getRules(), daily = custQ/QUARTER_DAYS;
+  const rop = Math.round(Math.max(daily*R.leadDays, cd.평균발주수량) + daily*R.urgentDays); // 자동 발주점
+  const have = x.available + x.incoming;
+  let grade = g.grade, bumped = false;
+  const cut = new Date(); cut.setMonth(cut.getMonth()-R.dormantMonths);
+  const dormant = R.dormantMonths>0 && cd.최근발주일 < cut;
+  if(cd.주문횟수 >= R.minOrders && !dormant && ['안전','안전(입고예정)','관찰','주의'].includes(grade)){
+    if(have < cd.평균발주수량 && grade!=='위험'){ grade='위험'; bumped=true; }
+    else if(have < rop && grade!=='주의'){ grade='주의'; bumped=true; }
+  }
+  return {grade, bumped, rop, short:Math.max(0, Math.round(custQ-have)), coverAll:g.coverAll, orderGap:g.orderGap, ratio:g.ratio, coverNow:g.coverNow};
+}
 function buildCustShort(){
   // 거래처(및 그룹) -> 품목 목록 (그 수요 기준으로 등급 재계산, 히어로 수량기준은 제외하고 수요 기준으로만 판정)
   const by = new Map();
   const cutoff = new Date(); cutoff.setFullYear(cutoff.getFullYear()-1);
   const push = (key, x, cd)=>{
-    const custQ = cd.분기환산수량;
-    const g = gradeFor({pn:'', available:x.available, incoming:x.incoming, avgQuarterly:custQ, orderCount:cd.주문횟수, lastSale:cd.최근발주일});
-    const R = getRules(), daily = custQ/QUARTER_DAYS;
-    // 자동 발주점: 리드타임 동안 팔 양과 '다음 1회 주문'을 모두 받을 수 있어야 하고, 긴급일수만큼 여유를 더함 (수량을 사람이 정하지 않아도 거래처 패턴으로 계산)
-    const rop = Math.round(Math.max(daily*R.leadDays, cd.평균발주수량) + daily*R.urgentDays);
-    const have = x.available + x.incoming;
-    const short = Math.max(0, Math.round(custQ - have));
-    const nextShort = Math.max(0, Math.round(cd.평균발주수량 - x.available)); // 평균 1회 주문도 못 맞추는 부족분
-    const ropShort = Math.max(0, rop - Math.round(have));
-    let grade = g.grade, bumped = false;
-    const live = cd.주문횟수 >= R.minOrders;
-    const cut = new Date(); cut.setMonth(cut.getMonth()-R.dormantMonths);
-    const dormant = R.dormantMonths>0 && cd.최근발주일 < cut;
-    if(live && !dormant && ['안전','안전(입고예정)','관찰','주의'].includes(grade)){
-      if(have < cd.평균발주수량 && grade!=='위험'){ grade='위험'; bumped=true; }          // 다음 1회 주문도 못 받음
-      else if(have < rop && (grade==='안전'||grade==='안전(입고예정)'||grade==='관찰')){ grade='주의'; bumped=true; } // 발주점 아래
-    }
+    const a = custAdjust(x, cd);
     if(!by.has(key)) by.set(key, []);
-    by.get(key).push({품번:x.품번, 품명:x.품명, brand:x.brand, hero:x.hero, cd, custQ, totalQ:x.avgQuarterly,
-      share: x.avgQuarterly>0 ? custQ/x.avgQuarterly : 0, available:x.available, incoming:x.incoming,
-      short, shortTotal:x.orderQty, nextShort, rop, ropShort, bumped, grade, coverAll:g.coverAll, orderGap:g.orderGap});
+    by.get(key).push({품번:x.품번, 품명:x.품명, brand:x.brand, hero:x.hero, cd, custQ:cd.분기환산수량, available:x.available, incoming:x.incoming,
+      short:a.short, shortTotal:x.orderQty, rop:a.rop, bumped:a.bumped, grade:a.grade, coverAll:a.coverAll, orderGap:a.orderGap});
   };
   (state.forecast||[]).forEach(x=>{
     if(!brandPasses(x.brand) || !x.orderPattern) return;
@@ -1762,93 +1771,27 @@ function buildCustShort(){
   }));
   return by;
 }
+let _csMemo=null;
+function custShortSummaryCached(){
+  const sig=[state.forecast,[...ui.brandSelected].join(),JSON.stringify(settings.rules),ui.team].map(v=>v&&typeof v==='object'&&!Array.isArray(v)?v:String(v));
+  if(_csMemo && _csMemo.sig.length===sig.length && _csMemo.sig.every((v,i)=>v===sig[i])) return _csMemo.val;
+  const val=custShortSummary(buildCustShort()); _csMemo={sig,val}; return val;
+}
 function custShortSummary(by){
   const out = [];
   by.forEach((list, cust)=>{
     const live = list.filter(r=>r.grade!=='휴면' && r.grade!=='단발성' && r.grade!=='데이터부족');
-    const s = {cust, items:live.length, urgent:0, danger:0, caution:0, watch:0, shortQty:0, totalQty:0, last:null};
+    const s = {cust, items:live.length, shortItems:0, urgent:0, danger:0, caution:0, watch:0, shortQty:0, totalQty:0, last:null};
     list.forEach(r=>{ s.totalQty += r.cd.총수량; if(!s.last || r.cd.최근발주일>s.last) s.last = r.cd.최근발주일; });
     live.forEach(r=>{
       if(r.grade==='긴급') s.urgent++; else if(r.grade==='위험') s.danger++; else if(r.grade==='주의') s.caution++; else if(r.grade==='관찰') s.watch++;
-      if(r.grade==='긴급'||r.grade==='위험'||r.grade==='주의') s.shortQty += r.short;
+      if(r.grade==='긴급'||r.grade==='위험'||r.grade==='주의'){ s.shortQty += r.short; if(r.short>0) s.shortItems++; }
     });
     out.push(s);
   });
-  out.sort((a,b)=> ((b.cust[0]==='★')-(a.cust[0]==='★')) || (b.urgent*1e6+b.danger*1e3+b.caution) - (a.urgent*1e6+a.danger*1e3+a.caution) || b.totalQty-a.totalQty);
+  out.sort((a,b)=> b.shortQty-a.shortQty || b.totalQty-a.totalQty);
   return out;
 }
-function fmtDateShort(d){ return d ? `${String(d.getFullYear()).slice(2)}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—'; }
-function renderCustShort(){
-  const el = document.getElementById('custShortBody'); if(!el) return;
-  if(!state.loaded){ el.innerHTML = renderEmptyState(); return; }
-  const by = buildCustShort();
-  const cs = ui.custShort;
-  if(cs.customer && !by.has(cs.customer)) cs.customer = '';
-  if(!cs.customer){
-    let sum = custShortSummary(by);
-    const q = cs.listSearch.trim().toLowerCase();
-    if(q) sum = sum.filter(s=>s.cust.toLowerCase().includes(q));
-    el.innerHTML = `<div class="filters"><input id="custShortListSearch" placeholder="거래처 검색 (예: TJX, Target, Landing)" value="${escAttr(cs.listSearch)}" style="font-family:inherit;font-size:12.5px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--line);min-width:260px;"></div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">거래처가 최근 12개월간 사간 품목별로, 그 거래처의 예상 분기수요 대비 <b>${teamLabel()}</b> 가용재고+입고예정이 얼마나 모자란지 보여줍니다. 행을 클릭하면 품목 상세가 열립니다. 휴면·단발성 품목은 집계에서 제외됩니다.</div>
-    ${sum.length? `<div style="overflow-x:auto;"><table><thead><tr><th>거래처</th><th class="num">거래 품목</th><th class="num">지금 발주</th><th class="num">곧 발주</th><th class="num" title="긴급·위험·주의 품목의 (분기수요 − 가용재고 − 입고예정) 합계">부족수량 합계</th><th class="num">12개월 판매수량</th><th>최근 주문</th></tr></thead><tbody>${sum.map(s=>`<tr class="forecast-row" style="cursor:pointer;" data-cs-cust="${escAttr(s.cust)}"><td><b>${s.cust}</b></td><td class="num">${fmt(s.items)}</td><td class="num" style="color:${s.urgent+s.danger?'var(--danger)':'var(--muted)'};font-weight:${s.urgent+s.danger?700:400}">${s.urgent+s.danger}</td><td class="num" style="color:${s.caution?'var(--caution)':'var(--muted)'}">${s.caution}</td><td class="num" style="font-weight:${s.shortQty?700:400}">${fmt(s.shortQty)}</td><td class="num">${fmt(s.totalQty)}</td><td class="mono" style="font-size:11.5px;">${fmtDateShort(s.last)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">일치하는 거래처가 없습니다.</div>'}`;
-    return;
-  }
-  // 상세
-  const all = by.get(cs.customer);
-  let list = all.slice();
-  if(cs.grade==='조치필요') list = list.filter(r=>['지금 발주','곧 발주'].includes(groupOf(r.grade)));
-  else if(cs.grade) list = list.filter(r=>groupOf(r.grade)===cs.grade);
-  if(cs.search){ const s=cs.search.toLowerCase(); list = list.filter(r=>r.품번.toLowerCase().includes(s)||r.품명.toLowerCase().includes(s)); }
-  const cnt = g => all.filter(r=>groupOf(r.grade)===g).length;
-  const shortSum = all.filter(r=>['긴급','위험','주의'].includes(r.grade)).reduce((s,r)=>s+r.short,0);
-  const opts = [['조치필요','발주 필요 (지금+곧)'],['지금 발주','지금 발주'],['곧 발주','곧 발주'],['여유','여유'],['참고','참고 (휴면·단발성)'],['','전체']];
-  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-      <button class="btn ghost" type="button" id="custShortBack">← 거래처 목록</button>
-      <div style="font-size:16px;font-weight:700;">${cs.customer}</div>
-      <span class="badge danger">지금 발주 ${cnt('지금 발주')}</span><span class="badge caution">곧 발주 ${cnt('곧 발주')}</span>
-      <span style="font-size:12px;color:var(--muted);">부족수량 합계 <b style="color:var(--danger)">${fmt(shortSum)}</b></span>
-    </div>
-    <div class="filters">
-      <select id="custShortGrade">${opts.map(([v,l])=>`<option value="${v}" ${cs.grade===v?'selected':''}>${l}</option>`).join('')}</select>
-      <input id="custShortSearch" placeholder="품번 / 품명 검색" value="${escAttr(cs.search)}" style="font-family:inherit;font-size:12.5px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--line);min-width:200px;">
-      <button class="btn ghost" type="button" id="custShortCsv">CSV 내려받기</button>
-    </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;"><b>부족수량</b> = 이 거래처 예상 분기수요 − 현재 가용재고 − 입고예정. <b>1회 주문 부족</b> = 이 거래처 평균 1회 주문량 − 가용재고 (다음 주문 한 번도 못 받는 경우). <b>자동 발주점</b> = max(리드타임 수요, 평균 1회 주문량) + 긴급일수 수요로 <u>수량을 직접 정하지 않아도</u> 거래처 주문 패턴에서 계산합니다. 가용재고+입고예정이 평균 1회 주문량 미만이면 '지금 발주', 발주점 미만이면 '곧 발주'로 올립니다(▲). <b>합산 부족</b>은 모든 거래처 수요를 합친 해당 품목의 추가발주 필요 수량입니다 (재고는 거래처들이 나눠 쓰므로 함께 확인하세요).</div>
-    ${list.length? `<div style="overflow-x:auto;"><table><thead><tr><th>품번</th><th>품명</th><th class="num">분기수요(이 거래처)</th><th class="num">평균 1회 주문</th><th class="num">현재 가용재고</th><th class="num">입고예정</th><th class="num">부족수량</th><th class="num" title="자동 계산: max(리드타임 수요, 평균 1회 주문량) + 긴급일수 수요. 가용재고+입고예정이 이보다 낮으면 알람">자동 발주점</th><th class="num">1회 주문 부족</th><th class="num">합산 부족</th><th class="num">소진예상</th><th>최근 주문</th><th>등급</th></tr></thead><tbody>${list.map(r=>`<tr>
-      <td><code class="pn">${r.품번}</code>${r.hero?'<span class="badge hero">★히어로</span>':''}</td><td>${r.품명}</td>
-      <td class="num">${fmt(r.custQ)}</td><td class="num">${fmt(r.cd.평균발주수량)}</td>
-      <td class="num">${fmt(r.available)}</td><td class="num">${fmt(r.incoming)}</td>
-      <td class="num" style="font-weight:${r.short?700:400};color:${r.short?'var(--danger)':'inherit'}">${fmt(r.short)}</td>
-      <td class="num" style="color:${r.ropShort?'var(--danger)':'var(--muted)'}" title="발주점 대비 ${fmt(r.ropShort)} 부족">${fmt(r.rop)}</td><td class="num" style="color:${r.nextShort?'var(--danger)':'var(--muted)'}">${fmt(r.nextShort)}</td>
-      <td class="num" style="color:${r.shortTotal?'var(--danger)':'var(--muted)'}">${fmt(r.shortTotal)}</td>
-      <td class="num"><span class="mono" style="color:${barColor(r.grade)}">${fmtDays(r.coverAll)}</span></td>
-      <td class="mono" style="font-size:11.5px;">${fmtDateShort(r.cd.최근발주일)}</td><td>${gradeBadge(r.grade)}${r.bumped?'<span title="발주점/1회 주문 기준으로 등급 상향" style="font-size:10px;color:var(--danger);"> ▲</span>':''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">조건에 맞는 품목이 없습니다.</div>'}`;
-  el._rows = list;
-}
-function downloadCustShortCsv(){
-  const el = document.getElementById('custShortBody'); const list = el && el._rows; if(!list||!list.length) return;
-  const esc = v => { const s=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
-  const lines = [['거래처','품번','품명','분기수요(이 거래처)','비중%','평균 1회 주문','주문횟수','가용재고','입고예정','부족수량','자동 발주점','1회 주문 부족','합산 부족','소진예상일','최근 주문','등급'].join(',')];
-  list.forEach(r=>lines.push([ui.custShort.customer,r.품번,r.품명,Math.round(r.custQ),Math.round(r.share*100),Math.round(r.cd.평균발주수량),r.cd.주문횟수,r.available,r.incoming,r.short,r.rop,r.nextShort,r.shortTotal,r.coverAll==null?'':Math.round(r.coverAll),fmtDateShort(r.cd.최근발주일),r.grade].map(esc).join(',')));
-  const blob = new Blob(['﻿'+lines.join('\r\n')], {type:'text/csv;charset=utf-8;'});
-  const url = URL.createObjectURL(blob), a = document.createElement('a');
-  a.href = url; a.download = `거래처별부족_${ui.custShort.customer}_${new Date().toISOString().slice(0,10)}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-}
-(function(){
-  const root = document.getElementById('view-custshort');
-  root.addEventListener('click', e=>{
-    const tr = e.target.closest('[data-cs-cust]');
-    if(tr){ ui.custShort.customer = tr.getAttribute('data-cs-cust'); renderCustShort(); return; }
-    if(e.target.id==='custShortBack'){ ui.custShort.customer=''; renderCustShort(); }
-    if(e.target.id==='custShortCsv') downloadCustShortCsv();
-  });
-  root.addEventListener('change', e=>{ if(e.target.id==='custShortGrade'){ ui.custShort.grade=e.target.value; renderCustShort(); } });
-  root.addEventListener('input', e=>{
-    if(e.target.id==='custShortListSearch'){ ui.custShort.listSearch=e.target.value; const p=e.target.selectionStart; renderCustShort(); const n=document.getElementById('custShortListSearch'); n.focus(); n.setSelectionRange(p,p); }
-    if(e.target.id==='custShortSearch'){ ui.custShort.search=e.target.value; const p=e.target.selectionStart; renderCustShort(); const n=document.getElementById('custShortSearch'); n.focus(); n.setSelectionRange(p,p); }
-  });
-})();
 
 /* ---------------- Lookup tool (multi-barcode) ---------------- */
 function baseBarcode(bc){
@@ -2990,6 +2933,19 @@ document.getElementById('nav').addEventListener('click', e=>{
   document.getElementById('view-'+btn.dataset.view).classList.add('active');
 });
 
+
+document.addEventListener('click', e=>{
+  const b = e.target.closest('[data-subview]'); if(!b) return;
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+b.dataset.subview).classList.add('active');
+});
+function syncSubtoggle(){
+  const cur = document.querySelector('#view-skustatus.active') ? 'skustatus' : 'customer';
+  document.querySelectorAll('[data-subview]').forEach(b=>{ const on=b.dataset.subview===cur; b.style.cssText = on?'background:var(--ink);border-color:var(--ink);color:#fff;':''; });
+}
+document.addEventListener('click', ()=>setTimeout(syncSubtoggle,0));
+syncSubtoggle();
+
 function renderTeamToggle(){
   const el = document.getElementById('teamToggle');
   el.innerHTML = ['전체','B2B1팀','B2B2팀'].map(t=>{
@@ -3001,7 +2957,7 @@ document.getElementById('teamToggle').addEventListener('click', e=>{
   const btn = e.target.closest('.brand-chip'); if(!btn) return;
   ui.team = btn.dataset.team;
   try{ localStorage.setItem('inv_team', ui.team); }catch(_e){}
-  ui.forecastPage = 50; ui.customerPage = 50; ui.forecastCustomer = ''; ui.custShort.customer = '';
+  ui.forecastPage = 50; ui.customerPage = 50; ui.forecastCustomer = '';
   state.sales = salesForTeam();
   if(state.loaded){ computeDerived(); }
   renderTeamToggle();
@@ -3051,6 +3007,9 @@ document.getElementById('forecastPnChipRow').addEventListener('click', e=>{
   renderForecast();
 });
 document.getElementById('view-forecast').addEventListener('click', e=>{
+  const pick = e.target.closest('[data-cs-pick]');
+  if(pick){ ui.forecastCustomer = pick.getAttribute('data-cs-pick'); ui.forecastPage=50; renderForecast(); return; }
+  if(e.target.closest('[data-action="forecast-csv"]')){ downloadForecastListCsv(); return; }
   if(e.target.closest('[data-action="forecast-more"]')){ ui.forecastPage+=50; renderForecast(); return; }
   const toggle = e.target.closest('[data-action="toggle-forecast-detail"]');
   if(toggle){
@@ -3935,9 +3894,9 @@ function renderForecastRules(force){
   el.innerHTML = `<details id="rulesDetails" ${ui.rulesOpen?'open':''} style="border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:0 0 14px 0;background:var(--surface);">
     <summary style="cursor:pointer;font-weight:700;font-size:13px;">⚙ 기준 설정 (고급) · 히어로 품목 ${alertN>0?`<span style="color:var(--danger);">🚨 알람 ${alertN}개</span>`:''}</summary>
     <div style="margin-top:12px;font-size:12.5px;line-height:1.95;color:var(--ink);">
-      <div>생산~입고 <b>리드타임</b> ${num('ruleLead',R.leadDays)}일 — 지금 발주하면 이 기간 뒤에 입고된다고 보고 판정합니다.</div>
+      <div>생산~입고 <b>리드타임</b> ${num('ruleLead',R.leadDays)}일 — 위험하면 이 기간 뒤에 입고된다고 보고 판정합니다.</div>
       <div style="color:var(--muted);">소진예상일 = (현재 가용재고 + 입고예정) ÷ 일평균 수요 &nbsp;(일평균 수요 = 예상 분기수요 ÷ 91일) · 발주여유일 = 소진예상일 − 리드타임</div>
-      <div><span class="badge urgent">긴급</span> 소진예상 <b>${R.urgentDays}일</b> 미만 (기준 ${num('ruleUrgent',R.urgentDays)}일) — 지금 발주해도 입고 전에 결품. 긴급 대응 필요</div>
+      <div><span class="badge urgent">긴급</span> 소진예상 <b>${R.urgentDays}일</b> 미만 (기준 ${num('ruleUrgent',R.urgentDays)}일) — 위험해도 입고 전에 결품. 긴급 대응 필요</div>
       <div><span class="badge danger">위험</span> 소진예상 <b>${T.urgent}~${T.risk}일</b> — 리드타임보다 재고가 적음. <b>지금 바로 발주</b>해야 함 (발주 지연)</div>
       <div><span class="badge caution">주의</span> 소진예상 <b>${T.risk}~${T.caution}일</b> (리드타임 + ${num('ruleCautionExtra',R.cautionExtra,52)}일) — 한 달 안에 발주</div>
       <div><span class="badge watch">관찰</span> 소진예상 <b>${T.caution}~${T.watch}일</b> (리드타임 + ${num('ruleSafeExtra',R.safeExtra,52)}일까지) — 다음 발주 시점 검토</div>
