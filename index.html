@@ -384,16 +384,12 @@
         </label>
         <div class="filters" style="align-items:flex-start;">
           <select id="gradeSelect">
-            <option value="조치필요" selected>조치 필요 (긴급+위험+주의)</option>
-            <option value="">등급 전체</option>
-            <option value="긴급">긴급</option>
-            <option value="위험">위험</option>
-            <option value="주의">주의</option>
-            <option value="관찰">관찰</option>
-            <option value="안전(입고예정)">안전(입고예정)</option>
-            <option value="단발성">단발성(참고)</option>
-            <option value="휴면">휴면(참고)</option>
-            <option value="안전">안전</option>
+            <option value="조치필요" selected>발주 필요 (지금+곧)</option>
+            <option value="지금 발주">지금 발주</option>
+            <option value="곧 발주">곧 발주</option>
+            <option value="여유">여유</option>
+            <option value="참고">참고 (휴면·단발성)</option>
+            <option value="">전체</option>
             <option value="과잉재고">과잉재고</option>
           </select>
           <select id="forecastCustomer">
@@ -1030,9 +1026,17 @@ function computeDerived(){
 }
 
 /* ---------------- Rendering ---------------- */
+/* 화면에는 4단계만 보여줌 (내부 계산 등급은 그대로 유지): 지금 발주 / 곧 발주 / 여유 / 참고 */
+function groupOf(g){
+  if(g==='긴급'||g==='위험') return '지금 발주';
+  if(g==='주의') return '곧 발주';
+  if(g==='관찰'||g==='안전'||g==='안전(입고예정)') return '여유';
+  return '참고';
+}
 function gradeBadge(g){
-  const map = {'긴급':'urgent','위험':'danger','주의':'caution','관찰':'watch','안전':'safe','안전(입고예정)':'pending','단발성':'none','휴면':'none','데이터부족':'none'};
-  return `<span class="badge ${map[g]||'none'}">${g}</span>`;
+  const grp = groupOf(g);
+  const cls = g==='긴급' ? 'urgent' : ({'지금 발주':'danger','곧 발주':'caution','여유':'safe','참고':'none'})[grp];
+  return `<span class="badge ${cls}" title="세부 등급: ${g}">${grp}</span>`;
 }
 function barColor(g){
   if(g==='긴급' || g==='위험') return 'var(--danger)';
@@ -1110,12 +1114,11 @@ function renderOverview(){
 
   document.getElementById('signalTotal').textContent = `품목 ${fmt(f.length)}개${ui.brandSelected.size>0?' · '+Array.from(ui.brandSelected).join(', '):''}`;
 
+  const nNow = counts.긴급 + counts.위험, nSoon = counts.주의, nOk = counts.관찰 + safeCombined, nRef = counts.단발성 + counts.휴면 + counts.데이터부족;
   const circleDefs = [
-    {label:'긴급', count:counts.긴급, color:'#8E2B27'},
-    {label:'위험', count:counts.위험, color:'var(--danger)'},
-    {label:'주의', count:counts.주의, color:'var(--caution)'},
-    {label:'관찰', count:counts.관찰, color:'#52708F'},
-    {label:'안전', count:safeCombined, color:'var(--safe)'},
+    {label:'지금 발주', count:nNow, color:'var(--danger)'},
+    {label:'곧 발주', count:nSoon, color:'var(--caution)'},
+    {label:'여유', count:nOk, color:'var(--safe)'},
   ];
   const circles = document.getElementById('signalCircles');
   circles.innerHTML = circleDefs.map(c=>{
@@ -1137,15 +1140,10 @@ function renderOverview(){
   const pnSet = new Set(f.map(x=>x.품번));
   const sold6moTotal = Array.from(state.salesByProduct.entries()).reduce((s,[pn,x])=> pnSet.has(pn) ? s+x.sum6mo : s, 0);
   cardsEl.innerHTML = `
-    <div class="card"><div class="card-dot" style="background:#8E2B27;"></div><div class="k">긴급 품목</div><div class="v" style="color:#8E2B27">${fmt(counts.긴급)}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--danger);"></div><div class="k">위험 품목</div><div class="v" style="color:var(--danger)">${fmt(counts.위험)}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--caution);"></div><div class="k">주의 품목</div><div class="v" style="color:var(--caution)">${fmt(counts.주의)}</div></div>
-    <div class="card"><div class="card-dot" style="background:#52708F;"></div><div class="k">관찰 품목</div><div class="v" style="color:#52708F">${fmt(counts.관찰)}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--cat-incoming);"></div><div class="k">안전(입고예정)</div><div class="v" style="color:var(--cat-incoming)">${fmt(counts['안전(입고예정)'])}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--safe);"></div><div class="k">안전 품목</div><div class="v" style="color:var(--safe)">${fmt(counts.안전)}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--none);"></div><div class="k">단발성(참고)</div><div class="v" style="color:var(--none)">${fmt(counts.단발성)}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--none);"></div><div class="k">휴면(참고)</div><div class="v" style="color:var(--none)">${fmt(counts.휴면)}</div></div>
-    <div class="card"><div class="card-dot" style="background:var(--none);"></div><div class="k">데이터부족</div><div class="v" style="color:var(--none)">${fmt(counts.데이터부족)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--danger);"></div><div class="k">지금 발주</div><div class="v" style="color:var(--danger)">${fmt(nNow)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--caution);"></div><div class="k">곧 발주</div><div class="v" style="color:var(--caution)">${fmt(nSoon)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--safe);"></div><div class="k">여유</div><div class="v" style="color:var(--safe)">${fmt(nOk)}</div></div>
+    <div class="card"><div class="card-dot" style="background:var(--none);"></div><div class="k">참고 (휴면·단발성)</div><div class="v" style="color:var(--none)">${fmt(nRef)}</div></div>
     <div class="card"><div class="card-dot" style="background:var(--accent);"></div><div class="k">거래처 수</div><div class="v">${fmt(totalCustomers)}</div></div>
     <div class="card"><div class="card-dot" style="background:var(--cat-warehouse);"></div><div class="k">최근 6개월 총판매</div><div class="v">${fmt(sold6moTotal)}</div></div>
   `;
@@ -1187,7 +1185,7 @@ function forecastDetailRow(x){
     if(x.sched.oct_q>0) incomingRows.push({m:ml[2], d:x.sched.oct_d, q:x.sched.oct_q});
   }
 
-  return `<tr class="detail-row"><td colspan="14" style="background:var(--surface-alt);padding:16px 18px;">
+  return `<tr class="detail-row"><td colspan="11" style="background:var(--surface-alt);padding:16px 18px;">
     <div style="display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:20px;">
       <div>
         <div class="section-title" style="margin-bottom:8px;">거래처별 발주 패턴 (최근 12개월, 예상 분기수요의 근거)</div>
@@ -1254,7 +1252,7 @@ function renderForecastSelectPanel(){
       <table><thead><tr><th>품번</th><th>브랜드</th><th>품명</th><th class="num">최근6개월 판매</th><th class="num">예상 분기수요</th><th class="num">현재 가용재고</th><th class="num">입고예정(3개월)</th><th class="num">추가발주 필요</th><th>등급</th><th></th></tr></thead>
       <tbody>${selected.map(x=>`<tr>
         <td><code class="pn">${x.품번}</code></td><td>${brandBadge(x.brand)}</td><td>${x.품명}</td>
-        <td class="num">${fmt(x.sold6)}</td><td class="num">${fmt(x.avgQuarterly)}</td>
+        <td class="num">${fmt(x.avgQuarterly)}</td>
         <td class="num">${fmt(x.available)}</td><td class="num">${fmt(x.incoming)}</td>
         <td class="num" style="font-weight:700;color:${x.orderQty>0?'var(--danger)':'inherit'}">${fmt(x.orderQty)}</td>
         <td>${gradeBadge(x.grade)}</td>
@@ -1294,7 +1292,7 @@ function renderForecast(){
   // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
   let list = isOverstock
     ? state.forecast.filter(x=>brandPasses(x.brand) && x.sold6===0)
-    : state.forecast.filter(x=>brandPasses(x.brand) && (ui.forecastShowNoSales || ui.forecastGrade==='휴면' || x.sold6>0));
+    : state.forecast.filter(x=>brandPasses(x.brand) && (ui.forecastShowNoSales || ui.forecastGrade==='참고' || x.sold6>0));
 
   // 거래처 필터: 그 거래처가 실제로 사간 품목만 남기고, 예상 분기수요/재고비율/추가발주/등급을 그 거래처 수요 기준으로 재계산
   if(ui.forecastCustomer){
@@ -1317,7 +1315,7 @@ function renderForecast(){
   } else if(ui.forecastGrade==='조치필요'){
     list = list.filter(x=>x.grade==='긴급' || x.grade==='위험' || x.grade==='주의');
   } else if(ui.forecastGrade){
-    list = list.filter(x=>x.grade===ui.forecastGrade);
+    list = list.filter(x=>groupOf(x.grade)===ui.forecastGrade);
   }
   if(ui.forecastSearch){
     const s = ui.forecastSearch.toLowerCase();
@@ -1352,8 +1350,8 @@ function renderForecast(){
     </div>
     <div style="overflow-x:auto;">
     <table><thead><tr>
-      <th><input type="checkbox" data-action="toggle-forecast-select-all" ${allSelected?'checked':''}></th><th></th><th>품번</th><th>바코드</th><th>브랜드</th><th>품명</th><th class="num">최근6개월 판매</th><th class="num">예상 분기수요</th>
-      <th class="num">현재 가용재고</th><th class="num">입고예정(3개월)</th><th class="num">재고비율</th><th class="num" title="(현재 가용재고+입고예정) ÷ 일평균 수요. 아래 줄: 리드타임을 감안해 며칠 안에 발주해야 하는지">소진예상</th><th class="num">추가발주 필요</th><th>등급</th>
+      <th><input type="checkbox" data-action="toggle-forecast-select-all" ${allSelected?'checked':''}></th><th></th><th>품번</th><th>브랜드</th><th>품명</th><th class="num">예상 분기수요</th>
+      <th class="num">현재 가용재고</th><th class="num">입고예정(3개월)</th><th class="num" title="(현재 가용재고+입고예정) ÷ 일평균 수요. 아래 줄: 리드타임을 감안해 며칠 안에 발주해야 하는지">소진예상</th><th class="num">추가발주 필요</th><th>등급</th>
     </tr></thead><tbody>${shown.map(x=>{
       const expanded = ui.forecastExpanded.has(x.품번);
       const checked = ui.forecastSelected.has(x.품번);
@@ -1361,12 +1359,10 @@ function renderForecast(){
         <td><input type="checkbox" data-action="toggle-forecast-select" data-pn="${escAttr(x.품번)}" ${checked?'checked':''} onclick="event.stopPropagation()"></td>
         <td style="color:var(--muted);cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${expanded?'▼':'▶'}</td>
         <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}"><code class="pn">${x.품번}</code>${x.hero?'<span class="badge hero" title="히어로 품목: 수량 기준으로 판정">★히어로</span>':''}</td>
-        <td class="mono" style="cursor:pointer;font-size:11.5px;color:var(--muted);" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${x.바코드||'-'}</td>
         <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${brandBadge(x.brand)}</td>
         <td style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">${x.품명}</td>
-        <td class="num">${fmt(x.sold6)}</td><td class="num">${fmt(x.avgQuarterly)}</td>
+        <td class="num">${fmt(x.avgQuarterly)}</td>
         <td class="num">${fmt(x.available)}</td><td class="num">${fmt(x.incoming)}</td>
-        <td class="num">${x.ratio===null?'<span style="color:var(--muted)">—</span>':`<span class="mono" style="font-weight:700;color:${barColor(x.grade)}">${Math.round(x.ratio)}%</span>`}</td>
         <td class="num">${x.hero ? `<span style="font-size:11px;color:var(--muted);">기준 ≤${fmt(x.heroMin)}</span>` : `<span class="mono" style="color:${barColor(x.grade)}">${fmtDays(x.coverAll)}</span>${x.orderGap===null||x.orderGap===undefined||['안전','안전(입고예정)','단발성','휴면','데이터부족'].includes(x.grade)?'':`<div style="font-size:10.5px;color:${x.orderGap<0?'var(--danger)':'var(--muted)'};">${x.orderGap<0?`발주 ${Math.round(-x.orderGap)}일 지연`:`${Math.round(x.orderGap)}일 내 발주`}</div>`}`}</td>
         <td class="num" style="font-weight:${x.orderQty>0?700:400};color:${x.orderQty>0?'var(--danger)':'inherit'}">${fmt(x.orderQty)}</td>
         <td>${gradeBadge(x.grade)}</td>
@@ -1794,22 +1790,22 @@ function renderCustShort(){
     if(q) sum = sum.filter(s=>s.cust.toLowerCase().includes(q));
     el.innerHTML = `<div class="filters"><input id="custShortListSearch" placeholder="거래처 검색 (예: TJX, Target, Landing)" value="${escAttr(cs.listSearch)}" style="font-family:inherit;font-size:12.5px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--line);min-width:260px;"></div>
     <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;">거래처가 최근 12개월간 사간 품목별로, 그 거래처의 예상 분기수요 대비 <b>${teamLabel()}</b> 가용재고+입고예정이 얼마나 모자란지 보여줍니다. 행을 클릭하면 품목 상세가 열립니다. 휴면·단발성 품목은 집계에서 제외됩니다.</div>
-    ${sum.length? `<div style="overflow-x:auto;"><table><thead><tr><th>거래처</th><th class="num">거래 품목</th><th class="num">긴급</th><th class="num">위험</th><th class="num">주의</th><th class="num">관찰</th><th class="num" title="긴급·위험·주의 품목의 (분기수요 − 가용재고 − 입고예정) 합계">부족수량 합계</th><th class="num">12개월 판매수량</th><th>최근 주문</th></tr></thead><tbody>${sum.map(s=>`<tr class="forecast-row" style="cursor:pointer;" data-cs-cust="${escAttr(s.cust)}"><td><b>${s.cust}</b></td><td class="num">${fmt(s.items)}</td><td class="num" style="color:${s.urgent?'var(--danger)':'var(--muted)'};font-weight:${s.urgent?700:400}">${s.urgent}</td><td class="num" style="color:${s.danger?'var(--danger)':'var(--muted)'};font-weight:${s.danger?700:400}">${s.danger}</td><td class="num" style="color:${s.caution?'var(--caution)':'var(--muted)'}">${s.caution}</td><td class="num" style="color:var(--muted)">${s.watch}</td><td class="num" style="font-weight:${s.shortQty?700:400}">${fmt(s.shortQty)}</td><td class="num">${fmt(s.totalQty)}</td><td class="mono" style="font-size:11.5px;">${fmtDateShort(s.last)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">일치하는 거래처가 없습니다.</div>'}`;
+    ${sum.length? `<div style="overflow-x:auto;"><table><thead><tr><th>거래처</th><th class="num">거래 품목</th><th class="num">지금 발주</th><th class="num">곧 발주</th><th class="num" title="긴급·위험·주의 품목의 (분기수요 − 가용재고 − 입고예정) 합계">부족수량 합계</th><th class="num">12개월 판매수량</th><th>최근 주문</th></tr></thead><tbody>${sum.map(s=>`<tr class="forecast-row" style="cursor:pointer;" data-cs-cust="${escAttr(s.cust)}"><td><b>${s.cust}</b></td><td class="num">${fmt(s.items)}</td><td class="num" style="color:${s.urgent+s.danger?'var(--danger)':'var(--muted)'};font-weight:${s.urgent+s.danger?700:400}">${s.urgent+s.danger}</td><td class="num" style="color:${s.caution?'var(--caution)':'var(--muted)'}">${s.caution}</td><td class="num" style="font-weight:${s.shortQty?700:400}">${fmt(s.shortQty)}</td><td class="num">${fmt(s.totalQty)}</td><td class="mono" style="font-size:11.5px;">${fmtDateShort(s.last)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">일치하는 거래처가 없습니다.</div>'}`;
     return;
   }
   // 상세
   const all = by.get(cs.customer);
   let list = all.slice();
-  if(cs.grade==='조치필요') list = list.filter(r=>r.grade==='긴급'||r.grade==='위험'||r.grade==='주의');
-  else if(cs.grade) list = list.filter(r=>r.grade===cs.grade);
+  if(cs.grade==='조치필요') list = list.filter(r=>['지금 발주','곧 발주'].includes(groupOf(r.grade)));
+  else if(cs.grade) list = list.filter(r=>groupOf(r.grade)===cs.grade);
   if(cs.search){ const s=cs.search.toLowerCase(); list = list.filter(r=>r.품번.toLowerCase().includes(s)||r.품명.toLowerCase().includes(s)); }
-  const cnt = g => all.filter(r=>r.grade===g).length;
+  const cnt = g => all.filter(r=>groupOf(r.grade)===g).length;
   const shortSum = all.filter(r=>['긴급','위험','주의'].includes(r.grade)).reduce((s,r)=>s+r.short,0);
-  const opts = [['조치필요','조치 필요 (긴급+위험+주의)'],['','등급 전체'],['긴급','긴급'],['위험','위험'],['주의','주의'],['관찰','관찰'],['안전(입고예정)','안전(입고예정)'],['안전','안전'],['단발성','단발성(참고)'],['휴면','휴면(참고)']];
+  const opts = [['조치필요','발주 필요 (지금+곧)'],['지금 발주','지금 발주'],['곧 발주','곧 발주'],['여유','여유'],['참고','참고 (휴면·단발성)'],['','전체']];
   el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
       <button class="btn ghost" type="button" id="custShortBack">← 거래처 목록</button>
       <div style="font-size:16px;font-weight:700;">${cs.customer}</div>
-      <span class="badge urgent">긴급 ${cnt('긴급')}</span><span class="badge danger">위험 ${cnt('위험')}</span><span class="badge caution">주의 ${cnt('주의')}</span><span class="badge watch">관찰 ${cnt('관찰')}</span>
+      <span class="badge danger">지금 발주 ${cnt('지금 발주')}</span><span class="badge caution">곧 발주 ${cnt('곧 발주')}</span>
       <span style="font-size:12px;color:var(--muted);">부족수량 합계 <b style="color:var(--danger)">${fmt(shortSum)}</b></span>
     </div>
     <div class="filters">
@@ -1817,10 +1813,10 @@ function renderCustShort(){
       <input id="custShortSearch" placeholder="품번 / 품명 검색" value="${escAttr(cs.search)}" style="font-family:inherit;font-size:12.5px;padding:8px 10px;border-radius:8px;border:1.5px solid var(--line);min-width:200px;">
       <button class="btn ghost" type="button" id="custShortCsv">CSV 내려받기</button>
     </div>
-    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;"><b>부족수량</b> = 이 거래처 예상 분기수요 − 현재 가용재고 − 입고예정. <b>1회 주문 부족</b> = 이 거래처 평균 1회 주문량 − 가용재고 (다음 주문 한 번도 못 받는 경우). <b>자동 발주점</b> = max(리드타임 수요, 평균 1회 주문량) + 긴급일수 수요로 <u>수량을 직접 정하지 않아도</u> 거래처 주문 패턴에서 계산합니다. 가용재고+입고예정이 평균 1회 주문량 미만이면 '위험', 발주점 미만이면 '주의'로 올립니다(▲). <b>합산 부족</b>은 모든 거래처 수요를 합친 해당 품목의 추가발주 필요 수량입니다 (재고는 거래처들이 나눠 쓰므로 함께 확인하세요).</div>
-    ${list.length? `<div style="overflow-x:auto;"><table><thead><tr><th>품번</th><th>품명</th><th class="num">분기수요(이 거래처)</th><th class="num" title="전체 거래처 수요 중 이 거래처 비중">비중</th><th class="num">평균 1회 주문</th><th class="num">주문횟수(12개월)</th><th class="num">현재 가용재고</th><th class="num">입고예정</th><th class="num">부족수량</th><th class="num" title="자동 계산: max(리드타임 수요, 평균 1회 주문량) + 긴급일수 수요. 가용재고+입고예정이 이보다 낮으면 알람">자동 발주점</th><th class="num">1회 주문 부족</th><th class="num">합산 부족</th><th class="num">소진예상</th><th>최근 주문</th><th>등급</th></tr></thead><tbody>${list.map(r=>`<tr>
+    <div style="font-size:11.5px;color:var(--muted);margin-bottom:10px;"><b>부족수량</b> = 이 거래처 예상 분기수요 − 현재 가용재고 − 입고예정. <b>1회 주문 부족</b> = 이 거래처 평균 1회 주문량 − 가용재고 (다음 주문 한 번도 못 받는 경우). <b>자동 발주점</b> = max(리드타임 수요, 평균 1회 주문량) + 긴급일수 수요로 <u>수량을 직접 정하지 않아도</u> 거래처 주문 패턴에서 계산합니다. 가용재고+입고예정이 평균 1회 주문량 미만이면 '지금 발주', 발주점 미만이면 '곧 발주'로 올립니다(▲). <b>합산 부족</b>은 모든 거래처 수요를 합친 해당 품목의 추가발주 필요 수량입니다 (재고는 거래처들이 나눠 쓰므로 함께 확인하세요).</div>
+    ${list.length? `<div style="overflow-x:auto;"><table><thead><tr><th>품번</th><th>품명</th><th class="num">분기수요(이 거래처)</th><th class="num">평균 1회 주문</th><th class="num">현재 가용재고</th><th class="num">입고예정</th><th class="num">부족수량</th><th class="num" title="자동 계산: max(리드타임 수요, 평균 1회 주문량) + 긴급일수 수요. 가용재고+입고예정이 이보다 낮으면 알람">자동 발주점</th><th class="num">1회 주문 부족</th><th class="num">합산 부족</th><th class="num">소진예상</th><th>최근 주문</th><th>등급</th></tr></thead><tbody>${list.map(r=>`<tr>
       <td><code class="pn">${r.품번}</code>${r.hero?'<span class="badge hero">★히어로</span>':''}</td><td>${r.품명}</td>
-      <td class="num">${fmt(r.custQ)}</td><td class="num">${Math.round(r.share*100)}%</td><td class="num">${fmt(r.cd.평균발주수량)}</td><td class="num">${r.cd.주문횟수}</td>
+      <td class="num">${fmt(r.custQ)}</td><td class="num">${fmt(r.cd.평균발주수량)}</td>
       <td class="num">${fmt(r.available)}</td><td class="num">${fmt(r.incoming)}</td>
       <td class="num" style="font-weight:${r.short?700:400};color:${r.short?'var(--danger)':'inherit'}">${fmt(r.short)}</td>
       <td class="num" style="color:${r.ropShort?'var(--danger)':'var(--muted)'}" title="발주점 대비 ${fmt(r.ropShort)} 부족">${fmt(r.rop)}</td><td class="num" style="color:${r.nextShort?'var(--danger)':'var(--muted)'}">${fmt(r.nextShort)}</td>
@@ -3937,7 +3933,7 @@ function renderForecastRules(force){
   }).join('');
   const alertN = (state.heroAlerts||[]).length;
   el.innerHTML = `<details id="rulesDetails" ${ui.rulesOpen?'open':''} style="border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:0 0 14px 0;background:var(--surface);">
-    <summary style="cursor:pointer;font-weight:700;font-size:13px;">⚙ 등급 기준 보기 · 히어로 품목 위험 기준 ${alertN>0?`<span style="color:var(--danger);">🚨 알람 ${alertN}개</span>`:''}</summary>
+    <summary style="cursor:pointer;font-weight:700;font-size:13px;">⚙ 기준 설정 (고급) · 히어로 품목 ${alertN>0?`<span style="color:var(--danger);">🚨 알람 ${alertN}개</span>`:''}</summary>
     <div style="margin-top:12px;font-size:12.5px;line-height:1.95;color:var(--ink);">
       <div>생산~입고 <b>리드타임</b> ${num('ruleLead',R.leadDays)}일 — 지금 발주하면 이 기간 뒤에 입고된다고 보고 판정합니다.</div>
       <div style="color:var(--muted);">소진예상일 = (현재 가용재고 + 입고예정) ÷ 일평균 수요 &nbsp;(일평균 수요 = 예상 분기수요 ÷ 91일) · 발주여유일 = 소진예상일 − 리드타임</div>
