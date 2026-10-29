@@ -284,6 +284,7 @@
   #forecastTable div[style*="overflow-x:auto"],#customerTable div[style*="overflow-x:auto"],#skuStatusTableWrap div[style*="overflow-x:auto"]{overflow:auto!important;max-height:68vh;border:1px solid var(--line);border-radius:10px;background:var(--surface);}
   #forecastTable div[style*="overflow-x:auto"] thead th,#customerTable div[style*="overflow-x:auto"] thead th,#skuStatusTableWrap div[style*="overflow-x:auto"] thead th{position:sticky;top:0;z-index:3;}
   div[style*="overflow-x:auto"],.tab-nav{cursor:grab;}
+  tr.forecast-row.open{background:#F3F6FB;}
   .grabbing,.grabbing *{cursor:grabbing!important;user-select:none!important;}
 
   /* ===== 가독성 개선: 글씨 키우고 여백 넓힘 ===== */
@@ -461,8 +462,9 @@
         <label style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px;margin:-4px 0 12px 0;cursor:pointer;">
           <input type="checkbox" id="forecastShowNoSales"> 최근 6개월 판매 이력 없는 품목도 보기
         </label>
+        <div id="forecastFilterChips"></div>
         <div class="filters" style="align-items:flex-start;">
-          <select id="gradeSelect">
+          <select id="gradeSelect" style="display:none;">
             <option value="조치필요" selected>발주 필요 (위험+주의)</option>
             <option value="위험">위험</option>
             <option value="주의">주의</option>
@@ -549,7 +551,7 @@ const ui = {
   skuStatusLastMatches: [], // 최근 검색 결과 품번 목록 (전체추가 버튼용)
   forecastShowNoSales: false,
   brandSelected: new Set(), // 비어있으면 전체 — 바코드 조회 제외 전역 적용
-  forecastGrade: '조치필요', forecastSearch: '', rulesOpen: false,
+  forecastGrade: '조치필요', forecastBrand: '', forecastSearch: '', rulesOpen: false,
   custId: '', custSelected: new Set(), pnSelected: new Set(),
   custMselSearch: '', pnMselSearch: '', customerPnSearch: '',
   lookupItems: [], // {barcode, status:'resolved'|'ambiguous'|'notfound', row, candidates}
@@ -1420,6 +1422,20 @@ function renderForecast(){
     });
   }
 
+  if(ui.forecastBrand) list = list.filter(x=>x.brand===ui.forecastBrand);
+  { // 상태/브랜드 필터 칩 (건수는 현재 거래처·검색 조건 기준)
+    const baseAll = state.forecast.filter(x=>brandPasses(x.brand));
+    const brands = Array.from(new Set(baseAll.map(x=>x.brand))).filter(Boolean);
+    const cnt = {위험:0,주의:0,여유:0,참고:0};
+    list.forEach(x=>{ cnt[groupOf(x.grade)]++; });
+    const stDefs = [['조치필요','발주 필요 (위험+주의)',cnt.위험+cnt.주의],['위험','위험',cnt.위험],['주의','주의',cnt.주의],['여유','여유',cnt.여유],['참고','참고',cnt.참고],['','전체',list.length]];
+    const on = 'background:var(--ink);border-color:var(--ink);color:#fff;';
+    const chipsEl = document.getElementById('forecastFilterChips');
+    if(chipsEl) chipsEl.innerHTML = `<div style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="color:var(--muted);font-size:13px;margin-right:2px;">상태</span>${stDefs.map(([v,l,n])=>`<button type="button" class="brand-chip" data-fc-grade="${escAttr(v)}" style="${ui.forecastGrade===v?on:''}">${l} <b>${n}</b></button>`).join('')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span style="color:var(--muted);font-size:13px;margin-right:2px;">브랜드</span><button type="button" class="brand-chip" data-fc-brand="" style="${ui.forecastBrand===''?on:''}">전체</button>${brands.map(b=>`<button type="button" class="brand-chip" data-fc-brand="${escAttr(b)}" style="${ui.forecastBrand===b?on:''}">${b}</button>`).join('')}</div>
+    </div>`;
+  }
   const needList = list.filter(x=>x.orderQty>0 && !['휴면','단발성','데이터부족'].includes(x.grade));
   const needItems = needList.length, needQty = needList.reduce((a,x)=>a+x.orderQty,0);
   if(isOverstock){
@@ -1482,8 +1498,8 @@ function renderForecast(){
       const expanded = ui.forecastExpanded.has(x.품번);
       const mo = monthly(x), no = x.nextOrder;
       const noTxt2 = no ? (no.overdue ? `주문 예정일 지남 · 약 ${fmt(no.qty)}` : `다음 주문 ${no.date.getMonth()+1}/${no.date.getDate()} · 약 ${fmt(no.qty)}`) : (x.horizon>0 ? '최근 판매 기준 환산' : ''); const noTxt = no ? `<span style="color:${no.overdue?'var(--danger)':'inherit'}">${no.overdue?'도래':(no.date.getMonth()+1)+'/'+no.date.getDate()}</span> <span style="color:var(--muted)">· ${fmt(no.qty)}</span>` : '<span style="color:var(--muted)">—</span>';
-      const attr = `style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}"`;
-      const row = `<tr class="forecast-row">
+      const attr = '';
+      const row = `<tr class="forecast-row${expanded?' open':''}" style="cursor:pointer;" data-action="toggle-forecast-detail" data-pn="${escAttr(x.품번)}">
         <td ${attr}>${brandBadge(x.brand)}</td>
         <td ${attr}><span style="color:var(--muted);">${expanded?'▼':'▶'}</span> <code class="pn">${x.품번}</code>${x.hero?'<span class="badge hero" title="히어로 품목: 수량 기준으로 판정">★</span>':''}</td>
         <td ${attr}>${x.품명}</td>
@@ -3147,6 +3163,10 @@ document.getElementById('forecastPnChipRow').addEventListener('click', e=>{
   renderForecast();
 });
 document.getElementById('view-forecast').addEventListener('click', e=>{
+  const fg = e.target.closest('[data-fc-grade]');
+  if(fg){ ui.forecastGrade = fg.getAttribute('data-fc-grade'); ui.forecastPage=50; renderForecast(); return; }
+  const fb = e.target.closest('[data-fc-brand]');
+  if(fb){ ui.forecastBrand = fb.getAttribute('data-fc-brand'); ui.forecastPage=50; renderForecast(); return; }
   const pick = e.target.closest('[data-cs-pick]');
   if(pick){ ui.forecastCustomer = pick.getAttribute('data-cs-pick'); ui.forecastPage=50; renderForecast(); return; }
   if(e.target.closest('[data-action="forecast-csv"]')){ downloadForecastListCsv(); return; }
