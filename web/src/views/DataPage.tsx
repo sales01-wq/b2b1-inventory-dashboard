@@ -18,6 +18,7 @@ import {SHEET_SIGNATURES} from '../lib/parse.js';
 import {unresolvedFiles, handleFiles, applyUploadedData} from '../lib/upload.js';
 import {uploadDoneText} from '../lib/views.js';
 import {shared, refreshFromGoogleSheet} from '../data/shared.js';
+import {DEMO, loadDemoData} from '../app/demo';
 
 const SHEET_OPTIONS = SHEET_SIGNATURES.map((s: {key: string; label: string}) => ({value: s.key, label: s.label}));
 const sigLabel = (k: string) => (SHEET_SIGNATURES.find((s: {key: string}) => s.key === k) || {}).label;
@@ -70,7 +71,7 @@ function SheetPanel() {
               description='Apps Script에서 "배포 → 새 배포 → 웹 앱 (액세스 권한: 모든 사용자)"로 배포하면 생기는 주소입니다.'
             />
           </div>
-          <Button label="🔄 지금 가져오기" variant="primary" isLoading={shared.gsLoading} onClick={() => refreshFromGoogleSheet(shared.gsUrl)} />
+          <Button label="🔄 지금 가져오기" variant="primary" isLoading={shared.gsLoading} onClick={() => (DEMO ? loadDemoData() : refreshFromGoogleSheet(shared.gsUrl))} />
         </HStack>
         {shared.gsStatus && <MessageBanner msg={shared.gsStatus} />}
       </VStack>

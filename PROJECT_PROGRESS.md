@@ -1,7 +1,7 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-11 (Sales period clarity, subtle badges), branch `feat/react-astryx`.
+Last updated: 2026-11-11 (month-shift regression tests, 발주 현황 gap review, preview mode), branch `feat/react-astryx`.
 
 **Next step needs owner approval:** the owner reviews the improved Overview and Sales (screenshots, Impeccable audit 25 → 28/40, then the owner's follow-up fixes below). Do not restyle other screens or start the lookup screen until they approve.
 
@@ -66,6 +66,12 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
 - Phone: `useScrollRecent(key)` (`app/useNarrow.ts`) opens period tables scrolled to the right end (latest period + 합계) when the columns change; a user's own scrolling is kept. e2e checks it.
 - Badges: grade and status badges use Astryx's tinted variants (`red` / `yellow` / `green` / `neutral` / `orange` / `blue`) instead of the solid semantic ones (`error` / `warning` / `success` / `info`), everywhere (발주 현황, Overview, 업로드, user chip). Contrast measured 7.8:1 and 8.7:1. The 🚨 emoji in the 알람 badge was removed.
 - 품목별 month columns are 64px (was 70px) so the table still fits at 1440px with a gap column.
+
+## Preview mode (test data only)
+
+- `npm run build:demo` builds into `web/dist-demo/` (git-ignored) with `VITE_DEMO_DATA=1`. `src/app/demo.ts`: skips login and shared mode, applies the test sheets from `src/lib/__fixtures__/sheets.js` through the normal upload path, replaces `window.fetch` with a function that always rejects (no Apps Script, no `/api`), and makes 새로고침 / 지금 가져오기 re-apply the test data. A banner says it is test data. A normal `npm run build` contains none of this (checked: 0 bundle files).
+- Verified in Chromium (desktop + iPhone 13): data loads, no page errors, `fetch('/api/me')` is blocked; only the CDN libraries and font load.
+- Proposed hosting (needs owner approval, not done): a **separate** Vercel project from the same repo, Root Directory `web`, build `npm run build:demo`, output `dist-demo`, production branch `feat/react-astryx`, no environment variables, deployment protection on. The existing production project is not touched.
 
 ## Folder map (`web/`)
 
@@ -141,12 +147,12 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
    - **Expanded row:** pattern table (with "선택됨"), last 20 sales, warehouse table with 합계 / "재고없음", incoming table, notes. It stays inside the visible width while the table scrolls.
    - **Not built (unreachable in production):** the row-selection checkboxes, the "발주할 품목" panel and the selected-items CSV. Production has handlers for them, but `renderForecast` never draws the checkboxes, so users can't reach them. `forecastCsv()` is ported and tested in case it's wanted.
 
-**Test status:** `npm test` gives 120 / 120:
+**Test status:** `npm test` gives 121 / 121:
 
 | File | Checks |
 |---|---|
 | `legacy.test.js` + `format.test.ts` | 31 + 3 |
-| `views.test.js` | 71 (56 compared with production, incl. 5 hero-alarm cases and 35 order-status filter cases; 14 for new features: Overview tile → 발주 현황 counts for 7 cases, no-sales items made visible, 거래처별 totals vs raw sales for 6 cases, missing / current periods) |
+| `views.test.js` | 72 (56 compared with production, incl. 5 hero-alarm cases and 35 order-status filter cases; 14 for new features: Overview tile → 발주 현황 counts for 7 cases, no-sales items made visible, 거래처별 totals vs raw sales for 6 cases, missing / current periods, one-month shift regression with month-unique quantities in 3 date formats) |
 | `shared.test.js` | 12 |
 | `actions.test.js` | 3 (team/brand; 19 sales steps; 28 order-status steps incl. rules save/reset and hero add/delete, each comparing filter state, the full filtered list and saved settings), all driven through production's real controls |
 
@@ -160,7 +166,7 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
   - hero add → alarm, delete → alarm gone;
 - sticky first columns: no overlap on desktop; still pinned on a phone after scrolling; no page-level sideways scroll.
 
-`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 32 real bugs so far, all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
+`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 38 real bugs so far (incl. 6 one-month shift bugs: parser ×2, month key ±1, quarter label, display cell; the display one is caught by e2e's cell-by-cell check against the raw sheet), all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
 
 ## Remaining work (in this order, one screen at a time, report after each)
 

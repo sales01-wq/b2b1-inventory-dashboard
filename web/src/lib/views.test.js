@@ -374,6 +374,36 @@ describe('개요 → 발주 현황 연결 · 거래처별 합계 행', () => {
     expect(a.forecastModel().list.map(x => x.품번)).toEqual(expect.arrayContaining(noSales.map(x => x.품번)));
   });
 
+  it('판매 수량이 한 달 밀리지 않음: 달마다 다른 수량, 월초 · 월말, 날짜 형식 3가지', () => {
+    setCase(['B2B1팀', []]);
+    // 2025년 1~12월 (3월은 판매 없음). 매달 1일과 말일에 그 달에만 나오는 수량 → 한 달이라도 밀리면 값이 달라짐
+    const p2 = n => String(n).padStart(2, '0');
+    const fmts = [(y, m, d) => `${y}-${p2(m)}-${p2(d)}`, (y, m, d) => `${y}.${p2(m)}.${p2(d)}`, (y, m, d) => `${p2(m)}-${p2(d)}-${y}`];
+    const rows = [['구분', '실적번호', '실적일자', '부서', '거래처', '품명', '품번', '수량', '원화판매금액계']];
+    const want = {}, wantQ = {};
+    let n = 0;
+    for (let m = 1; m <= 12; m++) {
+      if (m === 3) continue;
+      for (const [d, qty] of [[1, m * 100 + 1], [new Date(2025, m, 0).getDate(), m * 10]]) {
+        rows.push(['판매', 'R' + n, fmts[n % 3](2025, m, d), 'B2B1팀', '시험상사', '시험 품목', 'SB001', String(qty), '0']);
+        n++;
+        want[`2025-${p2(m)}`] = (want[`2025-${p2(m)}`] || 0) + qty;
+        wantQ[`2025 Q${Math.ceil(m / 3)}`] = (wantQ[`2025 Q${Math.ceil(m / 3)}`] || 0) + qty;
+      }
+    }
+    a.state.sales = a.parseSales(rows);
+    expect(a.state.sales.length).toBe(22);
+    // 품목별 (월): 열 순서 · 머리글 · 값
+    setSet(a.ui.skuStatusSelected, ['SB001']);
+    const s = a.skuStatusModel();
+    expect(Object.fromEntries(s.months.map((mk, i) => [mk, s.rows[0].values[i]]))).toEqual(want);
+    expect(s.months.map(mk => a.skuMonthLabel(mk, s.singleYear))).toEqual(Object.keys(want).map(k => `${+k.slice(5)}월`));
+    expect(a.periodGaps(s.months)).toEqual([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]); // 3월 자리에 빠진 기간 1
+    // 거래처별 (분기)
+    setSet(a.ui.custSelected, []); setSet(a.ui.pnSelected, []); a.ui.customerPnSearch = '';
+    expect(Object.fromEntries(a.customerTableModel().rows[0].quarters)).toEqual(wantQ);
+  });
+
   it('빠진 기간 · 진행 중인 기간', () => {
     expect(a.periodGaps(['2025-10', '2026-01', '2026-02', '2026-04'])).toEqual([0, 2, 0, 1]);
     expect(a.periodGaps(['2025-12', '2026-01'])).toEqual([0, 0]); // 해가 바뀌어도 이어짐

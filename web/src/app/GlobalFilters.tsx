@@ -12,6 +12,7 @@ import {setTeam, toggleBrand} from '../lib/actions.js';
 import {syncStatusText} from '../lib/views.js';
 import {shared, refreshFromGoogleSheet} from '../data/shared.js';
 import {useStore} from './useStore';
+import {DEMO, loadDemoData} from './demo';
 
 const TEAMS = ['전체', 'B2B1팀', 'B2B2팀'];
 const BRANDS = ['성분에디터', '밀크터치', '마미케어'];
@@ -73,7 +74,7 @@ export function RefreshStatus() {
         variant="secondary"
         icon={<ArrowPathIcon width={14} height={14} aria-hidden />}
         isLoading={shared.updating || shared.gsLoading}
-        onClick={() => refreshFromGoogleSheet(shared.gsUrl)}
+        onClick={() => (DEMO ? loadDemoData() : refreshFromGoogleSheet(shared.gsUrl))}
       />
     </HStack>
   );

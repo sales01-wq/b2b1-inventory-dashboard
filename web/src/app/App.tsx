@@ -16,6 +16,7 @@ import {useHashRoute} from './useHashRoute';
 import {useStore} from './useStore';
 import {StatusBanners} from './StatusBanners';
 import {DEFAULT_WEBAPP_URL} from './defaults';
+import {DEMO, startDemo} from './demo';
 import {emit, subscribe} from '../lib/store.js';
 import {shared, initSharedMode, logout} from '../data/shared.js';
 import {settingsLoadLocal} from '../data/settings.js';
@@ -40,6 +41,7 @@ let started = false;
 function start() {
   if (started) return;
   started = true;
+  if (DEMO) { settingsLoadLocal(); startDemo(); return; } // 미리보기: 로그인 · 실제 데이터 연결 없음
   shared.gsUrl = DEFAULT_WEBAPP_URL;
   settingsLoadLocal();
   emit();

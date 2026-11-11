@@ -5,14 +5,16 @@ import {VStack} from '@astryxdesign/core/VStack';
 import {state} from '../lib/store.js';
 import {shared} from '../data/shared.js';
 import {useStore} from './useStore';
+import {DEMO} from './demo';
 
 /** 상단 알림: 공유 데이터 안내(sharedBar)와 파일 처리 오류(bannerZone) */
 export function StatusBanners() {
   useStore();
   const b = shared.bar;
-  if (!b && !state.error) return null;
+  if (!b && !state.error && !DEMO) return null;
   return (
     <VStack gap={2} padding={2}>
+      {DEMO && <Banner status="info" title="미리보기 — 테스트 데이터입니다" description="실제 재고 · 판매 데이터가 아니며, 로그인과 외부 연결(구글 시트 · 서버)은 꺼져 있습니다." collapsible={false} />}
       {b && <MessageBanner msg={b} />}
       {state.error && (
         <Banner

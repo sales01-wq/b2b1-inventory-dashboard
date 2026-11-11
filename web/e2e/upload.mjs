@@ -14,6 +14,7 @@ const base = 'http://localhost:5174';
 const sh = makeSheets(Date.now());
 const files = {가용재고: sh.inventory, 제품일정표: sh.schedule, 판매실적: sh.sales1, 판매실적_B2B2팀: sh.sales2, 유통기한: sh.expiry, 상품마스터: sh.productMaster};
 const shot = async (page, name) => { if (process.env.SHOT_DIR) await page.screenshot({path: `${process.env.SHOT_DIR}/${name}.png`, fullPage: true}); }; // 선택: 화면 캡처
+const fmtKo = n => new Intl.NumberFormat('ko-KR').format(n);
 const text = async loc => (await loc.innerText()).replace(/\s+/g, ' ').trim();
 const readDownload = d => new Promise(res => { let t = ''; d.createReadStream().then(st => st.on('data', c => (t += c)).on('end', () => res(t))); });
 
@@ -130,6 +131,33 @@ try {
   await box.press('Enter');
   await page.getByText('SB001 · 성분 에디터 세럼').waitFor();
   assert.match(await text(page.locator('tfoot tr')), /^합계 .* 6,400$/);
+  // 한 달 밀림 회귀 확인: 화면에 그려진 (머리글의 달, 칸 값) 이 시트 원본을 직접 더한 값과 같은지 (A상사 · B유통, 수량이 달마다 다름)
+  const ymOf = v => { const t = String(v).replace(/[./]/g, '-'); let m = /^(\d{4})-(\d{1,2})-/.exec(t); if (m) return [+m[1], +m[2]]; m = /^(\d{1,2})-\d{1,2}-(\d{4})$/.exec(t); return m ? [+m[2], +m[1]] : null; };
+  const grid = await page.evaluate(() => {
+    const t = document.querySelector('table.fixed-cols');
+    const heads = [...t.querySelectorAll('thead th')].map(th => (th.classList.contains('gap-col') ? null : th.textContent.replace('집계 중', '').trim()));
+    return [...t.querySelectorAll('tbody tr')].map(tr => [...tr.cells].map((td, i) => [heads[i], td.textContent.trim()]));
+  });
+  const singleYear = !grid[0].some(([h]) => h && /^\d{2}\./.test(h));
+  const sold = {};
+  for (const r of files.판매실적) {
+    const ym = r[6] === 'SB001' && ['A상사', 'B유통'].includes(r[4]) && ymOf(r[2]);
+    if (!ym) continue;
+    const label = singleYear ? `${ym[1]}월` : `${String(ym[0]).slice(2)}.${ym[1]}월`;
+    sold[r[4]] ??= {};
+    sold[r[4]][label] = (sold[r[4]][label] || 0) + Number(r[7].replace(/,/g, ''));
+  }
+  let compared = 0;
+  for (const row of grid) {
+    const cust = row[0][1];
+    if (!sold[cust]) continue;
+    for (const [head, cell] of row.slice(1)) {
+      if (!head || head === '합계') continue;
+      assert.equal(cell, head in sold[cust] ? fmtKo(sold[cust][head]) : '-', `${cust} ${head}`);
+      compared++;
+    }
+  }
+  assert.ok(compared >= 20, '비교한 칸 수 ' + compared);
   // 품목별: 데이터에 판매가 없는 달(25.11 · 25.12)은 빗금 열 하나로, 이번 달은 '집계 중'
   assert.deepEqual(await page.locator('th.gap-col').allInnerTexts(), ['2개월 없음']);
   assert.equal(await page.getByRole('columnheader', {name: /집계 중/}).count(), 1);
