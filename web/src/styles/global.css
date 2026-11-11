@@ -43,7 +43,14 @@ body {
 .num { text-align: end; white-space: nowrap; }
 .muted { color: var(--color-text-secondary); }
 .strong { font-weight: 700; }
-.group-alt > td { background: var(--color-background-secondary, transparent); }
+.group-alt > td { background: var(--color-background-muted); }
+/* 분기 구분: 기존 분기 색을 머리글 아래 막대와 열 배경(옅게)으로 */
+.qhead { box-shadow: inset 0 -3px 0 var(--q); }
+.qcell { background-image: linear-gradient(color-mix(in srgb, var(--q) 9%, transparent), color-mix(in srgb, var(--q) 9%, transparent)); }
+/* 첫 칸 고정: 표의 스크롤 영역을 기준으로 붙도록 감싸는 영역을 실제 스크롤 영역으로 만듦 (기본값 clip 이면 페이지 여백 기준으로 16px 밀림) */
+.astryx-table-scroll-wrapper:has(> div > table.sticky-first) { overflow-x: auto; }
+.sticky-first .sticky-col { position: sticky; inset-inline-start: 0; z-index: 1; background-color: var(--color-background-surface); box-shadow: inset -1px 0 0 var(--color-border); }
+.sticky-first .group-alt > .sticky-col { background-color: var(--color-background-muted); }
 .msel-list { max-height: 320px; overflow-y: auto; display: grid; gap: 0.25rem; }
 .grow-field { flex: 1 1 220px; max-width: 360px; }
 .sku-search { display: grid; gap: 0.5rem; max-width: 720px; }

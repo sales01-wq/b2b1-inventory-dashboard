@@ -24,6 +24,10 @@ import * as act from '../lib/actions.js';
 import {fmt} from '../lib/format';
 import {saveCsv} from '../lib/saveCsv';
 
+// 기존 QUARTER_COLORS (index.html 1523행). 글자색으로 쓰기엔 대비가 부족해서(3.1~4.4:1) 머리글 막대 · 열 배경으로 사용
+const QUARTER_COLORS = ['#C15B72', '#6E88A6', '#BD8A3E', '#6F8F5E', '#8B6F94', '#B6693F', '#7A8B7E', '#A5794F'];
+const qColor = (i: number) => ({'--q': QUARTER_COLORS[i % QUARTER_COLORS.length]}) as React.CSSProperties;
+
 let subview: 'customer' | 'skustatus' = 'customer'; // 기존처럼 다른 화면에 다녀와도 마지막 보기 유지
 
 export function SalesPage() {
@@ -136,46 +140,48 @@ function CustomerTable() {
   return (
     <VStack gap={2}>
       {/* 좁은 화면에서는 칸을 찌그러뜨리지 않고 옆으로 스크롤 */}
-      <Table density="compact" dividers="rows" hasHover style={{minWidth: 640 + (m.groupByCust ? 110 : 0) + m.quarterCols.length * 84}}>
-        <TableHeader>
-          <TableRow>
-            <TableHeaderCell>품번</TableHeaderCell>
-            <TableHeaderCell>브랜드</TableHeaderCell>
-            <TableHeaderCell>품명</TableHeaderCell>
-            {/* 운영 화면은 여기서 머리글이 '거래처 · 가용재고' 순서였지만 실제 칸은 '가용재고 · 거래처' 순서여서 머리글을 칸에 맞춤 */}
-            <TableHeaderCell className="num">가용재고</TableHeaderCell>
-            {m.groupByCust && <TableHeaderCell>거래처</TableHeaderCell>}
-            {m.quarterCols.map((q: string) => <TableHeaderCell key={q} className="num">{shortQuarter(q)}</TableHeaderCell>)}
-            <TableHeaderCell className="num">합계</TableHeaderCell>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {shown.map((r, k) => {
-            const first = !m.groupByCust || k === 0 || shown[k - 1].품번 !== r.품번;
-            if (first) groupIdx++;
-            const span = m.groupByCust && first ? groupSize(k) : undefined;
-            return (
-              <TableRow key={r.품번 + '|' + (r.거래처 || '')} className={m.groupByCust && groupIdx % 2 === 1 ? 'group-alt' : undefined}>
-                {first && (
-                  <>
-                    <TableCell rowSpan={span}><code>{r.품번}</code></TableCell>
-                    <TableCell rowSpan={span}><BrandBadge brand={r.brand} /></TableCell>
-                    <TableCell rowSpan={span}>{r.품명}</TableCell>
-                  </>
-                )}
-                {m.groupByCust && first && <TableCell rowSpan={span} className="num strong">{fmt(r.available)}</TableCell>}
-                {m.groupByCust && <TableCell><Text type="supporting">{r.거래처}</Text></TableCell>}
-                {!m.groupByCust && <TableCell className="num strong">{fmt(r.available)}</TableCell>}
-                {m.quarterCols.map((q: string) => {
-                  const v = r.quarters.get(q);
-                  return <TableCell key={q} className={v ? 'num' : 'num muted'}>{v ? fmt(v) : '-'}</TableCell>;
-                })}
-                <TableCell className="num strong">{fmt(r.total)}</TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+      <Card padding={0}>
+        <Table className="sticky-first" density="compact" dividers="rows" hasHover style={{minWidth: 520 + (m.groupByCust ? 100 : 0) + m.quarterCols.length * 72}}>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell className="sticky-col">품번</TableHeaderCell>
+              <TableHeaderCell>브랜드</TableHeaderCell>
+              <TableHeaderCell>품명</TableHeaderCell>
+              {/* 운영 화면은 여기서 머리글이 '거래처 · 가용재고' 순서였지만 실제 칸은 '가용재고 · 거래처' 순서여서 머리글을 칸에 맞춤 */}
+              <TableHeaderCell className="num">가용재고</TableHeaderCell>
+              {m.groupByCust && <TableHeaderCell>거래처</TableHeaderCell>}
+              {m.quarterCols.map((q: string, i: number) => <TableHeaderCell key={q} className="num qhead" style={qColor(i)}>{shortQuarter(q)}</TableHeaderCell>)}
+              <TableHeaderCell className="num">합계</TableHeaderCell>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {shown.map((r, k) => {
+              const first = !m.groupByCust || k === 0 || shown[k - 1].품번 !== r.품번;
+              if (first) groupIdx++;
+              const span = m.groupByCust && first ? groupSize(k) : undefined;
+              return (
+                <TableRow key={r.품번 + '|' + (r.거래처 || '')} className={m.groupByCust && groupIdx % 2 === 1 ? 'group-alt' : undefined}>
+                  {first && (
+                    <>
+                      <TableCell rowSpan={span} className="sticky-col"><code>{r.품번}</code></TableCell>
+                      <TableCell rowSpan={span}><BrandBadge brand={r.brand} /></TableCell>
+                      <TableCell rowSpan={span}>{r.품명}</TableCell>
+                    </>
+                  )}
+                  {m.groupByCust && first && <TableCell rowSpan={span} className="num strong">{fmt(r.available)}</TableCell>}
+                  {m.groupByCust && <TableCell><Text type="supporting">{r.거래처}</Text></TableCell>}
+                  {!m.groupByCust && <TableCell className="num strong">{fmt(r.available)}</TableCell>}
+                  {m.quarterCols.map((q: string, i: number) => {
+                    const v = r.quarters.get(q);
+                    return <TableCell key={q} className={v ? 'num qcell strong' : 'num qcell muted'} style={qColor(i)}>{v ? fmt(v) : '-'}</TableCell>;
+                  })}
+                  <TableCell className="num strong">{fmt(r.total)}</TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Card>
       {m.rows.length > shown.length && (
         <HStack hAlign="center">
           <Button label={`더 보기 (${fmt(m.rows.length - shown.length)}개 더)`} variant="secondary" onClick={act.customerMore} />
@@ -263,31 +269,33 @@ function SkuTable() {
           <HStack>
             <Button label="엑셀 다운로드" variant="primary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
           </HStack>
-          <Table density="compact" dividers="rows" hasHover style={{minWidth: 220 + s.months.length * 76}}>
-            <TableHeader>
-              <TableRow>
-                <TableHeaderCell>거래처</TableHeaderCell>
-                {s.months.map((mk: string) => <TableHeaderCell key={mk} className="num">{skuMonthLabel(mk, s.singleYear)}</TableHeaderCell>)}
-                <TableHeaderCell className="num">합계</TableHeaderCell>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {s.rows.map((r: {cust: string; values: number[]; total: number}) => (
-                <TableRow key={r.cust}>
-                  <TableCell>{r.cust}</TableCell>
-                  {r.values.map((v, i) => <TableCell key={i} className="num">{fmt(v)}</TableCell>)}
-                  <TableCell className="num strong">{fmt(r.total)}</TableCell>
+          <Card padding={0}>
+            <Table className="sticky-first" density="compact" dividers="rows" hasHover style={{minWidth: 220 + s.months.length * 76}}>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell className="sticky-col">거래처</TableHeaderCell>
+                  {s.months.map((mk: string) => <TableHeaderCell key={mk} className="num">{skuMonthLabel(mk, s.singleYear)}</TableHeaderCell>)}
+                  <TableHeaderCell className="num">합계</TableHeaderCell>
                 </TableRow>
-              ))}
-            </TableBody>
-            <TableFooter>
-              <TableRow>
-                <TableCell className="strong">합계</TableCell>
-                {s.monthTotals.map((v: number, i: number) => <TableCell key={i} className="num strong">{fmt(v)}</TableCell>)}
-                <TableCell className="num strong">{fmt(s.grandTotal)}</TableCell>
-              </TableRow>
-            </TableFooter>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {s.rows.map((r: {cust: string; values: number[]; total: number}) => (
+                  <TableRow key={r.cust}>
+                    <TableCell className="sticky-col">{r.cust}</TableCell>
+                    {r.values.map((v, i) => <TableCell key={i} className="num">{fmt(v)}</TableCell>)}
+                    <TableCell className="num strong">{fmt(r.total)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+              <TableFooter>
+                <TableRow>
+                  <TableCell className="sticky-col strong">합계</TableCell>
+                  {s.monthTotals.map((v: number, i: number) => <TableCell key={i} className="num strong">{fmt(v)}</TableCell>)}
+                  <TableCell className="num strong">{fmt(s.grandTotal)}</TableCell>
+                </TableRow>
+              </TableFooter>
+            </Table>
+          </Card>
         </>
       )}
     </VStack>
