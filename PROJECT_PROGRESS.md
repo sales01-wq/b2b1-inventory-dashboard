@@ -1,9 +1,9 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-11 (visual redesign of Overview and Sales), branch `feat/react-astryx`.
+Last updated: 2026-11-11 (Impeccable design improvements to Overview and Sales), branch `feat/react-astryx`.
 
-**Next step needs owner approval:** the owner asked for a visual redesign and wants to approve the direction, shown on Overview and Sales, before any other screen is restyled or the lookup screen is started.
+**Next step needs owner approval:** the owner reviews the improved Overview and Sales (screenshots + second Impeccable audit, 25 → 28/40). Do not restyle other screens or start the lookup screen until they approve.
 
 ## Goal
 
@@ -37,26 +37,27 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
 4. **Screens draw only.** Any calculation found inside an old `render*` function goes into `views.js` (copied the
    same way) and gets a comparison test against what the production page actually draws.
 
-## Design direction (in review)
+## Design direction (approved by the owner, Impeccable round 1 done)
 
-Owner's brief: a modern, premium B2B SaaS look in the style of Linear and Vercel. Minimal, with refined type and spacing, subtle borders, restrained colour, compact but readable tables, and no bulky cards or decoration.
+Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel, built with Astryx components. Korean UI and the Overview's horizontal progress bars must stay.
 
-- **Theme** (`src/styles/theme.css`, loaded right after the neutral theme): Astryx themes are CSS variable overrides, so this one file sets the look for every screen. It sets:
-  - a zinc-like grey palette with solid 1px borders and a near-white page background;
-  - radii of 8px (containers) and 6px (controls), and near-invisible shadows;
-  - a compact type scale: 20px page title, 15px section title, 12px supporting text, 26px semibold KPI figures;
-  - matching dark-mode values for everything.
+- **Theme** (`src/styles/theme.css`): Astryx themes are CSS variable overrides, so this one file sets the look for every screen. Zinc-like greys, 1px borders, 8px / 6px radii, near-invisible shadows (strong shadow only on pop-ups), compact type (20px page title, 15px section title, 12px supporting, 26px KPI figures), dark-mode values for everything. Secondary text is `#6b6b74` so it passes 4.5:1 even on the grey table-header background.
+- **Colour rule:** colour only for status (위험 / 주의 / 여유) and brand. No other decorative colour (the old per-quarter colours were removed because they matched the brand colours).
+- **Frame (`PageFrame`, `GlobalFilters`):** title row (title · description | data status · refresh); filter row (team | brands with a pressed "모든 브랜드" when no brand is picked | data summary without team / timestamp, `metaSummaryText`). Phone (< 768px, `useNarrow`): no fixed header; title and one "B2B1팀 · 모든 브랜드" filter button scroll with the page.
+- **Impeccable plugin:** project-scoped, telemetry off. Audits are saved in `.impeccable/critique/` (git-ignored). Audit 1: 25/40 (before), audit 2: 28/40 (after). Run audits as two isolated sub-agents (A design review, B detector) as `critique.md` requires.
 
-  Component refinements use Astryx's documented class names (`astryx-table-header-cell`, `astryx-badge`, `astryx-progress-bar-track`, `astryx-toggle-button-group` …).
-- **Shared pieces:**
-  - `PageFrame`: two-row header (title + description | data status + refresh; team + brand filters | data summary);
-  - sidebar with `SideNavItem size="sm"` and a small brand mark;
-  - `HeroAlert`: a slim tinted alert instead of a coloured banner;
-  - `BrandBadge`: a dot in the production brand colour plus muted text;
-  - `.stat-strip`: Vercel-style stat cells separated by hairlines.
-- **Overview:** one signal strip (위험 / 주의 / 여유 with meters, 참고) plus a strip for customers and 6-month sales. Production showed 위험 / 주의 / 여유 twice; each number now appears once, and none were dropped.
-- **Sales:** small tabs with a divider; a toolbar with pickers, a search box with an icon and the row count; values in medium weight with only totals bold; lighter quarter tints.
-- **Verified:** Astryx's CSS (reset, `astryx.css`, the neutral theme) and the app theme load and apply. Screenshots in the cloud sandbox used a fallback font because the Pretendard CDN is blocked there. The design review screenshots serve the same Pretendard 1.3.9 files locally; the app itself still loads it from the CDN, as production does.
+### Improvements applied (owner-approved, commit after `c57bb81`)
+- **Overview:**
+  - signal tiles (위험 / 주의 / 여유 / 참고) are links: `openForecastSignal(grade)` in `actions.js` sets 발주 현황 to that status, clears its other filters, and turns on "판매 이력 없는 품목도 보기" only when that status has such items, so the 발주 현황 row count equals the tile number (tested for every Overview case);
+  - each tile shows its meaning from the live rules (`소진예상 60일 미만` …) and "신호 품목 N개 중 X%";
+  - "발주 필요 (위험+주의)" table: first 8 of `urgentItems()` (existing grades, same order as 발주 현황) with 상태 badge, 발주할 수량 (real 0 shown as 0), 가용재고, 다음 주문 text; link opens 발주 현황 on the same chip;
+  - 거래처 수 / 6-month sales moved to one supporting line.
+- **Sales:**
+  - 거래처별: quarter header "Q1…" with the year above each year's first quarter and a divider line at year changes; selected customers / 품번 shown as removable chips with one "선택 해제"; 합계 footer from `customerTotals(m)`: all filtered rows (not just the shown page); sales add up per row (rows are distinct 품번[+거래처], so no double counting); 가용재고 counted once per 품번 (tested against raw sales);
+  - '-' only where no sales record exists; a real 0 shows as 0 (both tables, including footers);
+  - 품목별: search results float over the page; Enter / Shift+Enter hint as one line; labels unified ("품번 / 품명 검색", "선택 해제", "CSV 다운로드");
+  - phone: 브랜드 column hidden, brand shown under 품명.
+- **Accessibility:** contrast fixed; `NoData` heading is h2 (was h3 under h1).
 
 ## Folder map (`web/`)
 
@@ -132,16 +133,16 @@ Owner's brief: a modern, premium B2B SaaS look in the style of Linear and Vercel
    - **Expanded row:** pattern table (with "선택됨"), last 20 sales, warehouse table with 합계 / "재고없음", incoming table, notes. It stays inside the visible width while the table scrolls.
    - **Not built (unreachable in production):** the row-selection checkboxes, the "발주할 품목" panel and the selected-items CSV. Production has handlers for them, but `renderForecast` never draws the checkboxes, so users can't reach them. `forecastCsv()` is ported and tested in case it's wanted.
 
-**Test status:** `npm test` gives 105 / 105 identical to production:
+**Test status:** `npm test` gives 119 / 119:
 
 | File | Checks |
 |---|---|
-| `legacy.test.js` | 34 |
-| `views.test.js` | 56 (incl. 5 hero-alarm cases; 35 order-status filter cases now expand every row and also compare the warehouse tables) |
+| `legacy.test.js` + `format.test.ts` | 31 + 3 |
+| `views.test.js` | 70 (56 compared with production, incl. 5 hero-alarm cases and 35 order-status filter cases; 14 for new features: Overview tile → 발주 현황 counts for 7 cases, no-sales items made visible, 거래처별 totals vs raw sales for 6 cases) |
 | `shared.test.js` | 12 |
 | `actions.test.js` | 3 (team/brand; 19 sales steps; 28 order-status steps incl. rules save/reset and hero add/delete, each comparing filter state, the full filtered list and saved settings), all driven through production's real controls |
 
-`npm run e2e` passes and checks:
+`npm run e2e` passes and checks (since the design round also: '모든 브랜드' toggle, tile and link deep-links into 발주 현황, customer totals row 6,890, '-' cells, phone filter button and scrolling header):
 - the overview numbers (B2B1: 위험 1 / 주의 1 / 여유 3, 20 / 20 / 60 %, 참고 6, 거래처 4, 7,080);
 - sales: the first pivot row SB001 (1,500 / 6,400), grouped rows and header order, the by-item search with Enter, the 6,400 totals row, and the CSV file name and contents;
 - order status:
@@ -151,7 +152,7 @@ Owner's brief: a modern, premium B2B SaaS look in the style of Linear and Vercel
   - hero add → alarm, delete → alarm gone;
 - sticky first columns: no overlap on desktop; still pinned on a phone after scrolling; no page-level sideways scroll.
 
-`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 25 real bugs so far, all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
+`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 29 real bugs so far, all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
 
 ## Remaining work (in this order, one screen at a time, report after each)
 
@@ -223,6 +224,8 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 ```
 
 ## Open questions for the owner
+
+- Approve the improved Overview and Sales (audit 2: 28/40)? Next design candidates from audit 2: totals hardening (empty 가용재고 total? month gaps in 품목별, partial current month), phone priorities (tables open on oldest period, tiles above the action list), cross-screen consistency on 발주 현황 (0 vs '-', duplicate brand filter, emoji), quieter grade badges.
 
 - Do they approve the 발주 현황 screen and the sales improvements (screenshots were sent)? Wait for approval before starting 바코드 · 거래처 조회.
 - Is it fine that the order-status table puts 품번 first (sticky) instead of 구분?

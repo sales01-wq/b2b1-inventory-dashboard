@@ -76,7 +76,7 @@ try {
   const main = await text(page.getByRole('main'));
   for (const re of [/품목 11개/, /위험 1 .*신호 품목 5개 중 20% 소진예상 60일 미만/, /주의 1 .*신호 품목 5개 중 20% 소진예상 60~90일/, /여유 3 .*신호 품목 5개 중 60% 소진예상 90일 이상/, /참고 6 휴면 · 단발성 · 데이터 부족 \(신호 계산에서 제외\)/, /거래처 4곳 · 최근 6개월 총판매 7,080/])
     assert.match(main, re);
-  // 지금 발주할 품목 = 발주 현황 '발주 필요' 와 같은 품목 · 순서
+  // 발주 필요 (위험+주의) 목록 = 발주 현황 '발주 필요 (위험+주의)' 칩과 같은 품목 · 순서
   assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB004', 'SB001']);
   await checkStickyColumns(page);
   await shot(page, 'overview');

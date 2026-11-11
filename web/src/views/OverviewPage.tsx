@@ -93,7 +93,7 @@ function SignalTile({grade, label, value, dot, note, children}: {grade: string; 
   );
 }
 
-/** 지금 발주할 품목: 발주 현황 '발주 필요(위험+주의)' 의 앞쪽 (같은 등급 · 같은 정렬) */
+/** 위험 · 주의 품목: 발주 현황 '발주 필요 (위험+주의)' 칩과 같은 품목 · 같은 정렬. 발주할 수량이 0 인 품목도 있음 (등급 기준이라서) */
 function UrgentItems() {
   const list: URow[] = urgentItems();
   const shown = list.slice(0, URGENT_SHOWN);
@@ -101,7 +101,7 @@ function UrgentItems() {
     <VStack gap={2}>
       <HStack gap={2} hAlign="between" vAlign="end" wrap="wrap">
         <HStack gap={2} vAlign="end">
-          <Heading level={2}>지금 발주할 품목</Heading>
+          <Heading level={2}>발주 필요 (위험+주의)</Heading>
           <Text type="supporting">{list.length > shown.length ? `${fmt(list.length)}개 중 급한 순 ${shown.length}개` : `${fmt(list.length)}개`}</Text>
         </HStack>
         {list.length > 0 && (
@@ -111,7 +111,7 @@ function UrgentItems() {
         )}
       </HStack>
       {list.length === 0 ? (
-        <Card><EmptyState isCompact headingLevel={3} title="지금 발주가 필요한 품목이 없습니다." description="위험 · 주의 품목이 생기면 여기에 급한 순으로 나옵니다." /></Card>
+        <Card><EmptyState isCompact headingLevel={3} title="위험 · 주의 품목이 없습니다." description="위험 · 주의 품목이 생기면 여기에 급한 순으로 나옵니다." /></Card>
       ) : (
         <Card padding={0}>
           <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 760}}>
@@ -131,7 +131,7 @@ function UrgentItems() {
                 <TableRow key={x.품번}>
                   <TableCell className="sticky-col"><code>{x.품번}</code></TableCell>
                   <TableCell className="hide-narrow"><BrandBadge brand={x.brand} /></TableCell>
-                  <TableCell>{x.품명}</TableCell>
+                  <TableCell>{x.품명}<span className="show-narrow"><BrandBadge brand={x.brand} /></span></TableCell>
                   <TableCell><GradeBadge grade={x.grade} /></TableCell>
                   <TableCell className={x.orderQty > 0 ? 'num strong' : 'num muted'}>{fmt(x.orderQty)}</TableCell>
                   <TableCell className="num">{fmt(x.available)}</TableCell>
