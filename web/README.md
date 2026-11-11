@@ -13,6 +13,7 @@
 | 아이콘 | Heroicons |
 | 테스트 | Vitest (`src/**/*.test.ts`) |
 | 라우팅 | 해시 방식 `#/overview` (서버 설정 없이 새로고침 · 북마크 가능) |
+| 코딩 원칙 | Ponytail v5.3.3 (`.claude/settings.json` 에서 Claude Code 플러그인으로 활성화) — 가장 작은 완전한 변경, 새 의존성 최소화, 계산 로직은 테스트와 함께 |
 
 ```
 web/
