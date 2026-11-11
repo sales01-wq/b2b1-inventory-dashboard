@@ -253,3 +253,12 @@ export function heroAlertModel(){
   if(list.length===0) return null;
   return {count:list.length, team:ui.team, items:list.slice(0,12), more:list.length>12 ? list.length-12 : 0};
 }
+
+/* warehouseTableHtml (2049행) 의 데이터 부분: 창고별 가용재고 (+ 출고목록에 담겼는지). 재고 행이 없으면 '재고없음' 한 줄 */
+export function warehouseRows(pn){
+  const invRows = state.invByProduct.get(pn);
+  if(!invRows || invRows.rows.length===0){
+    return {rows:[{창고:'재고없음', 가용재고:0, 현재고:0, 입고예정:0, 출고예정:0, picked:ui.exportList.some(x=>x.key===pn+'||재고없음')}], total:null};
+  }
+  return {rows:invRows.rows.map(r=>({...r, picked:ui.exportList.some(x=>x.key===pn+'||'+r.창고)})), total:invRows.total};
+}

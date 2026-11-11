@@ -1,9 +1,9 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-11 (after the Sales screen), branch `feat/react-astryx`.
+Last updated: 2026-11-11 (after the Order Status screen), branch `feat/react-astryx`.
 
-**Next step needs owner approval:** the owner asked to stop after the Sales screen and wait before starting 발주 현황 (Order Status).
+**Next step needs owner approval:** the owner asked to stop after 발주 현황 (Order Status) and wait before starting 바코드 · 거래처 조회 (Lookup).
 
 ## Goal
 
@@ -46,17 +46,17 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
 | `src/lib/forecast.js` | brand/team/warehouse rules, `gradeFor`, order patterns, `computeDerived`, forecast CSVs (`forecastCsv`, `forecastListCsv`) |
 | `src/lib/sales.js` | pivot, per-customer shortage, SKU status, `skuStatusCsv` |
 | `src/lib/lookup.js` | barcode/name lookup, export list actions, LOT recommendation, `buildExportRows`, PLT (`computePltForRow`, `packPalletsMixed`, `calcExportPlt(inputs)`), `exportCsv` |
-| `src/lib/views.js` | screen calculations: `overviewModel`, `heroAlertModel`, `forecastModel`, `forecastDetail`, `customerTableModel`, `skuSearchMatches`, `skuStatusModel`, `mselItems`, `rulesModel`, `rulesValid`, `heroInput`, `addForecastPnTokens`, `addPnTokens`, `shortQuarter`, `forecastNextText`, `patternNextText`, `syncStatusText`, `metaLineText`, `uploadDoneText` |
-| `src/lib/actions.js` | copied from the old click/input handlers: `setTeam`, `toggleBrand`; sales: `setCustMselSearch`, `setPnMselSearch`, `setCustomerPnSearch`, `toggleCustomer`, `togglePn`, `removePnChip`, `pnEnter`, `mselClear`, `customerMore`, `setSkuSearch`, `skuEnter`, `pickAllSku`, `toggleSku`, `clearSku`, `removeSku` |
+| `src/lib/views.js` | screen calculations: `overviewModel`, `heroAlertModel`, `forecastModel`, `forecastDetail`, `customerTableModel`, `skuSearchMatches`, `skuStatusModel`, `mselItems`, `rulesModel`, `rulesValid`, `heroInput`, `addForecastPnTokens`, `addPnTokens`, `shortQuarter`, `forecastNextText`, `patternNextText`, `syncStatusText`, `metaLineText`, `uploadDoneText`, `warehouseRows` (data part of `warehouseTableHtml`, also needed by Lookup) |
+| `src/lib/actions.js` | copied from the old click/input handlers: `setTeam`, `toggleBrand`; sales: `setCustMselSearch`, `setPnMselSearch`, `setCustomerPnSearch`, `toggleCustomer`, `togglePn`, `removePnChip`, `pnEnter`, `mselClear`, `customerMore`, `setSkuSearch`, `skuEnter`, `pickAllSku`, `toggleSku`, `clearSku`, `removeSku`; forecast: `setForecastGrade`, `setForecastBrand`, `setForecastCustomer`, `setForecastSearch`, `setForecastShowNoSales`, `setOverstockScope`, `forecastMore`, `toggleForecastDetail`, `forecastPnEnter`, `removeForecastPnChip`, `clearForecastPnChips`, `setRulesOpen` |
 | `src/lib/saveCsv.ts` | `saveCsv({csv, filename})`: Blob + `<a download>` as before |
 | `src/lib/upload.js` | `unresolvedFiles`, `handleFiles` (uses globals `Papa`/`XLSX`), `applyUploadedData(mode)` → `{error}` or `{updatedList, reusedList}` |
 | `src/lib/format.ts` | `fmt`, `fmtDec`, `fmtDays` |
 | `src/data/shared.js` | Google login, `/api/*`, snapshot + IndexedDB cache, new-data check, updater refresh, chunked fallback, `refreshFromGoogleSheet(url)`, `logout()`. UI state lives on `shared`: `gated`, `gate`, `bar`, `infoText`, `gsStatus`, `gsLoading`, `syncText`, `gsUrl` |
-| `src/data/settings.js` | rules/hero/box settings: `settingsLoadLocal`, `persistSetting`, `loadRemoteSettings`, `setBoxDim`, `persistBox`, `canEditSettings` |
+| `src/data/settings.js` | rules/hero/box settings: `settingsLoadLocal`, `persistSetting`, `loadRemoteSettings`, `setBoxDim`, `persistBox`, `canEditSettings`; rules editor buttons copied from the old handler: `saveRules(inputs)`, `resetRules()`, `addHero(pn, min, warn)`, `deleteHero(pn)` (they reuse `rulesValid` / `heroInput`) |
 | `src/app/` | `App.tsx` (start order, login gate, sidebar, user menu, jump to overview after data loads), `GlobalFilters.tsx`, `StatusBanners.tsx` (`MessageBanner`), `routes.ts`, `useHashRoute.ts`, `useStore.ts`, `Providers.tsx` (theme + `ko-KR`), `defaults.ts` |
-| `src/views/` | `PageFrame.tsx` (title, description, summary line, global filters), `DataPage.tsx` (done), `OverviewPage.tsx` (done), `SalesPage.tsx` (done), `HeroAlert.tsx` (shared hero alarm banner, reuse on the forecast page), `NoData.tsx` (shared no-data state), `BrandBadge.tsx` (brand → Astryx badge colour), `ForecastPage`/`LookupPage` (placeholders), `MigrationPlaceholder.tsx` |
+| `src/views/` | `PageFrame.tsx` (title, description, summary line, global filters), `DataPage.tsx` (done), `OverviewPage.tsx` (done), `SalesPage.tsx` (done), `ForecastPage.tsx` (done; exports `GradeBadge`), `HeroAlert.tsx` (shared hero alarm banner), `NoData.tsx` (shared no-data state), `BrandBadge.tsx` (brand → Astryx badge colour), `LookupPage` (placeholder), `MigrationPlaceholder.tsx` |
 | `docs/CALC_LOGIC_INVENTORY.md` | every calculation with its `index.html` line number, priority and status |
-| `e2e/upload.mjs` | browser test: upload → overview values → sales (pivot, grouped rows, by-item search, CSV) → team switch (`npm run e2e`; set `SHOT_DIR` to save screenshots) |
+| `e2e/upload.mjs` | browser test: upload → overview → sales → order status → team switch, then phone layout (`npm run e2e`; set `SHOT_DIR` to save screenshots). Helpers: `openWithData()`, `checkStickyColumns()` |
 
 ## Status
 
@@ -89,42 +89,63 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
      - selected `Token`s with "전체 지우기" and the "합산" note;
      - monthly table with a totals row (`TableFooter`), "엑셀 다운로드" (`skuStatusCsv` → `saveCsv`).
    - Wide tables get a minimum width and scroll sideways on phones instead of squeezing columns.
+   - **Owner-requested improvements (done):**
+     - quarter colours restored as a coloured bar under each quarter header plus a light column tint (as text colours they were below 4.5:1 contrast);
+     - sticky first column in both tables (see Gotchas, "Tables").
+7. **발주 현황 (`ForecastPage`):**
+   - `HeroAlert` at the top; rules editor in a `Collapsible` (open state kept in `ui.rulesOpen`):
+     - inline `NumberInput`s and the production texts;
+     - save, reset, the invalid-values message and "저장되었습니다.";
+     - hero form and table (`GradeBadge` / "데이터에 없음" / 삭제);
+     - read-only text when the user can't edit.
+   - **Filters card:**
+     - grade `ToggleButtonGroup`: production's chips with counts, plus "과잉재고" from production's dropdown, so one control covers both;
+     - brand `ToggleButtonGroup`, customer `Selector`, search, item-number input (Enter → chips, "전체 지우기"), "최근 6개월 판매 이력 없는 품목도 보기";
+     - customer shortage `ToggleButton`s and "✕ 전체 보기".
+   - Overstock scope `RadioList` when "과잉재고" is selected; summary bar ("지금 발주 필요 N개 품목 / 총 N개" or "지금 발주할 품목 없음") with "표 내려받기(CSV)".
+   - **Table:**
+     - fixed layout with explicit column widths;
+     - 품번 first and sticky (production had 구분 first), with the expand button and ★ for hero items;
+     - 4-level grade badge (detailed grade in the tooltip, 긴급 marked);
+     - next-order text under ① 3개월 예상수요; 6 month columns; "더 보기".
+   - **Expanded row:** pattern table (with "선택됨"), last 20 sales, warehouse table with 합계 / "재고없음", incoming table, notes. It stays inside the visible width while the table scrolls.
+   - **Not built (unreachable in production):** the row-selection checkboxes, the "발주할 품목" panel and the selected-items CSV. Production has handlers for them, but `renderForecast` never draws the checkboxes, so users can't reach them. `forecastCsv()` is ported and tested in case it's wanted.
 
-**Test status:** `npm test` gives 104 / 104 identical to production:
+**Test status:** `npm test` gives 105 / 105 identical to production:
 
 | File | Checks |
 |---|---|
 | `legacy.test.js` | 34 |
-| `views.test.js` | 56 (incl. 5 hero-alarm cases read from both production alarm boxes) |
+| `views.test.js` | 56 (incl. 5 hero-alarm cases; 35 order-status filter cases now expand every row and also compare the warehouse tables) |
 | `shared.test.js` | 12 |
-| `actions.test.js` | 2 (team/brand, plus 19 sales interaction steps run by clicking/typing in production's real controls) |
+| `actions.test.js` | 3 (team/brand; 19 sales steps; 28 order-status steps incl. rules save/reset and hero add/delete, each comparing filter state, the full filtered list and saved settings), all driven through production's real controls |
 
 `npm run e2e` passes and checks:
 - the overview numbers (B2B1: 위험 1 / 주의 1 / 여유 3, 20 / 20 / 60 %, 참고 6, 거래처 4, 7,080);
-- sales: the first pivot row SB001 (1,500 / 6,400), grouped rows and header order, the by-item search with Enter, the 6,400 totals row, and the CSV file name and contents.
-`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 21 bugs so far, all caught (one needed an extra test step first).
+- sales: the first pivot row SB001 (1,500 / 6,400), grouped rows and header order, the by-item search with Enter, the 6,400 totals row, and the CSV file name and contents;
+- order status:
+  - summary "지금 발주 필요 1개 품목 / 총 900개", rows SB004 · SB001, expanding a row (warehouse 합계 2,300);
+  - CSV name and contents; 과잉재고 + EMP → SB006;
+  - rules: invalid message, save 45 → "소진예상 30~45일", reset;
+  - hero add → alarm, delete → alarm gone;
+- sticky first columns: no overlap on desktop; still pinned on a phone after scrolling; no page-level sideways scroll.
+
+`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 25 real bugs so far, all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
 
 ## Remaining work (in this order, one screen at a time, report after each)
 
 The old code to port lives in root `index.html`. Line numbers refer to commit `d369ec2`.
 
-1. **발주 현황 (`ForecastPage`)** (start only after owner approval) (`renderForecast` ~1404, `forecastModel()`, `forecastDetail()`)
-   - **Filters:** grade chips with counts; brand chips; customer select; customer shortage chips (`topShort`); search; item-number chips (`addForecastPnTokens`); "show items without sales" checkbox; overstock scope radios (`renderForecastOverstockScope` ~1268).
-   - **Summary bar:** text from `needItems`/`needQty`, plus the CSV button (`forecastListCsv`).
-   - **Hero alarm:** reuse `<HeroAlert />` at the top (production shows the same alarm here).
-   - **Table:** 50 rows per page; columns brand, item no., hero ★, name, grade (`groupOf`), order qty, horizon + `forecastNextText`, available, incoming, monthly average (avgQuarterly / 3), last 6 months.
-   - **Expandable detail row:** pattern table, last 20 sales, warehouse table (`warehouseTableHtml` ~2049, **not ported yet**), incoming rows.
-   - **Selection:** checkboxes, select all / none, selected panel (`renderForecastSelectPanel` ~1346), `forecastCsv`.
-   - **Rules / hero editor** (`renderForecastRules` ~4035): `rulesModel`, `rulesValid`/`RULES_INVALID_MSG`, `heroInput`, `persistSetting`, read-only unless `canEditSettings()`; after saving, `computeDerived()` + `emit()`.
-2. **바코드 · 거래처 조회 (`LookupPage`)**, the most complex screen. Read these old functions first:
+1. **바코드 · 거래처 조회 (`LookupPage`)** (start only after owner approval), the most complex screen. Read these old functions first:
    - `renderLookupBatch` 2358, `renderResultBlock` 2256, `warehouseTableHtml` 2049, `expiryTableHtml` 2082, `incomingChipsHtml` 2123, `productMasterHtml` 2211, `renderExportPanel` 2680, `renderPltPackingHtml` 2830, the export column helpers (`EXPORT_COL_DEFAULTS`, `colWidth`, `stickyLeftOf` ~2150), `editableDimsCell`/`editableNumCell` 2573, and the lookup event wiring after 3207.
    - Move any calculations found there into `views.js` with comparison tests.
-   - Table needs: Astryx `Table` with sticky-column and column-resize plugins; pallet size inputs **must be `NumberInput`** (see Gotchas); `calcExportPlt({L, W, H, baseHeight, tare, mixMode})`; `exportCsv()`; `setBoxDim()` for the editable box cells.
-3. **Finishing:**
+   - `warehouseRows(pn)` already exists (with `picked` for the "추가됨" badge); its `picked` flag is not covered by a test yet because the shipping list is empty in the order-status tests. Cover it when porting the lookup screen.
+   - Table needs: Astryx `Table` (use the `sticky-first` / `sticky-col` classes and the column-width approach from `ForecastPage`; column resize is a production feature of the export table); pallet size inputs **must be `NumberInput`** (see Gotchas); `calcExportPlt({L, W, H, baseHeight, tare, mixMode})`; `exportCsv()`; `setBoxDim()` for the editable box cells.
+2. **Finishing:**
    - Split the bundle (812 KB now) per page.
    - Check dark mode and accessibility.
    - Extend `e2e/` with one flow per screen.
-4. **Before cutover (owner approval required):** see Testing requirements. Cutover means changing the Vercel build to use `web/` and must be tested on a preview first. Not started; do not do it without approval.
+3. **Before cutover (owner approval required):** see Testing requirements. Cutover means changing the Vercel build to use `web/` and must be tested on a preview first. Not started; do not do it without approval.
 
 ## Gotchas
 
@@ -140,7 +161,16 @@ The old code to port lives in root `index.html`. Line numbers refer to commit `d
 - **Production bug fixed (display only):** in the grouped customer table (2 or more customers selected), production's header said "거래처 · 가용재고" but the cells were "가용재고 · 거래처". The new header follows the cells. `views.test.js` still builds the production header order on purpose (it compares the model, not the component); the e2e test checks the new order.
 - **Single-line inputs drop line breaks:** the old 품번 picker input (and the new `TextInput`) is single-line, so a pasted column like `A\nB` becomes `AB`. Same in both versions; tests use spaces or commas. The 품목별 search is a textarea and keeps line breaks.
 - **Headless downloads:** headless Chromium renames downloads with Korean file names to "download". The e2e test records the name the app puts on the link (`window.__lastDownloadName`) and checks the file contents instead.
-- **Table layout:** Astryx gives the first table cell extra edge padding, so a custom `position: sticky` first column overlapped the next header. Sticky columns were dropped; use the Table `stickyColumns` plugin (data-driven mode) if needed later. `TextArea` does not forward `onKeyDown`; catch keys on a wrapper element (see `SkuView`).
+- **Tables (read before building the lookup screen):**
+  - **Card wrapping:** Astryx's table scroll wrapper has a -16px margin on every side (edge compensation). Always put a table in `<Card padding={0}>`; otherwise it eats the gap above it and nested tables lose their last column.
+  - **Sticky first column:** add `className="sticky-first"` to the `Table` and `className="sticky-col"` to the first-column cells (explicit class, not `:first-child`, because `rowSpan` rows start with another cell). `global.css` makes that table's wrapper a real scroll container (`overflow-x: auto`). Without that, the wrapper is `overflow: clip` when the table fits, sticky resolves against the page's padded content edge, and the cell shifts 16px onto its neighbour. Verified by `checkStickyColumns()` in e2e.
+  - **Column widths:** with many columns, the automatic table layout squeezes wrappable cells (Korean names, headers) to one character. Use `tableLayout: 'fixed'` with an explicit `width` on each header cell; the sum is the table's `minWidth` (see `W` in `ForecastPage`).
+  - **Headers:** Astryx truncates header cells with "…"; add `wrap-head` to the `Table` to let long headers wrap.
+  - **Expanded rows:** wrap the content in `.detail-sticky`. The table's scroll wrapper is a CSS size container, so `100cqw` is its visible width, and the detail stays visible while the table scrolls.
+  - **Colours:** use existing tokens only. `--color-background-secondary` does not exist; use `--color-background-muted`, `--color-background-surface`, `--color-text-error`, `--color-text-success`.
+  - `TextArea` does not forward `onKeyDown`; catch keys on a wrapper element (see `SkuView`).
+- **ToggleButtonGroup and empty values:** a group treats `''` as "nothing selected", and clicking the selected button sends `null`. Production uses `''` for "전체", so map it to a placeholder value (`ALL` in `ForecastPage`) and ignore `null`.
+- **Accessible names:** every input needs a unique Korean label (the e2e test finds fields by name). The hero form's item field is "히어로 품번".
 - **Dead code:** `fetchSnapshot` is unused in production and was not ported. `state.heroMissing` is computed but never shown in production; it is not shown in the new app either.
 - **Playwright:** the AppShell content area is the `main` *role*, not a `<main>` tag: use `page.getByRole('main')`. Don't pass `/dev/null` as a screenshot path (unsupported mime type).
 - **Test data limits:** the fixture has only 11 forecast items, so cases needing more (e.g. more than 12 hero alarms) build the input directly in both realms, as `withAlerts()` does in `views.test.js`.
@@ -172,6 +202,8 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 
 ## Open questions for the owner
 
-- Do they approve the Sales screen (screenshots were sent)? Wait for approval before starting 발주 현황.
+- Do they approve the 발주 현황 screen and the sales improvements (screenshots were sent)? Wait for approval before starting 바코드 · 거래처 조회.
+- Is it fine that the order-status table puts 품번 first (sticky) instead of 구분?
+- Should the unreachable production selection feature (row checkboxes → "발주할 품목" panel → selected CSV) be added as a new feature, or left out as in production's actual behaviour?
 - When will the ERP samples be available?
 - Is Vercel preview deployment enabled? A pushed branch may already create a preview that also serves the `web/` source files.

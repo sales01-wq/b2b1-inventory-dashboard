@@ -87,3 +87,70 @@ describe('판매 현황 조작 = 운영 화면 조작', () => {
     expect(exp[3].page).toBe(51); expect(exp[4].page).toBe(50);
   });
 });
+
+describe('발주 현황 조작 · 기준 설정 = 운영 화면 조작', () => {
+  const type = (w, el, v) => { el.value = v; el.dispatchEvent(new w.Event('input', {bubbles: true})); };
+  const change = (w, el, v) => { el.value = v; el.dispatchEvent(new w.Event('change', {bubbles: true})); };
+  const enter = (w, el) => el.dispatchEvent(new w.KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+  const tick = () => new Promise(r => setTimeout(r, 0));
+  const rulesIn = r => ({leadDays: String(r[0]), urgentDays: String(r[1]), cautionExtra: String(r[2]), safeExtra: String(r[3]), minOrders: String(r[4]), dormantMonths: String(r[5])});
+  const setRuleInputs = (d, r) => ['ruleLead', 'ruleUrgent', 'ruleCautionExtra', 'ruleSafeExtra', 'ruleMinOrders', 'ruleDormant'].forEach((id, i) => { d.getElementById(id).value = String(r[i]); });
+  // [이름, 운영 화면에서(w, d), 옮긴 쪽에서(x = actions, st = settings 모듈, a)]
+  const STEPS = [
+    ['등급 드롭다운: 전체', (w, d) => change(w, d.getElementById('gradeSelect'), ''), x => x.setForecastGrade('')],
+    ['등급 칩: 위험', (w, d) => d.querySelector('[data-fc-grade="위험"]').click(), x => x.setForecastGrade('위험')],
+    ['등급 칩: 여유', (w, d) => d.querySelector('[data-fc-grade="여유"]').click(), x => x.setForecastGrade('여유')],
+    ['브랜드 칩: 마미케어', (w, d) => d.querySelector('[data-fc-brand="마미케어"]').click(), x => x.setForecastBrand('마미케어')],
+    ['브랜드 칩: 전체', (w, d) => d.querySelector('[data-fc-brand=""]').click(), x => x.setForecastBrand('')],
+    ['등급 드롭다운: 전체 (다시)', (w, d) => change(w, d.getElementById('gradeSelect'), ''), x => x.setForecastGrade('')],
+    ['거래처: A상사', (w, d) => change(w, d.getElementById('forecastCustomer'), 'A상사'), x => x.setForecastCustomer('A상사')],
+    ['행 펼치기 SB001', (w, d) => d.querySelector('tr[data-action="toggle-forecast-detail"][data-pn="SB001"]').click(), x => x.toggleForecastDetail('SB001')],
+    ['거래처: 전체', (w, d) => change(w, d.getElementById('forecastCustomer'), ''), x => x.setForecastCustomer('')],
+    ['더 보기 (검색 전)', (w, d) => { w.eval('ui').forecastPage = 1; w.renderForecast(); d.querySelector('[data-action="forecast-more"]').click(); }, (x, st, a) => { a.ui.forecastPage = 1; x.forecastMore(); }],
+    ['검색: 세트', (w, d) => type(w, d.getElementById('forecastSearch'), '세트'), x => x.setForecastSearch('세트')],
+    ['검색 지움', (w, d) => type(w, d.getElementById('forecastSearch'), ''), x => x.setForecastSearch('')],
+    ['판매 없는 품목도 보기', (w, d) => d.getElementById('forecastShowNoSales').click(), x => x.setForecastShowNoSales(true)],
+    ['품번 붙여넣기 + Enter', (w, d) => { const el = d.getElementById('forecastPnInput'); el.value = 'mt, SB00  mc002'; enter(w, el); }, x => x.forecastPnEnter('mt, SB00  mc002')],
+    ['빈 품번 Enter', (w, d) => { const el = d.getElementById('forecastPnInput'); el.value = '  '; enter(w, el); }, x => x.forecastPnEnter('  ')],
+    ['칩 삭제: SB00', (w, d) => d.querySelector('[data-action="remove-forecast-pn-chip"][data-key="SB00"]').click(), x => x.removeForecastPnChip('SB00')],
+    ['칩 전체 지우기', (w, d) => d.querySelector('[data-action="clear-forecast-pn-chips"]').click(), x => x.clearForecastPnChips()],
+    ['더 보기', (w, d) => { w.eval('ui').forecastPage = 1; w.renderForecast(); d.querySelector('[data-action="forecast-more"]').click(); }, (x, st, a) => { a.ui.forecastPage = 1; x.forecastMore(); }],
+    ['과잉재고', (w, d) => change(w, d.getElementById('gradeSelect'), '과잉재고'), x => x.setForecastGrade('과잉재고')],
+    ['과잉재고 범위: EMP', (w, d) => d.querySelector('input[name="forecastOverstockScope"][value="emp"]').click(), x => x.setOverstockScope('emp')],
+    ['과잉재고 범위: 팀 창고', (w, d) => d.querySelector('input[name="forecastOverstockScope"][value="b2b1"]').click(), x => x.setOverstockScope('b2b1')],
+    ['등급 드롭다운: 발주 필요', (w, d) => change(w, d.getElementById('gradeSelect'), '조치필요'), x => x.setForecastGrade('조치필요')],
+    ['기준 저장 (잘못된 값)', async (w, d) => { setRuleInputs(d, [30, 30, 30, 60, 2, 6]); d.querySelector('[data-action="rules-save"]').click(); await tick(); }, (x, st) => st.saveRules(rulesIn([30, 30, 30, 60, 2, 6]))],
+    ['기준 저장 (소수점 포함)', async (w, d) => { setRuleInputs(d, [45.6, 10, 20, 50, 1, 0]); d.querySelector('[data-action="rules-save"]').click(); await tick(); }, (x, st) => st.saveRules(rulesIn([45.6, 10, 20, 50, 1, 0]))],
+    ['히어로 추가', async (w, d) => { d.getElementById('heroPn').value = ' mt002 '; d.getElementById('heroMin').value = '200'; d.getElementById('heroWarn').value = '500'; d.querySelector('[data-action="hero-add"]').click(); await tick(); }, (x, st) => st.addHero(' mt002 ', '200', '500')],
+    ['히어로 추가 (주의 ≤ 위험)', async (w, d) => { d.getElementById('heroPn').value = 'SB001'; d.getElementById('heroMin').value = '100'; d.getElementById('heroWarn').value = '100'; d.querySelector('[data-action="hero-add"]').click(); await tick(); }, (x, st) => st.addHero('SB001', '100', '100')],
+    ['히어로 삭제', async (w, d) => { d.querySelector('[data-action="hero-del"][data-pn="MT002"]').click(); await tick(); }, (x, st) => st.deleteHero('MT002')],
+    ['기준 기본값으로', async (w, d) => { d.querySelector('[data-action="rules-reset"]').click(); await tick(); }, (x, st) => st.resetRules()],
+  ];
+  const snap = (a, list) => canon({grade: a.ui.forecastGrade, brand: a.ui.forecastBrand, cust: a.ui.forecastCustomer, search: a.ui.forecastSearch, noSales: a.ui.forecastShowNoSales,
+    scope: a.ui.forecastOverstockScope, page: a.ui.forecastPage, chips: [...a.ui.forecastPnChips], open: [...a.ui.forecastExpanded], rulesOpen: a.ui.rulesOpen,
+    rules: a.settings.rules, hero: a.settings.hero, list, forecast: a.state.forecast});
+
+  it('같은 순서로 조작했을 때 상태 · 표 목록 · 설정이 같음', async () => {
+    const o = loadOracle(), d = o.w.document;
+    load(o.api); o.w.renderAll(); o.w.renderForecastRules(true);
+    const exp = [];
+    for (const [name, run] of STEPS) {
+      try { await run(o.w, d); } catch (e) { throw new Error(name + ': ' + e.message); }
+      exp.push(snap(o.api, o.api.ui._forecastCsvRows));
+    }
+    o.close();
+    vi.useFakeTimers({toFake: ['Date']}); vi.setSystemTime(NOW);
+    const p = await loadPort(), a = p.api;
+    globalThis.localStorage = new JSDOM('', {url: 'http://localhost/'}).window.localStorage;
+    const x = await import('./actions.js'), st = await import('../data/settings.js');
+    load(a);
+    const act = [];
+    for (const [, , run] of STEPS) { await run(x, st, a); act.push(snap(a, a.forecastModel().list)); }
+    vi.useRealTimers();
+    STEPS.forEach(([name], i) => expect([name, act[i]]).toEqual([name, exp[i]]));
+    expect(exp[1].list.length).toBeGreaterThan(0);
+    expect(exp[23].rules).toEqual({leadDays: 46, urgentDays: 10, cautionExtra: 20, safeExtra: 50, minOrders: 1, dormantMonths: 0});
+    expect(Object.keys(exp[24].hero)).toEqual(['MT002']);
+    expect(exp[9].page).toBe(51); expect(exp[10].page).toBe(50);
+  });
+});

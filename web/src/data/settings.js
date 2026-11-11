@@ -3,6 +3,7 @@ import {state, ui, settings, emit} from '../lib/store.js';
 import {num} from '../lib/parse.js';
 import {computeDerived} from '../lib/forecast.js';
 import {shared, setSharedBar} from './shared.js';
+import {rulesValid, RULES_INVALID_MSG, heroInput} from '../lib/views.js';
 
 export function canEditSettings(){ return typeof shared==='undefined' || !shared.active || !!(shared.user && shared.user.isUpdater); }
 
@@ -76,4 +77,43 @@ export function persistBox(pn){
     if(has) settings.box[pn] = Object.assign({}, o); else delete settings.box[pn];
     persistSetting('box', pn, has ? settings.box[pn] : null);
   }, 700);
+}
+
+/* ---------- 기준 설정 · 히어로 품목 버튼 (index.html 4080~4120행, forecastRules 클릭 처리) ----------
+   port: 입력칸 값은 인자로 받고, 안내 문구는 반환값으로 돌려줌. 화면 다시 그리기는 emit() */
+const RULE_KEYS = ['leadDays','urgentDays','cautionExtra','safeExtra','minOrders','dormantMonths'];
+/** inputs: 입력칸 글자 그대로 {leadDays, urgentDays, ...} */
+export async function saveRules(inputs){
+  if(!canEditSettings()) return {error:null};
+  const g = k=>Math.round(Number(inputs[k]));
+  const r = Object.fromEntries(RULE_KEYS.map(k=>[k, g(k)]));
+  if(!rulesValid(r)) return {error:RULES_INVALID_MSG};
+  settings.rules = r;
+  await persistSetting('rules','main',r);
+  computeDerived(); emit();
+  return {ok:'저장되었습니다.'};
+}
+export async function resetRules(){
+  if(!canEditSettings()) return;
+  settings.rules = {};
+  await persistSetting('rules','main',null);
+  computeDerived(); emit();
+}
+/** 입력칸 글자 그대로 (pnIn, minIn, warnIn) */
+export async function addHero(pnIn, minIn, warnIn){
+  if(!canEditSettings()) return {error:null};
+  const minQty = Math.round(Number(minIn));
+  const warnQty = Math.round(Number(warnIn)) || 0;
+  const h = heroInput(pnIn.trim(), minQty, warnQty);
+  if(h.error) return h;
+  settings.hero[h.pn] = h.val;
+  await persistSetting('hero', h.pn, h.val);
+  ui.rulesOpen = true; computeDerived(); emit();
+  return {ok:''};
+}
+export async function deleteHero(pn){
+  if(!canEditSettings()) return;
+  delete settings.hero[pn];
+  await persistSetting('hero', pn, null);
+  ui.rulesOpen = true; computeDerived(); emit();
 }

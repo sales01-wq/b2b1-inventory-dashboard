@@ -2,7 +2,7 @@
 // 화면을 다시 그리던 render*() 호출 대신 emit() 을 부릅니다. actions.test.js 가 운영 화면을 직접 눌러 본 결과와 비교합니다.
 import {state, ui, emit} from './store.js';
 import {salesForTeam, computeDerived} from './forecast.js';
-import {addPnTokens} from './views.js';
+import {addPnTokens, addForecastPnTokens} from './views.js';
 
 /* teamToggle 클릭 (3113행) */
 export function setTeam(team){
@@ -62,3 +62,21 @@ export function toggleSku(pn){
 }
 export function clearSku(){ ui.skuStatusSelected = new Set(); emit(); }
 export function removeSku(pn){ ui.skuStatusSelected.delete(pn); emit(); }
+
+/* ---------- 발주 현황 (3141~3205행) ---------- */
+export function setForecastGrade(v){ ui.forecastGrade=v; ui.forecastPage=50; emit(); }
+export function setForecastBrand(v){ ui.forecastBrand=v; ui.forecastPage=50; emit(); }
+export function setForecastCustomer(v){ ui.forecastCustomer=v; ui.forecastPage=50; emit(); }
+export function setForecastSearch(v){ ui.forecastSearch=v; ui.forecastPage=50; emit(); }
+export function setForecastShowNoSales(v){ ui.forecastShowNoSales=v; ui.forecastPage=50; emit(); }
+export function setOverstockScope(v){ ui.forecastOverstockScope = v; emit(); }
+export function forecastMore(){ ui.forecastPage+=50; emit(); }
+export function toggleForecastDetail(pn){
+  if(ui.forecastExpanded.has(pn)) ui.forecastExpanded.delete(pn); else ui.forecastExpanded.add(pn);
+  emit();
+}
+/** 품번 칸에서 Enter: 입력이 있으면 칩으로 추가 (칸 비우기는 화면이 함) */
+export function forecastPnEnter(value){ if(value.trim()){ addForecastPnTokens(value); } emit(); }
+export function removeForecastPnChip(pn){ ui.forecastPnChips.delete(pn); emit(); }
+export function clearForecastPnChips(){ ui.forecastPnChips.clear(); emit(); }
+export function setRulesOpen(open){ ui.rulesOpen = open; }

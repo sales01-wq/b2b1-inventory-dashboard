@@ -48,9 +48,22 @@ body {
 .qhead { box-shadow: inset 0 -3px 0 var(--q); }
 .qcell { background-image: linear-gradient(color-mix(in srgb, var(--q) 9%, transparent), color-mix(in srgb, var(--q) 9%, transparent)); }
 /* 첫 칸 고정: 표의 스크롤 영역을 기준으로 붙도록 감싸는 영역을 실제 스크롤 영역으로 만듦 (기본값 clip 이면 페이지 여백 기준으로 16px 밀림) */
-.astryx-table-scroll-wrapper:has(> div > table.sticky-first) { overflow-x: auto; }
+.astryx-table-scroll-wrapper:has(> div > table.sticky-first) { overflow-x: auto; container-type: inline-size; }
+/* 펼친 상세는 표가 옆으로 스크롤돼도 보이는 폭 안에 고정 (100cqw = 표 스크롤 영역의 보이는 폭) */
+.detail-sticky { position: sticky; inset-inline-start: 1rem; width: calc(100cqw - 2rem); }
 .sticky-first .sticky-col { position: sticky; inset-inline-start: 0; z-index: 1; background-color: var(--color-background-surface); box-shadow: inset -1px 0 0 var(--color-border); }
 .sticky-first .group-alt > .sticky-col { background-color: var(--color-background-muted); }
 .msel-list { max-height: 320px; overflow-y: auto; display: grid; gap: 0.25rem; }
 .grow-field { flex: 1 1 220px; max-width: 360px; }
 .sku-search { display: grid; gap: 0.5rem; max-width: 720px; }
+
+/* 발주 현황 */
+.text-danger { color: var(--color-text-error, var(--color-error)); }
+.text-safe { color: var(--color-text-success, var(--color-success)); }
+.text-muted { color: var(--color-text-secondary); }
+.inline-num { display: inline-block; vertical-align: middle; margin-inline: 0.25rem; }
+.rule { border: none; border-top: 1px solid var(--color-border); margin-block: 0.75rem; width: 100%; }
+.nowrap { white-space: nowrap; }
+/* 머리글이 긴 표: 말줄임(…) 대신 두 줄로 */
+.wrap-head th, .wrap-head th * { white-space: normal; overflow: visible; text-overflow: clip; }
+.num .next { white-space: normal; }

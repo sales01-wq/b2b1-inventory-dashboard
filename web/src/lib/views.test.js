@@ -37,7 +37,7 @@ function setForecast(a, c) {
   a.ui.forecastGrade = c.grade; a.ui.forecastCustomer = c.cust; a.ui.forecastBrand = c.brand || ''; a.ui.forecastSearch = c.search || '';
   a.ui.forecastShowNoSales = !!c.showNoSales; a.ui.forecastOverstockScope = c.scope || 'all'; a.ui.forecastPage = c.page || 50;
   setSet(a.ui.forecastPnChips, c.chips || []); setSet(a.ui.brandSelected, c.brands || []);
-  setSet(a.ui.forecastExpanded, a.state.forecast.slice(0, 4).map(x => x.품번));
+  setSet(a.ui.forecastExpanded, a.state.forecast.map(x => x.품번)); // 모든 행을 펼쳐서 상세(발주 패턴 · 창고 · 입고예정)까지 비교
 }
 
 // 비율이 정수로 안 떨어지는 조합 포함 (반올림 확인)
@@ -89,6 +89,8 @@ function fromOracle(o) {
       details: [...d.querySelectorAll('#forecastTable tr.detail-row')].map(tr => [...tr.querySelectorAll('table')]
         .filter(tb => ['거래처', '실적일자', '월'].includes(tb.querySelector('th').textContent.trim()) && tb.querySelectorAll('th').length !== 4 || tb.querySelector('th').textContent.trim() === '월')
         .map(tb => [...tb.tBodies[0].rows].map(cells))),
+      wh: [...d.querySelectorAll('#forecastTable tr.detail-row')].map(tr => [...tr.querySelectorAll('table')]
+        .filter(tb => tb.querySelector('th').textContent.trim() === '창고').map(tb => [...tb.tBodies[0].rows].map(cells))),
     };
     if (c.team) { a.ui.team = 'B2B1팀'; load(a); }
   });
@@ -160,6 +162,10 @@ function fromPort(p) {
         const det = dd.details.map(s => [s.실적일자.toLocaleDateString('ko-KR'), s.거래처, fmt(s.수량)]);
         return [...(pat.length ? [pat, det] : []), ...(dd.incomingRows.length ? [dd.incomingRows.map(r => [r.m, r.d || '날짜 미정', fmt(r.q)])] : [])];
       }),
+      wh: shown.filter(x => a.ui.forecastExpanded.has(x.품번)).map(x => {
+        const w = a.warehouseRows(x.품번);
+        return [[...w.rows.map(r => [r.창고 + (r.picked ? ' 추가됨' : ''), fmt(r.가용재고)]), ...(w.total !== null ? [['합계', fmt(w.total)]] : [])]];
+      }),
     };
     if (c.team) { a.ui.team = 'B2B1팀'; load(a); }
   });
@@ -213,6 +219,9 @@ describe('화면 계산 = 운영 화면에 그려진 값', () => {
   afterAll(() => vi.useRealTimers());
 
   it('비교 대상이 비어 있지 않음', () => {
+    const whRows = Object.values(exp).flatMap(v => (v.wh ? v.wh.flat(2) : []));
+    expect(whRows.some(r => r[0] === '합계')).toBe(true);
+    expect(whRows.some(r => r[0] === '재고없음')).toBe(true);
     expect(Object.values(exp).some(v => v.circles && v.circles.some(c => !/ (0|20|40|50|60|80|100)%$/.test(c)))).toBe(true);
     expect(exp['forecast:0'].list.length).toBeGreaterThan(0);
     expect(exp['customer:2'].rows.length).toBeGreaterThan(0);
