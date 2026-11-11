@@ -43,6 +43,15 @@ function setForecast(a, c) {
 // 비율이 정수로 안 떨어지는 조합 포함 (반올림 확인)
 const OVERVIEW_CASES = [['B2B1팀', []], ['B2B1팀', ['마미케어', '밀크터치']], ['B2B1팀', ['성분에디터']], ['B2B2팀', []], ['전체', []], ['전체', ['마미케어']], ['B2B1팀', ['밀크터치', '마미케어'], {MT002: {minQty: 200}}]]; // 마지막: 위험 1 · 여유 2 → 33% / 67%
 
+// 히어로 알람: 없음 / 1개 / 12개 넘음 (가짜 품번까지 13개를 기준 이상으로 설정 — 데이터에 없는 품번은 알람에 안 들어감)
+const ALL_PNS = ['SB001', 'SB002', 'SB003', 'SB004', 'SB005', 'SB006', 'MT001', 'MT002', 'MT003', 'MC001', 'MC002'];
+const HERO_ALERT_CASES = [
+  ['B2B1팀', {}], ['B2B1팀', {MT002: {minQty: 200}}], ['전체', {MT002: {minQty: 200, warnQty: 500}, MC002: {minQty: 10}}],
+  ['B2B1팀', Object.fromEntries(ALL_PNS.map(pn => [pn, {minQty: 1e9}]))],
+  ['B2B1팀', Object.fromEntries(ALL_PNS.map(pn => [pn, {minQty: 1e9}])), 13], // 알람 13개 → '외 1개'
+];
+const withAlerts = (a, n) => { if (n) a.state.heroAlerts = Array.from({length: n}, (_, k) => a.state.heroAlerts[k % a.state.heroAlerts.length]); };
+
 const CUSTOMER_CASES = [[[], ''], [['A상사'], ''], [['A상사', 'B유통'], ''], [['A상사', 'B유통', 'C마트'], '크림'], [[], '세럼'], [['B유통'], 'mc']];
 
 // ---------- 운영 화면에서 읽기 ----------
@@ -56,6 +65,11 @@ function fromOracle(o) {
   for (const [team, brands, hero] of OVERVIEW_CASES) {
     a.ui.team = team; a.settings.hero = hero || {}; load(a); setSet(a.ui.brandSelected, brands); w.renderOverview();
     out['overview:' + team + brands] = {cards: t('#overviewCards .v'), circles: t('#signalCircles > div'), total: t('#signalTotal')[0]};
+  }
+  for (const [i, [team, hero, n]] of HERO_ALERT_CASES.entries()) {
+    a.ui.team = team; a.settings.hero = hero; load(a); withAlerts(a, n); w.renderHeroAlerts();
+    const box = id => ({title: t(`#${id} strong`)[0] || null, items: t(`#${id} li`), more: t(`#${id} ul + div`)[0] || null});
+    out['hero:' + i] = [box('heroAlertOverview'), box('heroAlertForecast')];
   }
   a.ui.team = 'B2B1팀'; a.settings.hero = {}; load(a); a.ui.brandSelected.clear();
 
@@ -104,6 +118,16 @@ function fromOracle(o) {
 function fromPort(p) {
   const a = p.api, out = {};
   load(a);
+  for (const [i, [team, hero, n]] of HERO_ALERT_CASES.entries()) {
+    a.ui.team = team; a.settings.hero = hero; load(a); withAlerts(a, n);
+    const m = a.heroAlertModel();
+    const box = !m ? {title: null, items: [], more: null} : {
+      title: `🚨 히어로 품목 위험 알람 (${fmt(m.count)}개) — ${m.team}`,
+      items: m.items.map(x => `${x.품명} ${x.품번} — 가용재고 ${fmt(x.available)} ≤ 기준 ${fmt(x.heroMin)}`),
+      more: m.more ? `외 ${m.more}개` : null,
+    };
+    out['hero:' + i] = [box, box];
+  }
   for (const [team, brands, hero] of OVERVIEW_CASES) {
     a.ui.team = team; a.settings.hero = hero || {}; load(a); setSet(a.ui.brandSelected, brands);
     const m = a.overviewModel();
@@ -196,6 +220,15 @@ describe('화면 계산 = 운영 화면에 그려진 값', () => {
     expect(Object.values(exp).filter(v => v.details && v.details.length).length).toBeGreaterThan(5);
   });
 
+  it('히어로 알람 케이스가 비어 있지 않음', () => {
+    expect(exp['hero:0'][0].title).toBe(null);
+    expect(exp['hero:1'][0].items.length).toBe(1);
+    expect(exp['hero:4'][0].items.length).toBe(12);
+    expect(exp['hero:4'][0].more).toBe('외 1개');
+  });
+  it.each(HERO_ALERT_CASES.map((c, i) => [i]))('히어로 알람 #%s', i => {
+    expect(act['hero:' + i]).toEqual(exp['hero:' + i]);
+  });
   it('전체 개요', () => {
     for (const k of Object.keys(exp).filter(k => k.startsWith('overview'))) expect(act[k]).toEqual(exp[k]);
   });

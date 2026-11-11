@@ -246,3 +246,10 @@ export function metaLineText(){
 export function uploadDoneText({updatedList, reusedList}){
   return `업데이트 완료 — 새로 반영: ${updatedList.join(', ')||'없음'}${reusedList.length?` · 이전 데이터 그대로 유지: ${reusedList.join(', ')}`:''}. 좌측 메뉴에서 Main을 확인하세요.`;
 }
+
+/* renderHeroAlerts (4025행): 개요 · 발주 현황 위쪽의 히어로 품목 위험 알람. 알람이 없으면 null (heroMissing 은 기존에도 표시하지 않음) */
+export function heroAlertModel(){
+  const list = state.heroAlerts || [];
+  if(list.length===0) return null;
+  return {count:list.length, team:ui.team, items:list.slice(0,12), more:list.length>12 ? list.length-12 : 0};
+}

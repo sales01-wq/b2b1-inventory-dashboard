@@ -1,7 +1,7 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-11, branch `feat/react-astryx`, last commit before this file `3cd0843`.
+Last updated: 2026-11-11 (after the Overview screen), branch `feat/react-astryx`.
 
 ## Goal
 
@@ -44,16 +44,16 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
 | `src/lib/forecast.js` | brand/team/warehouse rules, `gradeFor`, order patterns, `computeDerived`, forecast CSVs (`forecastCsv`, `forecastListCsv`) |
 | `src/lib/sales.js` | pivot, per-customer shortage, SKU status, `skuStatusCsv` |
 | `src/lib/lookup.js` | barcode/name lookup, export list actions, LOT recommendation, `buildExportRows`, PLT (`computePltForRow`, `packPalletsMixed`, `calcExportPlt(inputs)`), `exportCsv` |
-| `src/lib/views.js` | screen calculations: `overviewModel`, `forecastModel`, `forecastDetail`, `customerTableModel`, `skuSearchMatches`, `skuStatusModel`, `mselItems`, `rulesModel`, `rulesValid`, `heroInput`, `addForecastPnTokens`, `addPnTokens`, `shortQuarter`, `forecastNextText`, `patternNextText`, `syncStatusText`, `metaLineText`, `uploadDoneText` |
+| `src/lib/views.js` | screen calculations: `overviewModel`, `heroAlertModel`, `forecastModel`, `forecastDetail`, `customerTableModel`, `skuSearchMatches`, `skuStatusModel`, `mselItems`, `rulesModel`, `rulesValid`, `heroInput`, `addForecastPnTokens`, `addPnTokens`, `shortQuarter`, `forecastNextText`, `patternNextText`, `syncStatusText`, `metaLineText`, `uploadDoneText` |
 | `src/lib/actions.js` | `setTeam`, `toggleBrand` (copied from the old click handlers) |
 | `src/lib/upload.js` | `unresolvedFiles`, `handleFiles` (uses globals `Papa`/`XLSX`), `applyUploadedData(mode)` → `{error}` or `{updatedList, reusedList}` |
 | `src/lib/format.ts` | `fmt`, `fmtDec`, `fmtDays` |
 | `src/data/shared.js` | Google login, `/api/*`, snapshot + IndexedDB cache, new-data check, updater refresh, chunked fallback, `refreshFromGoogleSheet(url)`, `logout()`. UI state lives on `shared`: `gated`, `gate`, `bar`, `infoText`, `gsStatus`, `gsLoading`, `syncText`, `gsUrl` |
 | `src/data/settings.js` | rules/hero/box settings: `settingsLoadLocal`, `persistSetting`, `loadRemoteSettings`, `setBoxDim`, `persistBox`, `canEditSettings` |
 | `src/app/` | `App.tsx` (start order, login gate, sidebar, user menu, jump to overview after data loads), `GlobalFilters.tsx`, `StatusBanners.tsx` (`MessageBanner`), `routes.ts`, `useHashRoute.ts`, `useStore.ts`, `Providers.tsx` (theme + `ko-KR`), `defaults.ts` |
-| `src/views/` | `PageFrame.tsx` (title, description, summary line, global filters), `DataPage.tsx` (done), `OverviewPage`/`ForecastPage`/`SalesPage`/`LookupPage` (placeholders), `MigrationPlaceholder.tsx` |
+| `src/views/` | `PageFrame.tsx` (title, description, summary line, global filters), `DataPage.tsx` (done), `OverviewPage.tsx` (done), `HeroAlert.tsx` (shared hero alarm banner, reuse on the forecast page), `ForecastPage`/`SalesPage`/`LookupPage` (placeholders), `MigrationPlaceholder.tsx` |
 | `docs/CALC_LOGIC_INVENTORY.md` | every calculation with its `index.html` line number, priority and status |
-| `e2e/upload.mjs` | browser test of the upload flow (`npm run e2e`) |
+| `e2e/upload.mjs` | browser test: upload → overview values → team switch (`npm run e2e`; set `SHOT_DIR` to save a screenshot) |
 
 ## Status
 
@@ -70,50 +70,53 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
    - shared-data panel (login mode) or Apps Script URL panel (local mode);
    - `FileInput` dropzone, per-file sheet type badge and `Selector`;
    - apply / clear buttons; after applying, it jumps to the overview.
+5. **전체 개요 (`OverviewPage`):**
+   - hero alarm banner (`HeroAlert`, `heroAlertModel`): first 12 items + "외 N개", title with team;
+   - signal tiles 위험 / 주의 / 여유: count, % and an Astryx `ProgressBar` meter in the status colour (replaces the old SVG donuts; same numbers);
+   - six stat cards (위험 / 주의 / 여유 / 참고 / 거래처 수 / 최근 6개월 총판매) and the item total with active brands;
+   - no data: `EmptyState` with the old empty-state text plus a button to the upload page.
 
-**Test status:** `npm test` gives 97 / 97 identical to production:
+**Test status:** `npm test` gives 103 / 103 identical to production:
 
 | File | Checks |
 |---|---|
 | `legacy.test.js` | 34 |
-| `views.test.js` | 50 |
+| `views.test.js` | 56 (incl. 5 hero-alarm cases read from both production alarm boxes) |
 | `shared.test.js` | 12 |
 | `actions.test.js` | 1 |
 
-`npm run e2e` passes. `npm run typecheck` and `npm run build` are clean. A check with 16 deliberately planted bugs caught all of them.
+`npm run e2e` passes and now also checks the overview numbers (B2B1: 위험 1 / 주의 1 / 여유 3, 20 / 20 / 60 %, 참고 6, 거래처 4, 7,080).
+`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 18 bugs so far, all caught.
 
 ## Remaining work (in this order, one screen at a time, report after each)
 
 The old code to port lives in root `index.html`. Line numbers refer to commit `d369ec2`.
 
-1. **전체 개요 (`OverviewPage`)**
-   - Data: `overviewModel()` (exists).
-   - Show the three "traffic light" rings with % (old `donutSvg`), the 6 cards (위험 / 주의 / 여유 / 참고 / 거래처 수 / 최근 6개월 총판매), and the item total with active brands.
-   - Show hero alerts (`renderHeroAlerts` ~4025: `state.heroAlerts`, first 12, `heroMissing`). Read the full function first; part of the line was cut off when read.
-2. **판매 현황 (`SalesPage`), two sub-views**
+1. **판매 현황 (`SalesPage`), two sub-views**
    - **거래처별 (by customer)** (`renderCustomerTable` ~1752, `customerTableModel()`):
      - customer and item-number multi-selects (`mselItems`, 150-row cap with a "N개 더" message);
      - pasting item numbers with `addPnTokens`, the item search, quarter columns (`shortQuarter`, `QUARTER_COLORS`);
      - grouped rows with `rowspan` when 2 or more customers are selected; "더 보기" adds 50 more rows;
      - customer datalist.
    - **품목별 (by item)** (`renderSkuStatusSearchResults` ~1568, `renderSkuStatusTable` ~1596): search (80 results, "add all"), chips, monthly table with totals row, `skuStatusCsv`.
-3. **발주 현황 (`ForecastPage`)** (`renderForecast` ~1404, `forecastModel()`, `forecastDetail()`)
+2. **발주 현황 (`ForecastPage`)** (`renderForecast` ~1404, `forecastModel()`, `forecastDetail()`)
    - **Filters:** grade chips with counts; brand chips; customer select; customer shortage chips (`topShort`); search; item-number chips (`addForecastPnTokens`); "show items without sales" checkbox; overstock scope radios (`renderForecastOverstockScope` ~1268).
    - **Summary bar:** text from `needItems`/`needQty`, plus the CSV button (`forecastListCsv`).
+   - **Hero alarm:** reuse `<HeroAlert />` at the top (production shows the same alarm here).
    - **Table:** 50 rows per page; columns brand, item no., hero ★, name, grade (`groupOf`), order qty, horizon + `forecastNextText`, available, incoming, monthly average (avgQuarterly / 3), last 6 months.
    - **Expandable detail row:** pattern table, last 20 sales, warehouse table (`warehouseTableHtml` ~2049, **not ported yet**), incoming rows.
    - **Selection:** checkboxes, select all / none, selected panel (`renderForecastSelectPanel` ~1346), `forecastCsv`.
    - **Rules / hero editor** (`renderForecastRules` ~4035): `rulesModel`, `rulesValid`/`RULES_INVALID_MSG`, `heroInput`, `persistSetting`, read-only unless `canEditSettings()`; after saving, `computeDerived()` + `emit()`.
-4. **바코드 · 거래처 조회 (`LookupPage`)**, the most complex screen. Read these old functions first:
+3. **바코드 · 거래처 조회 (`LookupPage`)**, the most complex screen. Read these old functions first:
    - `renderLookupBatch` 2358, `renderResultBlock` 2256, `warehouseTableHtml` 2049, `expiryTableHtml` 2082, `incomingChipsHtml` 2123, `productMasterHtml` 2211, `renderExportPanel` 2680, `renderPltPackingHtml` 2830, the export column helpers (`EXPORT_COL_DEFAULTS`, `colWidth`, `stickyLeftOf` ~2150), `editableDimsCell`/`editableNumCell` 2573, and the lookup event wiring after 3207.
    - Move any calculations found there into `views.js` with comparison tests.
    - Table needs: Astryx `Table` with sticky-column and column-resize plugins; pallet size inputs **must be `NumberInput`** (see Gotchas); `calcExportPlt({L, W, H, baseHeight, tare, mixMode})`; `exportCsv()`; `setBoxDim()` for the editable box cells.
-5. **Finishing:**
+4. **Finishing:**
    - Add a `saveCsv({csv, filename})` helper (Blob + `<a download>`, as before) once the first CSV button exists.
    - Split the bundle (812 KB now) per page.
    - Check dark mode and accessibility.
    - Extend `e2e/` with one flow per screen.
-6. **Before cutover (owner approval required):** see Testing requirements. Cutover means changing the Vercel build to use `web/` and must be tested on a preview first. Not started; do not do it without approval.
+5. **Before cutover (owner approval required):** see Testing requirements. Cutover means changing the Vercel build to use `web/` and must be tested on a preview first. Not started; do not do it without approval.
 
 ## Gotchas
 
@@ -126,7 +129,9 @@ The old code to port lives in root `index.html`. Line numbers refer to commit `d
 - **Playwright:** passing files to `setInputFiles` by Korean file *paths* silently did nothing in this container. Pass `{name, mimeType, buffer}` instead.
 - **Test setup:** tests that run the port need `vi.useFakeTimers({toFake: ['Date']})` + `vi.setSystemTime(NOW)`. The oracle realm gets its own fixed `Date` in `harness.js`. The data tests also need `fake-indexeddb` and globals for `window`, `document`, `localStorage` and `google` (see `src/data/shared.test.js`).
 - **Production quirk:** `showSettingsError` writes the "설정 저장 실패" message straight to `#sharedBar` (not through `setSharedBar`). The test accounts for this.
-- **Dead code:** `fetchSnapshot` is unused in production and was not ported.
+- **Dead code:** `fetchSnapshot` is unused in production and was not ported. `state.heroMissing` is computed but never shown in production; it is not shown in the new app either.
+- **Playwright:** the AppShell content area is the `main` *role*, not a `<main>` tag: use `page.getByRole('main')`. Don't pass `/dev/null` as a screenshot path (unsupported mime type).
+- **Test data limits:** the fixture has only 11 forecast items, so cases needing more (e.g. more than 12 hero alarms) build the input directly in both realms, as `withAlerts()` does in `views.test.js`.
 
 ## Testing requirements (for every step)
 
@@ -155,6 +160,6 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 
 ## Open questions for the owner
 
-- Do they approve the look of the frame and upload screen (screenshots were sent) before the remaining screens are built?
+- Do they approve the look of the frame, upload and overview screens (screenshots were sent) before the remaining screens are built?
 - When will the ERP samples be available?
 - Is Vercel preview deployment enabled? A pushed branch may already create a preview that also serves the `web/` source files.

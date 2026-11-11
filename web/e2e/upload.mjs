@@ -31,6 +31,11 @@ try {
   await page.getByRole('button', {name: '대시보드에 적용'}).click();
   await page.waitForURL(/#\/overview$/);
   assert.match(await page.getByText(/^\[B2B1팀\] 품목/).textContent(), /^\[B2B1팀\] 품목 11개 · 거래처 4곳 · 판매실적 30건 · 마지막 업로드 /);
+  // 전체 개요: 운영 대시보드가 같은 데이터로 그리는 값 (views.test.js 에서 비교 확인된 숫자)
+  const main = (await page.getByRole('main').innerText()).replace(/\s+/g, ' ');
+  for (const re of [/품목 11개/, /위험 20% 1 /, /주의 20% 1 /, /여유 60% 3 /, /위험 1 주의 1 여유 3 참고 \(휴면·단발성\) 6 거래처 수 4 최근 6개월 총판매 7,080/])
+    assert.match(main, re);
+  if (process.env.SHOT_DIR) await page.screenshot({path: process.env.SHOT_DIR + '/overview.png', fullPage: true}); // 선택: 화면 캡처 저장 위치
   await page.getByRole('radio', {name: '전체'}).click();
   assert.match(await page.getByText(/^\[전체\] 품목/).textContent(), /^\[전체\] 품목 11개 · 거래처 5곳 · 판매실적 35건 · /);
   await page.goto(base + '/#/data');
