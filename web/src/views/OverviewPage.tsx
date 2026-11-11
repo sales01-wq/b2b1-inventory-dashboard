@@ -1,6 +1,4 @@
-import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
-import {EmptyState} from '@astryxdesign/core/EmptyState';
 import {Grid} from '@astryxdesign/core/Grid';
 import {Heading} from '@astryxdesign/core/Heading';
 import {HStack} from '@astryxdesign/core/HStack';
@@ -10,6 +8,7 @@ import {Text} from '@astryxdesign/core/Text';
 import {VStack} from '@astryxdesign/core/VStack';
 import {PageFrame} from './PageFrame';
 import {HeroAlert} from './HeroAlert';
+import {NoData} from './NoData';
 import {useStore} from '../app/useStore';
 import {state} from '../lib/store.js';
 import {overviewModel} from '../lib/views.js';
@@ -23,7 +22,7 @@ export function OverviewPage() {
   useStore();
   return (
     <PageFrame view="overview">
-      {state.loaded ? <Overview /> : <NoData />}
+      {state.loaded ? <Overview /> : <VStack gap={4}><HeroAlert /><NoData /></VStack>}
     </PageFrame>
   );
 }
@@ -77,20 +76,6 @@ function Overview() {
           </Card>
         ))}
       </Grid>
-    </VStack>
-  );
-}
-
-/** 데이터가 아직 없을 때 (기존 renderEmptyState 문구) */
-function NoData() {
-  return (
-    <VStack gap={4}>
-      <HeroAlert />
-      <EmptyState
-        title="아직 데이터가 없습니다."
-        description="'CSV / 엑셀 업로드' 탭에서 파일을 올려주세요."
-        actions={<Button label="CSV / 엑셀 업로드로 이동" variant="primary" onClick={() => { window.location.hash = '/data'; }} />}
-      />
     </VStack>
   );
 }

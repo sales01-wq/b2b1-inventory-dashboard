@@ -38,3 +38,12 @@ body {
   padding-inline-start: 1.25rem;
   line-height: 1.7;
 }
+
+/* 판매 현황 표 · 다중 선택 */
+.num { text-align: end; white-space: nowrap; }
+.muted { color: var(--color-text-secondary); }
+.strong { font-weight: 700; }
+.group-alt > td { background: var(--color-background-secondary, transparent); }
+.msel-list { max-height: 320px; overflow-y: auto; display: grid; gap: 0.25rem; }
+.grow-field { flex: 1 1 220px; max-width: 360px; }
+.sku-search { display: grid; gap: 0.5rem; max-width: 720px; }
