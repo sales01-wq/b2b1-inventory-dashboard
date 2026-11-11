@@ -204,7 +204,7 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
   const cols = 9 + m.months.length;
   return (
     <Card padding={0}>
-      <Table className="sticky-first wrap-head" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: tableMin(m.months.length)}}>
+      <Table className="sticky-first wrap-head fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: tableMin(m.months.length)}}>
         <TableHeader>
           <TableRow>
             <TableHeaderCell className="sticky-col" style={{width: W.pn}}>품번</TableHeaderCell>

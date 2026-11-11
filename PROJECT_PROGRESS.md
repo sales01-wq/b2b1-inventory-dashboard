@@ -1,9 +1,9 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-11 (after the Order Status screen), branch `feat/react-astryx`.
+Last updated: 2026-11-11 (visual redesign of Overview and Sales), branch `feat/react-astryx`.
 
-**Next step needs owner approval:** the owner asked to stop after 발주 현황 (Order Status) and wait before starting 바코드 · 거래처 조회 (Lookup).
+**Next step needs owner approval:** the owner asked for a visual redesign and wants to approve the direction, shown on Overview and Sales, before any other screen is restyled or the lookup screen is started.
 
 ## Goal
 
@@ -36,6 +36,27 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
    Calculations shown on screen come from model functions in `web/src/lib/views.js`, not from code inside components.
 4. **Screens draw only.** Any calculation found inside an old `render*` function goes into `views.js` (copied the
    same way) and gets a comparison test against what the production page actually draws.
+
+## Design direction (in review)
+
+Owner's brief: a modern, premium B2B SaaS look in the style of Linear and Vercel. Minimal, with refined type and spacing, subtle borders, restrained colour, compact but readable tables, and no bulky cards or decoration.
+
+- **Theme** (`src/styles/theme.css`, loaded right after the neutral theme): Astryx themes are CSS variable overrides, so this one file sets the look for every screen. It sets:
+  - a zinc-like grey palette with solid 1px borders and a near-white page background;
+  - radii of 8px (containers) and 6px (controls), and near-invisible shadows;
+  - a compact type scale: 20px page title, 15px section title, 12px supporting text, 26px semibold KPI figures;
+  - matching dark-mode values for everything.
+
+  Component refinements use Astryx's documented class names (`astryx-table-header-cell`, `astryx-badge`, `astryx-progress-bar-track`, `astryx-toggle-button-group` …).
+- **Shared pieces:**
+  - `PageFrame`: two-row header (title + description | data status + refresh; team + brand filters | data summary);
+  - sidebar with `SideNavItem size="sm"` and a small brand mark;
+  - `HeroAlert`: a slim tinted alert instead of a coloured banner;
+  - `BrandBadge`: a dot in the production brand colour plus muted text;
+  - `.stat-strip`: Vercel-style stat cells separated by hairlines.
+- **Overview:** one signal strip (위험 / 주의 / 여유 with meters, 참고) plus a strip for customers and 6-month sales. Production showed 위험 / 주의 / 여유 twice; each number now appears once, and none were dropped.
+- **Sales:** small tabs with a divider; a toolbar with pickers, a search box with an icon and the row count; values in medium weight with only totals bold; lighter quarter tints.
+- **Verified:** Astryx's CSS (reset, `astryx.css`, the neutral theme) and the app theme load and apply. Screenshots in the cloud sandbox used a fallback font because the Pretendard CDN is blocked there. The design review screenshots serve the same Pretendard 1.3.9 files locally; the app itself still loads it from the CDN, as production does.
 
 ## Folder map (`web/`)
 
@@ -162,6 +183,7 @@ The old code to port lives in root `index.html`. Line numbers refer to commit `d
 - **Single-line inputs drop line breaks:** the old 품번 picker input (and the new `TextInput`) is single-line, so a pasted column like `A\nB` becomes `AB`. Same in both versions; tests use spaces or commas. The 품목별 search is a textarea and keeps line breaks.
 - **Headless downloads:** headless Chromium renames downloads with Korean file names to "download". The e2e test records the name the app puts on the link (`window.__lastDownloadName`) and checks the file contents instead.
 - **Tables (read before building the lookup screen):**
+  - **Header `max-width: 0`:** Astryx sets `max-width: 0` on header cells for truncation, which silently cancels any `width` you give them. Tables with explicit column widths need `className="fixed-cols"` (CSS: `.fixed-cols th { max-width: none }`) plus `tableLayout: 'fixed'`. Applied to the order-status and 품목별 tables.
   - **Card wrapping:** Astryx's table scroll wrapper has a -16px margin on every side (edge compensation). Always put a table in `<Card padding={0}>`; otherwise it eats the gap above it and nested tables lose their last column.
   - **Sticky first column:** add `className="sticky-first"` to the `Table` and `className="sticky-col"` to the first-column cells (explicit class, not `:first-child`, because `rowSpan` rows start with another cell). `global.css` makes that table's wrapper a real scroll container (`overflow-x: auto`). Without that, the wrapper is `overflow: clip` when the table fits, sticky resolves against the page's padded content edge, and the cell shifts 16px onto its neighbour. Verified by `checkStickyColumns()` in e2e.
   - **Column widths:** with many columns, the automatic table layout squeezes wrappable cells (Korean names, headers) to one character. Use `tableLayout: 'fixed'` with an explicit `width` on each header cell; the sum is the table's `minWidth` (see `W` in `ForecastPage`).

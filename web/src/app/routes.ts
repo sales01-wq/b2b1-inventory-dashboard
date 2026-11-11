@@ -35,7 +35,7 @@ export const ROUTES: RouteDef[] = [
   {
     id: 'overview',
     label: '전체 개요',
-    description: '재고 신호등 — 전체 품목의 발주 상태를 한눈에 확인합니다.',
+    description: '오늘의 재고 상태와 발주 신호를 한눈에 확인합니다.',
     section: '현황',
     icon: ChartPieIcon,
     selectedIcon: ChartPieSolid,

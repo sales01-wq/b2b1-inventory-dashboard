@@ -72,7 +72,7 @@ try {
 
   // ---- 전체 개요: 운영 대시보드가 같은 데이터로 그리는 값 (views.test.js 에서 비교 확인된 숫자)
   const main = await text(page.getByRole('main'));
-  for (const re of [/품목 11개/, /위험 20% 1 /, /주의 20% 1 /, /여유 60% 3 /, /위험 1 주의 1 여유 3 참고 \(휴면·단발성\) 6 거래처 수 4 최근 6개월 총판매 7,080/])
+  for (const re of [/품목 11개/, /위험 1 .*신호 품목의 20% 주의/, /주의 1 .*신호 품목의 20% 여유/, /여유 3 .*신호 품목의 60% 참고/, /참고 \(휴면·단발성\) 6 신호 계산에서 제외 거래처 수 4 최근 6개월 총판매 7,080/])
     assert.match(main, re);
   await shot(page, 'overview');
 
@@ -143,7 +143,7 @@ try {
   const heroMin = page.getByRole('textbox', {name: '위험 수량(이하)'}).or(page.getByRole('spinbutton', {name: '위험 수량(이하)'}));
   await heroMin.fill('200'); await heroMin.press('Tab');
   await page.getByRole('button', {name: '추가/수정'}).click();
-  await page.getByText('🚨 히어로 품목 위험 알람 (1개) — B2B1팀').waitFor();
+  await page.getByText('히어로 품목 위험 알람 (1개) — B2B1팀').waitFor();
   await shot(page, 'forecast-rules');
   await page.getByRole('button', {name: '삭제'}).click();
   await page.getByText('등록된 히어로 품목이 없습니다.').waitFor();

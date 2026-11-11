@@ -12,6 +12,7 @@ import {Text} from '@astryxdesign/core/Text';
 import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {Token} from '@astryxdesign/core/Token';
+import {MagnifyingGlassIcon} from '@heroicons/react/16/solid';
 import {VStack} from '@astryxdesign/core/VStack';
 import {PageFrame} from './PageFrame';
 import {NoData} from './NoData';
@@ -39,7 +40,7 @@ export function SalesPage() {
         <NoData />
       ) : (
         <VStack gap={4}>
-          <TabList role="tablist" value={subview} onChange={v => { subview = v as typeof subview; rerender(n => n + 1); }}>
+          <TabList role="tablist" size="sm" hasDivider value={subview} onChange={v => { subview = v as typeof subview; rerender(n => n + 1); }}>
             <Tab value="customer" label="거래처별" panelId="sales-panel" />
             <Tab value="skustatus" label="품목별" panelId="sales-panel" />
           </TabList>
@@ -55,17 +56,21 @@ export function SalesPage() {
 /* ---------------- 거래처별: 품목 × 분기 표 ---------------- */
 
 function CustomerView() {
+  const m = customerTableModel();
   return (
     <VStack gap={3}>
       <Text type="supporting">품목을 행으로, 분기를 열로 나열한 표입니다. 거래처/품번을 여러 개 선택해서 비교할 수 있습니다.</Text>
-      <HStack gap={2} vAlign="center" wrap="wrap">
-        <MselPicker which="cust" />
-        <MselPicker which="pn" />
-        <div className="grow-field">
-          <TextInput label="품번 / 품명 검색" isLabelHidden placeholder="품번 / 품명 검색" size="sm" value={ui.customerPnSearch} onChange={act.setCustomerPnSearch} />
-        </div>
+      <HStack gap={2} vAlign="center" hAlign="between" wrap="wrap">
+        <HStack gap={2} vAlign="center" wrap="wrap">
+          <MselPicker which="cust" />
+          <MselPicker which="pn" />
+          <div className="grow-field">
+            <TextInput label="품번 / 품명 검색" isLabelHidden placeholder="품번 / 품명 검색" size="sm" startIcon={MagnifyingGlassIcon} hasClear value={ui.customerPnSearch} onChange={act.setCustomerPnSearch} />
+          </div>
+        </HStack>
+        <Text type="supporting">{m.groupByCust ? `${fmt(m.rows.length)}개 행` : `${fmt(m.rows.length)}개 품목`}</Text>
       </HStack>
-      <CustomerTable />
+      <CustomerTable m={m} />
     </VStack>
   );
 }
@@ -130,8 +135,7 @@ function MselPicker({which}: {which: 'cust' | 'pn'}) {
 
 interface PivotRow {품번: string; 품명: string; brand: string; 거래처: string | null; quarters: Map<string, number>; total: number; available: number}
 
-function CustomerTable() {
-  const m = customerTableModel();
+function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
   if (m.rows.length === 0) return <EmptyState isCompact title="데이터가 없습니다." />;
   const shown: PivotRow[] = m.rows.slice(0, ui.customerPage);
   // 거래처 2개 이상: 같은 품번 행을 묶어서 품번 · 브랜드 · 품명 · 가용재고를 한 번만 (rowSpan)
@@ -173,7 +177,7 @@ function CustomerTable() {
                   {!m.groupByCust && <TableCell className="num strong">{fmt(r.available)}</TableCell>}
                   {m.quarterCols.map((q: string, i: number) => {
                     const v = r.quarters.get(q);
-                    return <TableCell key={q} className={v ? 'num qcell strong' : 'num qcell muted'} style={qColor(i)}>{v ? fmt(v) : '-'}</TableCell>;
+                    return <TableCell key={q} className={v ? 'num qcell medium' : 'num qcell muted'} style={qColor(i)}>{v ? fmt(v) : '-'}</TableCell>;
                   })}
                   <TableCell className="num strong">{fmt(r.total)}</TableCell>
                 </TableRow>
@@ -267,15 +271,15 @@ function SkuTable() {
       ) : (
         <>
           <HStack>
-            <Button label="엑셀 다운로드" variant="primary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
+            <Button label="엑셀 다운로드" variant="secondary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
           </HStack>
           <Card padding={0}>
-            <Table className="sticky-first" density="compact" dividers="rows" hasHover style={{minWidth: 220 + s.months.length * 76}}>
+            <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 200 + s.months.length * 70 + 92}}>
               <TableHeader>
                 <TableRow>
-                  <TableHeaderCell className="sticky-col">거래처</TableHeaderCell>
-                  {s.months.map((mk: string) => <TableHeaderCell key={mk} className="num">{skuMonthLabel(mk, s.singleYear)}</TableHeaderCell>)}
-                  <TableHeaderCell className="num">합계</TableHeaderCell>
+                  <TableHeaderCell className="sticky-col" style={{width: 200}}>거래처</TableHeaderCell>
+                  {s.months.map((mk: string) => <TableHeaderCell key={mk} className="num" style={{width: 70}}>{skuMonthLabel(mk, s.singleYear)}</TableHeaderCell>)}
+                  <TableHeaderCell className="num" style={{width: 92}}>합계</TableHeaderCell>
                 </TableRow>
               </TableHeader>
               <TableBody>

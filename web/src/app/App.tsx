@@ -65,13 +65,14 @@ export function App() {
   const sideNav = (
     <SideNav
       collapsible
-      header={<SideNavHeading heading="재고 관리" subheading="B2B 대시보드" icon={<CubeIcon width={24} height={24} aria-hidden />} />}
+      header={<SideNavHeading heading="재고 관리" subheading="B2B 대시보드" icon={<span className="brand-mark"><CubeIcon width={16} height={16} aria-hidden /></span>} />}
       footer={<UserChip />}>
       {SECTIONS.map(section => (
         <SideNavSection key={section} title={section}>
           {ROUTES.filter(r => r.section === section).map(r => (
             <SideNavItem
               key={r.id}
+              size="sm"
               label={r.label}
               icon={r.icon}
               selectedIcon={r.selectedIcon}

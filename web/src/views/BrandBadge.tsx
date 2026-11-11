@@ -1,9 +1,12 @@
-import {Badge} from '@astryxdesign/core/Badge';
+import {BRAND_COLORS} from '../lib/forecast.js';
 
-// 기존 brandBadge 의 브랜드 색(장미 · 파랑 · 초록)에 가까운 Astryx 배지 색
-const VARIANT = {성분에디터: 'pink', 밀크터치: 'blue', 마미케어: 'green'} as const;
-
+/** 브랜드 표시: 기존 브랜드 색(BRAND_COLORS)의 작은 점 + 이름 (색만으로 구분하지 않음) */
 export function BrandBadge({brand}: {brand: string | null}) {
   if (!brand) return null;
-  return <Badge variant={VARIANT[brand as keyof typeof VARIANT] || 'neutral'} label={brand} />;
+  return (
+    <span className="brand-label">
+      <span className="brand-dot" style={{background: (BRAND_COLORS as Record<string, string>)[brand] || 'var(--color-text-secondary)'}} aria-hidden />
+      {brand}
+    </span>
+  );
 }
