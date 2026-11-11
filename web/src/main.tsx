@@ -1,6 +1,8 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 // Astryx 스타일 — 순서 중요: reset → 컴포넌트 → 테마 → 앱 전용
+// 글꼴: Pretendard 가변 글꼴을 앱에 포함 (CDN 대신). 페이지에 나오는 글자 묶음만 내려받음
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
 import '@astryxdesign/core/reset.css';
 import '@astryxdesign/core/astryx.css';
 import '@astryxdesign/theme-neutral/theme.css';

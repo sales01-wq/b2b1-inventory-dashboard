@@ -37,7 +37,17 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
 4. **Screens draw only.** Any calculation found inside an old `render*` function goes into `views.js` (copied the
    same way) and gets a comparison test against what the production page actually draws.
 
-## Visual direction A "떠 있는 작업면" (owner chose A of three mockups, applied)
+## Art direction v2 (current; owner asked for a real recomposition, not colour tweaks)
+
+- **Font:** Pretendard 1.3.9 variable font is bundled from npm (`pretendard` package, dynamic subset: 92 woff2 chunks, 3.1 MB in total, the browser downloads only the chunks a page uses). The jsDelivr link in `index.html` was removed. `npm run e2e:preview` checks that 'Pretendard Variable' is loaded and used with every CDN blocked.
+- **Type system** (`theme.css`): page title 24/640, section title 15/620, headline figure 44/650, signal figure 22/640, controls 13/500, table 13, table header 11.5/560, supporting 12. Tabular numbers everywhere (`tnum`).
+- **Identity:** each section title sits on a 1px rule in the text colour (`.section-head`), the app's recognisable mark. One accent, iris `--app-accent` (#4b4bc8, 6.9:1), for the current nav item, links, focus and the brand mark only.
+- **Overview composition** (`OverviewPage.tsx`): a wide work column (hero alarm → 발주 필요 with a large count headline and the urgent table) and a 19rem summary column (재고 신호등 as a ledger of clickable rows with bars, then 거래처 / 6-month sales). Under 1100px it becomes one column with the work column first.
+- **Sidebar:** canvas background with a hairline, current item = iris-tinted background + iris icon + bold label, team shown under the app name.
+- **Tables:** quiet grey header band with top and bottom rules, 36px rows with lighter row lines than borders, tables inside sections are flush (`.flush`, no card border).
+- Desktop page gutter is 24px (wider pushed the 발주 현황 table off-screen at 1440px); phone keeps the Astryx default.
+
+## Visual direction A "떠 있는 작업면" (superseded by v2) (owner chose A of three mockups, applied)
 
 - Owner compared A (Linear-like floating panel), B (Vercel-like monochrome with Geist), C (dark sidebar console); mockups were made by injecting a stylesheet into the running app.
 - Applied in `src/styles/theme.css` only (plus a stat padding tweak and the 거래처별 column widths):

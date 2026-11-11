@@ -185,7 +185,7 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
     <VStack gap={2}>
       {/* 좁은 화면에서는 칸을 찌그러뜨리지 않고 옆으로 스크롤 (휴대폰은 최근 분기 쪽에서 시작) */}
       <div ref={scrollRef}>
-      <Card padding={0}>
+      <Card padding={0} className="flush">
         {/* 열 너비 고정 (품명은 남는 너비): 자동 배치는 브랜드 · 품번을 말줄임으로 찌그러뜨림 */}
         <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: CW.pn + CW.brand + CW.name + CW.avail + (m.groupByCust ? CW.cust : 0) + m.quarterCols.length * CW.q + gaps.filter(Boolean).length * 56 + CW.total}}>
           <TableHeader>
@@ -343,7 +343,7 @@ function SkuTable() {
             <Button label="CSV 다운로드" variant="secondary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
           </HStack>
           <div ref={scrollRef}>
-          <Card padding={0}>
+          <Card padding={0} className="flush">
             <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 200 + s.months.length * 64 + gaps.filter(Boolean).length * 56 + 92}}>
               <TableHeader>
                 <TableRow>

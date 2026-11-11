@@ -35,7 +35,15 @@ try {
     await page.waitForURL(/#\/overview$/, {timeout: 10000});
     await page.getByText('미리보기 — 테스트 데이터입니다').waitFor();
     assert.equal(await page.getByText('로그인 정보를 확인하는 중입니다...').count(), 0);
-    assert.match(await page.getByRole('main').innerText(), /재고 신호등[\s\S]*SB004/); // 테스트 데이터가 그려짐
+    assert.match(await page.getByRole('main').innerText(), /SB004[\s\S]*재고 신호등/); // 테스트 데이터가 그려짐
+    // 글꼴: CDN 을 모두 막은 상태에서도 앱에 포함된 Pretendard 가변 글꼴이 실제로 내려받아져 쓰임
+    const font = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const loaded = [...document.fonts].filter(f => f.family.replace(/["']/g, '') === 'Pretendard Variable' && f.status === 'loaded').length;
+      return {loaded, family: getComputedStyle(document.querySelector('h1')).fontFamily};
+    });
+    assert.ok(font.loaded > 0, '불러온 Pretendard 글꼴 조각 없음');
+    assert.match(font.family, /^"?Pretendard Variable/);
     // 앱 안에서 데이터 서버로 가는 요청은 모두 막힘 (운영 Apps Script 주소 포함)
     assert.match(await page.evaluate(() => fetch('/api/config').then(() => 'allowed', e => e.message)), /미리보기 모드/);
     assert.match(await page.evaluate(() => fetch('https://script.google.com/macros/s/x/exec').then(() => 'allowed', e => e.message)), /미리보기 모드/);
