@@ -48,6 +48,8 @@ async function checkStickyColumns(page, scrollBy) {
     const out = [];
     for (const t of document.querySelectorAll('table.sticky-first')) {
       const wrap = t.closest('.astryx-table-scroll-wrapper');
+      const start = wrap.scrollLeft; // 휴대폰은 최근 기간 쪽(오른쪽 끝)에서 시작하므로 왼쪽 끝으로 옮겨서 확인 후 되돌림
+      wrap.scrollLeft = 0;
       const check = when => {
         const wl = wrap.getBoundingClientRect().left;
         for (const s of t.querySelectorAll('.sticky-col')) {
@@ -59,7 +61,8 @@ async function checkStickyColumns(page, scrollBy) {
         }
       };
       check('처음');
-      if (by && wrap.scrollWidth > wrap.clientWidth) { wrap.scrollLeft = by; check('스크롤 후'); wrap.scrollLeft = 0; }
+      if (by && wrap.scrollWidth > wrap.clientWidth) { wrap.scrollLeft = by; check('스크롤 후'); }
+      wrap.scrollLeft = start;
     }
     if (document.documentElement.scrollWidth > innerWidth) out.push('페이지가 옆으로 스크롤됨');
     return out;
@@ -112,7 +115,10 @@ try {
   assert.match(await page.locator('td[rowspan="2"]').first().innerText(), /SB001/);
   // 고른 거래처는 칩으로 보임 · 합계 행 (더한 값은 views.test.js 에서 확인) · 판매 기록 없는 분기는 '-'
   assert.equal(await page.getByRole('button', {name: /A상사/}).count() >= 1, true);
-  assert.match(await text(page.locator('tfoot tr')), /^합계 .*100,585 .* 6,890$/);
+  const foot = await text(page.locator('tfoot tr'));
+  assert.match(foot, /^합계 .* 6,890$/);
+  assert.doesNotMatch(foot, /100,585/); // 서로 다른 품목의 가용재고는 더하지 않음
+  assert.equal(await page.getByRole('columnheader', {name: /집계 중/}).count(), 1); // 이번 분기
   assert.ok((await page.locator('tbody td.num').allInnerTexts()).includes('-'));
   await checkStickyColumns(page);
   await shot(page, 'sales-customer');
@@ -124,6 +130,9 @@ try {
   await box.press('Enter');
   await page.getByText('SB001 · 성분 에디터 세럼').waitFor();
   assert.match(await text(page.locator('tfoot tr')), /^합계 .* 6,400$/);
+  // 품목별: 데이터에 판매가 없는 달(25.11 · 25.12)은 빗금 열 하나로, 이번 달은 '집계 중'
+  assert.deepEqual(await page.locator('th.gap-col').allInnerTexts(), ['2개월 없음']);
+  assert.equal(await page.getByRole('columnheader', {name: /집계 중/}).count(), 1);
   let [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', {name: 'CSV 다운로드'}).click()]);
   assert.match(await page.evaluate(() => window.__lastDownloadName), /^품목별판매현황_SB001_\d{4}-\d{2}-\d{2}\.csv$/);
   let csv = await readDownload(download);
@@ -199,6 +208,9 @@ try {
   await checkStickyColumns(phone.page, 200);
   await shot(phone.page, 'overview-mobile');
   await phone.page.goto(base + '/#/customer');
+  // 휴대폰: 판매 표는 최근 기간(오른쪽 끝, 합계 포함)이 보이게 열림
+  await phone.page.locator('table.sticky-first').first().waitFor();
+  assert.ok(await phone.page.evaluate(() => { const w = document.querySelector('.astryx-table-scroll-wrapper'); return w.scrollLeft > 0 && Math.abs(w.scrollLeft + w.clientWidth - w.scrollWidth) < 2; }));
   await checkStickyColumns(phone.page, 200);
   await phone.page.goto(base + '/#/forecast');
   await phone.page.locator('tbody tr td.sticky-col code').first().waitFor();

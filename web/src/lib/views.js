@@ -2,7 +2,7 @@
 // 식은 index.html 과 같게 유지합니다. 결과는 views.test.js 가 운영 화면에 그려진 값과 비교합니다.
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
-import {brandPasses, groupOf, scopedAvailable, salesDetailFor, nextOrderOf, usableAvailable, getRules, ruleThresholds} from './forecast.js';
+import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, nextOrderOf, usableAvailable, getRules, ruleThresholds} from './forecast.js';
 import {custAdjust, custShortSummaryCached, productList, buildSkuStatusData, buildPivotRows} from './sales.js';
 
 /* renderOverview (1210행) */
@@ -257,17 +257,29 @@ export function urgentItems(){
   return state.forecast.filter(x=>brandPasses(x.brand) && inSignal(x, '조치필요'));
 }
 
-/** 거래처별 표의 합계 행: 필터된 모든 행(더 보기로 아직 안 보인 행 포함).
- *  거래처별로 나뉜 행(거래처 2개 이상)은 같은 품번이 여러 줄이라 가용재고는 품번당 한 번만 더함. 판매 수량은 행마다 다른 (품번, 거래처) 라 겹치지 않음 */
+/** 거래처별 표의 판매 합계 행: 필터된 모든 행(더 보기로 아직 안 보인 행 포함).
+ *  행마다 다른 (품번[, 거래처]) 의 판매라 겹치지 않음. 가용재고는 서로 다른 품목을 더하면 의미가 없어서 합계를 내지 않음 */
 export function customerTotals(m){
-  const quarters = new Map(), avail = new Map();
+  const quarters = new Map();
   let total = 0;
   m.rows.forEach(r=>{
     r.quarters.forEach((v,q)=>quarters.set(q, (quarters.get(q)||0)+v));
     total += r.total;
-    avail.set(r.품번, r.available);
   });
-  return {quarters, total, available:[...avail.values()].reduce((s,v)=>s+v,0)};
+  return {quarters, total};
+}
+
+/* ---------- 판매 표의 기간 열: 빠진 기간 · 진행 중인 기간 (표시용, 계산은 그대로) ---------- */
+// 기간 키: 품목별 'YYYY-MM', 거래처별 'YYYY Qn' (quarterLabel)
+const periodOrd = k => { const m = /^(\d{4})(?:-(\d{2})| Q(\d))$/.exec(k); return m[2] ? +m[1]*12 + +m[2] - 1 : +m[1]*4 + +m[3] - 1; };
+/** 각 열 앞에 빠진 기간 수: 데이터 전체에 판매 기록이 하나도 없어서 열이 없는 달(분기) */
+export function periodGaps(keys){
+  return keys.map((k,i)=> i===0 ? 0 : periodOrd(k) - periodOrd(keys[i-1]) - 1);
+}
+/** 아직 끝나지 않은 이번 달(분기)인지: 판매가 계속 늘어나는 중 */
+export function isCurrentPeriod(k){
+  const now = new Date();
+  return k.includes('Q') ? k===quarterLabel(now) : k===`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
 }
 
 /* applyUploadedData 의 완료 문구 (3646행) */

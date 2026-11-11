@@ -44,6 +44,16 @@ body {
 .q-year { display: block; min-height: 1lh; font-size: 0.6875rem; color: var(--color-text-secondary); }
 .ystart { box-shadow: inset 1px 0 0 var(--color-border-emphasized); }
 /* 합계 행: 위에 진한 선 */
+/* 데이터에 판매가 전혀 없는 기간: 좁은 빗금 열 */
+.gap-col { width: 3.5rem; min-width: 3.5rem; background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-border-emphasized) 70%, transparent) 5px 6px); }
+th.gap-col { font-size: 0.6875rem; white-space: normal; color: var(--color-text-secondary); text-align: center; }
+/* 아직 끝나지 않은 이번 달(분기): 옅은 바탕 + 머리글 아래 '집계 중' */
+.partial { background-color: color-mix(in srgb, var(--color-background-muted) 60%, transparent); }
+.q-note { display: block; font-size: 0.6875rem; font-weight: 400; color: var(--color-text-secondary); }
+.legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
+.legend-gap, .legend-partial { display: inline-block; width: 0.875rem; height: 0.75rem; vertical-align: -0.0625rem; border: 1px solid var(--color-border); border-radius: 2px; }
+.legend-gap { background-image: repeating-linear-gradient(135deg, transparent 0 3px, var(--color-border-emphasized) 3px 4px); }
+.legend-partial { background-color: var(--color-background-muted); }
 tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var(--color-background-surface); }
 /* 첫 칸 고정: 표의 스크롤 영역을 기준으로 붙도록 감싸는 영역을 실제 스크롤 영역으로 만듦 (기본값 clip 이면 페이지 여백 기준으로 16px 밀림) */
 .astryx-table-scroll-wrapper:has(> div > table.sticky-first) { overflow-x: auto; container-type: inline-size; }

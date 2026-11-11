@@ -374,6 +374,16 @@ describe('개요 → 발주 현황 연결 · 거래처별 합계 행', () => {
     expect(a.forecastModel().list.map(x => x.품번)).toEqual(expect.arrayContaining(noSales.map(x => x.품번)));
   });
 
+  it('빠진 기간 · 진행 중인 기간', () => {
+    expect(a.periodGaps(['2025-10', '2026-01', '2026-02', '2026-04'])).toEqual([0, 2, 0, 1]);
+    expect(a.periodGaps(['2025-12', '2026-01'])).toEqual([0, 0]); // 해가 바뀌어도 이어짐
+    expect(a.periodGaps(['2025 Q3', '2026 Q1', '2026 Q2'])).toEqual([0, 1, 0]);
+    expect(a.periodGaps(['2025 Q4', '2026 Q1'])).toEqual([0, 0]);
+    // NOW = 테스트 기준 날짜
+    const d = new Date(NOW), mk = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    expect([a.isCurrentPeriod(mk), a.isCurrentPeriod(a.quarterLabel(d)), a.isCurrentPeriod('2025-10'), a.isCurrentPeriod(`${d.getFullYear() - 1} Q${Math.ceil((d.getMonth() + 1) / 3)}`)]).toEqual([true, true, false, false]);
+  });
+
   it.each(CUSTOMER_CASES.map((c, i) => [i, JSON.stringify(c)]))('거래처별 합계 = 판매실적을 직접 더한 값 (중복 없음) #%s %s', i => {
     setCase(['B2B1팀', []]);
     const [custs, search] = CUSTOMER_CASES[i];
@@ -390,8 +400,6 @@ describe('개요 → 발주 현황 연결 · 거래처별 합계 행', () => {
     }
     expect(Object.fromEntries(t.quarters)).toEqual(Object.fromEntries(q));
     expect(t.total).toBe(total);
-    const pns = [...new Set(m.rows.map(r => r.품번))];
-    expect(t.available).toBe(pns.reduce((s, pn) => s + a.usableAvailable(a.state.invByProduct.get(pn)), 0));
-    if (i === 2) expect(pns.length).toBeLessThan(m.rows.length); // 같은 품번이 여러 줄인 경우를 실제로 확인
+    expect(t).not.toHaveProperty('available'); // 서로 다른 품목의 가용재고는 더하지 않음
   });
 });

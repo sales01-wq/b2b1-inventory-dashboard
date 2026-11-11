@@ -26,7 +26,7 @@ export function MigrationPlaceholder({features, phase}: Props) {
         <VStack gap={3}>
           <HStack gap={2} vAlign="center">
             <Text type="label">옮겨올 기능</Text>
-            <Badge variant="info" label={phase} />
+            <Badge variant="blue" label={phase} />
           </HStack>
           <ul className="feature-list">
             {features.map(f => (

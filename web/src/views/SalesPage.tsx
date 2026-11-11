@@ -19,7 +19,8 @@ import {NoData} from './NoData';
 import {BrandBadge} from './BrandBadge';
 import {useStore} from '../app/useStore';
 import {state, ui} from '../lib/store.js';
-import {customerTableModel, customerTotals, mselItems, skuSearchMatches, skuStatusModel} from '../lib/views.js';
+import {customerTableModel, customerTotals, isCurrentPeriod, mselItems, periodGaps, skuSearchMatches, skuStatusModel} from '../lib/views.js';
+import {useScrollRecent} from '../app/useNarrow';
 import {productList, skuMonthLabel, skuStatusCsv} from '../lib/sales.js';
 import * as act from '../lib/actions.js';
 import {fmt} from '../lib/format';
@@ -30,6 +31,28 @@ const yearOf = (q: string) => q.slice(0, 4);
 /** 없는 값(판매 기록 없음)은 '-', 실제 0 은 0 (둘 다 흐리게) */
 const qtyCell = (v: number | undefined) => (v === undefined ? '-' : fmt(v));
 const qtyClass = (v: number | undefined, extra = '') => `num${v ? '' : ' muted'}${extra}`;
+
+/* 기간 열 표시: 데이터에 판매가 전혀 없는 기간은 빗금 친 좁은 열, 아직 끝나지 않은 이번 달(분기)은 '집계 중' */
+type Unit = '개월' | '분기';
+function GapHead({n, unit, year}: {n: number; unit: Unit; year?: boolean}) {
+  return (
+    <TableHeaderCell className="gap-col" style={{width: 56}}>
+      {year && <span className="q-year" />}
+      <span title={`${n}${unit} 동안 판매 데이터가 없습니다`}>{n}{unit} 없음</span>
+    </TableHeaderCell>
+  );
+}
+const GapCell = () => <TableCell className="gap-col" />;
+const CUR_TITLE = '아직 끝나지 않은 기간이라 판매가 더 늘어날 수 있습니다';
+function PeriodLegend({gaps, current, unit}: {gaps: boolean; current: boolean; unit: string}) {
+  return (
+    <div className="legend">
+      <Text type="supporting">- 판매 기록 없음 · 0 판매 기록은 있으나 합계 0</Text>
+      {gaps && <Text type="supporting"><span className="legend-gap" aria-hidden /> 데이터에 판매가 전혀 없는 기간</Text>}
+      {current && <Text type="supporting"><span className="legend-partial" aria-hidden /> 집계 중: 아직 끝나지 않은 이번 {unit}</Text>}
+    </div>
+  );
+}
 
 let subview: 'customer' | 'skustatus' = 'customer'; // 기존처럼 다른 화면에 다녀와도 마지막 보기 유지
 
@@ -143,6 +166,7 @@ function MselPicker({which}: {which: 'cust' | 'pn'}) {
 interface PivotRow {품번: string; 품명: string; brand: string; 거래처: string | null; quarters: Map<string, number>; total: number; available: number}
 
 function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
+  const scrollRef = useScrollRecent(m.quarterCols.join() + m.groupByCust);
   if (m.rows.length === 0) return <EmptyState isCompact title="데이터가 없습니다." />;
   const shown: PivotRow[] = m.rows.slice(0, ui.customerPage);
   // 거래처 2개 이상: 같은 품번 행을 묶어서 품번 · 브랜드 · 품명 · 가용재고를 한 번만 (rowSpan)
@@ -150,11 +174,16 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
   let groupIdx = -1;
   const t = customerTotals(m);
   const ystart = (i: number) => (i > 0 && yearOf(m.quarterCols[i]) !== yearOf(m.quarterCols[i - 1]) ? ' ystart' : '');
+  const gaps: number[] = periodGaps(m.quarterCols);
+  const cur = (q: string) => (isCurrentPeriod(q) ? ' partial' : '');
+  // 기간 칸 하나 (앞에 빠진 기간이 있으면 빗금 칸을 먼저)
+  const periodCells = (cell: (q: string, i: number) => React.ReactNode) => m.quarterCols.flatMap((q: string, i: number) => [gaps[i] > 0 && <GapCell key={'g' + q} />, cell(q, i)]);
   return (
     <VStack gap={2}>
-      {/* 좁은 화면에서는 칸을 찌그러뜨리지 않고 옆으로 스크롤 */}
+      {/* 좁은 화면에서는 칸을 찌그러뜨리지 않고 옆으로 스크롤 (휴대폰은 최근 분기 쪽에서 시작) */}
+      <div ref={scrollRef}>
       <Card padding={0}>
-        <Table className="sticky-first" density="compact" dividers="rows" hasHover style={{minWidth: 520 + (m.groupByCust ? 100 : 0) + m.quarterCols.length * 72}}>
+        <Table className="sticky-first" density="compact" dividers="rows" hasHover style={{minWidth: 520 + (m.groupByCust ? 100 : 0) + m.quarterCols.length * 72 + gaps.filter(Boolean).length * 56}}>
           <TableHeader>
             <TableRow>
               <TableHeaderCell className="sticky-col">품번</TableHeaderCell>
@@ -164,12 +193,14 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
               <TableHeaderCell className="num">가용재고</TableHeaderCell>
               {m.groupByCust && <TableHeaderCell>거래처</TableHeaderCell>}
               {/* 연도는 그 해 첫 분기 칸 위에만 (예: 2026 / Q1), 연도가 바뀌는 열 왼쪽에 선 */}
-              {m.quarterCols.map((q: string, i: number) => (
-                <TableHeaderCell key={q} className={'num q-head' + ystart(i)}>
+              {m.quarterCols.flatMap((q: string, i: number) => [
+                gaps[i] > 0 && <GapHead key={'g' + q} n={gaps[i]} unit="분기" year />,
+                <TableHeaderCell key={q} className={'num q-head' + ystart(i) + cur(q)}>
                   <span className="q-year">{i === 0 || ystart(i) ? yearOf(q) : ''}</span>
-                  {q.slice(5)}
-                </TableHeaderCell>
-              ))}
+                  <span title={cur(q) ? CUR_TITLE : undefined}>{q.slice(5)}</span>
+                  {cur(q) && <span className="q-note">집계 중</span>}
+                </TableHeaderCell>,
+              ])}
               <TableHeaderCell className="num">합계</TableHeaderCell>
             </TableRow>
           </TableHeader>
@@ -190,32 +221,34 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
                   {m.groupByCust && first && <TableCell rowSpan={span} className="num">{fmt(r.available)}</TableCell>}
                   {m.groupByCust && <TableCell><Text type="supporting">{r.거래처}</Text></TableCell>}
                   {!m.groupByCust && <TableCell className="num">{fmt(r.available)}</TableCell>}
-                  {m.quarterCols.map((q: string, i: number) => {
+                  {periodCells((q, i) => {
                     const v = r.quarters.get(q);
-                    return <TableCell key={q} className={qtyClass(v, ystart(i))}>{qtyCell(v)}</TableCell>;
+                    return <TableCell key={q} className={qtyClass(v, ystart(i) + cur(q))}>{qtyCell(v)}</TableCell>;
                   })}
                   <TableCell className="num strong">{fmt(r.total)}</TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
-          {/* 합계: 더 보기로 아직 안 보인 행까지 포함한 전체. 가용재고는 품번당 한 번 (customerTotals) */}
+          {/* 판매 합계: 더 보기로 아직 안 보인 행까지 포함한 전체. 가용재고는 서로 다른 품목이라 더하지 않음 (customerTotals) */}
           <TableFooter>
             <TableRow>
               <TableCell className="sticky-col strong">합계</TableCell>
               <TableCell className="hide-narrow" />
               <TableCell><Text type="supporting">{shown.length < m.rows.length ? `전체 ${fmt(m.rows.length)}개 행` : ''}</Text></TableCell>
-              <TableCell className="num">{fmt(t.available)}</TableCell>
+              <TableCell />
               {m.groupByCust && <TableCell />}
-              {m.quarterCols.map((q: string, i: number) => {
+              {periodCells((q, i) => {
                 const v = t.quarters.get(q);
-                return <TableCell key={q} className={qtyClass(v, ystart(i)) + ' strong'}>{qtyCell(v)}</TableCell>;
+                return <TableCell key={q} className={qtyClass(v, ystart(i) + cur(q)) + ' strong'}>{qtyCell(v)}</TableCell>;
               })}
               <TableCell className="num strong">{fmt(t.total)}</TableCell>
             </TableRow>
           </TableFooter>
         </Table>
       </Card>
+      </div>
+      <PeriodLegend gaps={gaps.some(Boolean)} current={m.quarterCols.some(isCurrentPeriod)} unit="분기" />
       {m.rows.length > shown.length && (
         <HStack hAlign="center">
           <Button label={`더 보기 (${fmt(m.rows.length - shown.length)}개 더)`} variant="secondary" onClick={act.customerMore} />
@@ -280,11 +313,15 @@ function SkuView() {
 }
 
 function SkuTable() {
+  const scrollRef = useScrollRecent([...ui.skuStatusSelected].join());
   if (ui.skuStatusSelected.size === 0) {
     return <EmptyState isCompact title="품번(품명)을 검색해서 하나 이상 선택해주세요." description="여러 개 선택하면 합산해서 보여줍니다." />;
   }
   const names = new Map(productList().map((p: {pn: string; name: string}) => [p.pn, p.name]));
   const s = skuStatusModel();
+  const gaps: number[] = periodGaps(s.months);
+  const cur = (mk: string) => (isCurrentPeriod(mk) ? ' partial' : '');
+  const monthCells = (cell: (mk: string, i: number) => React.ReactNode) => s.months.flatMap((mk: string, i: number) => [gaps[i] > 0 && <GapCell key={'g' + mk} />, cell(mk, i)]);
   return (
     <VStack gap={3}>
       <HStack gap={1} wrap="wrap" vAlign="center">
@@ -301,12 +338,19 @@ function SkuTable() {
           <HStack>
             <Button label="CSV 다운로드" variant="secondary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
           </HStack>
+          <div ref={scrollRef}>
           <Card padding={0}>
-            <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 200 + s.months.length * 70 + 92}}>
+            <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 200 + s.months.length * 64 + gaps.filter(Boolean).length * 56 + 92}}>
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell className="sticky-col" style={{width: 200}}>거래처</TableHeaderCell>
-                  {s.months.map((mk: string) => <TableHeaderCell key={mk} className="num" style={{width: 70}}>{skuMonthLabel(mk, s.singleYear)}</TableHeaderCell>)}
+                  {s.months.flatMap((mk: string, i: number) => [
+                    gaps[i] > 0 && <GapHead key={'g' + mk} n={gaps[i]} unit="개월" />,
+                    <TableHeaderCell key={mk} className={'num' + cur(mk)} style={{width: 64}}>
+                      <span title={cur(mk) ? CUR_TITLE : undefined}>{skuMonthLabel(mk, s.singleYear)}</span>
+                      {cur(mk) && <span className="q-note">집계 중</span>}
+                    </TableHeaderCell>,
+                  ])}
                   <TableHeaderCell className="num" style={{width: 92}}>합계</TableHeaderCell>
                 </TableRow>
               </TableHeader>
@@ -315,7 +359,7 @@ function SkuTable() {
                   <TableRow key={r.cust}>
                     <TableCell className="sticky-col">{r.cust}</TableCell>
                     {/* 그 달 판매 기록이 없으면 '-', 기록이 있고 합이 0 이면 0 */}
-                    {s.months.map((mk: string, i: number) => { const v = s.byCust.get(r.cust).has(mk) ? r.values[i] : undefined; return <TableCell key={mk} className={qtyClass(v)}>{qtyCell(v)}</TableCell>; })}
+                    {monthCells((mk, i) => { const v = s.byCust.get(r.cust).has(mk) ? r.values[i] : undefined; return <TableCell key={mk} className={qtyClass(v, cur(mk))}>{qtyCell(v)}</TableCell>; })}
                     <TableCell className="num strong">{fmt(r.total)}</TableCell>
                   </TableRow>
                 ))}
@@ -323,12 +367,14 @@ function SkuTable() {
               <TableFooter>
                 <TableRow>
                   <TableCell className="sticky-col strong">합계</TableCell>
-                  {s.months.map((mk: string, i: number) => { const v = s.custList.some((c: string) => s.byCust.get(c).has(mk)) ? s.monthTotals[i] : undefined; return <TableCell key={mk} className={qtyClass(v) + ' strong'}>{qtyCell(v)}</TableCell>; })}
+                  {monthCells((mk, i) => { const v = s.custList.some((c: string) => s.byCust.get(c).has(mk)) ? s.monthTotals[i] : undefined; return <TableCell key={mk} className={qtyClass(v, cur(mk)) + ' strong'}>{qtyCell(v)}</TableCell>; })}
                   <TableCell className="num strong">{fmt(s.grandTotal)}</TableCell>
                 </TableRow>
               </TableFooter>
             </Table>
           </Card>
+          </div>
+          <PeriodLegend gaps={gaps.some(Boolean)} current={s.months.some(isCurrentPeriod)} unit="달" />
         </>
       )}
     </VStack>

@@ -125,7 +125,7 @@ function UserChip() {
         <Avatar name={u.name || u.email} src={u.picture || undefined} size="sm" />
         <VStack gap={0.5}>
           <Text type="label">{u.email}</Text>
-          <Badge variant={u.isUpdater ? 'success' : 'neutral'} label={u.isUpdater ? '업데이트 권한' : '보기 전용'} />
+          <Badge variant={u.isUpdater ? 'green' : 'neutral'} label={u.isUpdater ? '업데이트 권한' : '보기 전용'} />
         </VStack>
       </HStack>
       <Button label="로그아웃" size="sm" variant="ghost" onClick={logout} />

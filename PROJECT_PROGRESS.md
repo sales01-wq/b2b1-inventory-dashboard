@@ -1,9 +1,9 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-11 (Impeccable design improvements to Overview and Sales), branch `feat/react-astryx`.
+Last updated: 2026-11-11 (Sales period clarity, subtle badges), branch `feat/react-astryx`.
 
-**Next step needs owner approval:** the owner reviews the improved Overview and Sales (screenshots + second Impeccable audit, 25 → 28/40). Do not restyle other screens or start the lookup screen until they approve.
+**Next step needs owner approval:** the owner reviews the improved Overview and Sales (screenshots, Impeccable audit 25 → 28/40, then the owner's follow-up fixes below). Do not restyle other screens or start the lookup screen until they approve.
 
 ## Goal
 
@@ -58,6 +58,14 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
   - 품목별: search results float over the page; Enter / Shift+Enter hint as one line; labels unified ("품번 / 품명 검색", "선택 해제", "CSV 다운로드");
   - phone: 브랜드 column hidden, brand shown under 품명.
 - **Accessibility:** contrast fixed; `NoData` heading is h2 (was h3 under h1).
+
+### Owner follow-up (after audit 2)
+- 거래처별 합계 row: sales totals only; the 가용재고 cell is empty (stock of different products is never added up). `customerTotals` no longer returns `available`.
+- Missing periods: `periodGaps(keys)` (views.js, tested) counts months / quarters with no sales anywhere in the data between two columns. The tables show one narrow hatched column "N개월 없음" / "N분기 없음" there. Cells: '-' = no record, 0 = recorded total 0. A legend under each table explains '-', 0, hatch and 집계 중.
+- Current period: `isCurrentPeriod(key)` marks this month / quarter: header note "집계 중" (with a tooltip), light shading on the column.
+- Phone: `useScrollRecent(key)` (`app/useNarrow.ts`) opens period tables scrolled to the right end (latest period + 합계) when the columns change; a user's own scrolling is kept. e2e checks it.
+- Badges: grade and status badges use Astryx's tinted variants (`red` / `yellow` / `green` / `neutral` / `orange` / `blue`) instead of the solid semantic ones (`error` / `warning` / `success` / `info`), everywhere (발주 현황, Overview, 업로드, user chip). Contrast measured 7.8:1 and 8.7:1. The 🚨 emoji in the 알람 badge was removed.
+- 품목별 month columns are 64px (was 70px) so the table still fits at 1440px with a gap column.
 
 ## Folder map (`web/`)
 
@@ -133,12 +141,12 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
    - **Expanded row:** pattern table (with "선택됨"), last 20 sales, warehouse table with 합계 / "재고없음", incoming table, notes. It stays inside the visible width while the table scrolls.
    - **Not built (unreachable in production):** the row-selection checkboxes, the "발주할 품목" panel and the selected-items CSV. Production has handlers for them, but `renderForecast` never draws the checkboxes, so users can't reach them. `forecastCsv()` is ported and tested in case it's wanted.
 
-**Test status:** `npm test` gives 119 / 119:
+**Test status:** `npm test` gives 120 / 120:
 
 | File | Checks |
 |---|---|
 | `legacy.test.js` + `format.test.ts` | 31 + 3 |
-| `views.test.js` | 70 (56 compared with production, incl. 5 hero-alarm cases and 35 order-status filter cases; 14 for new features: Overview tile → 발주 현황 counts for 7 cases, no-sales items made visible, 거래처별 totals vs raw sales for 6 cases) |
+| `views.test.js` | 71 (56 compared with production, incl. 5 hero-alarm cases and 35 order-status filter cases; 14 for new features: Overview tile → 발주 현황 counts for 7 cases, no-sales items made visible, 거래처별 totals vs raw sales for 6 cases, missing / current periods) |
 | `shared.test.js` | 12 |
 | `actions.test.js` | 3 (team/brand; 19 sales steps; 28 order-status steps incl. rules save/reset and hero add/delete, each comparing filter state, the full filtered list and saved settings), all driven through production's real controls |
 
@@ -152,7 +160,7 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
   - hero add → alarm, delete → alarm gone;
 - sticky first columns: no overlap on desktop; still pinned on a phone after scrolling; no page-level sideways scroll.
 
-`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 29 real bugs so far, all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
+`npm run typecheck` and `npm run build` are clean. Planted-bug checks: 32 real bugs so far, all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
 
 ## Remaining work (in this order, one screen at a time, report after each)
 
@@ -225,7 +233,7 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 
 ## Open questions for the owner
 
-- Approve the improved Overview and Sales (audit 2: 28/40)? Next design candidates from audit 2: totals hardening (empty 가용재고 total? month gaps in 품목별, partial current month), phone priorities (tables open on oldest period, tiles above the action list), cross-screen consistency on 발주 현황 (0 vs '-', duplicate brand filter, emoji), quieter grade badges.
+- Approve the improved Overview and Sales? Remaining audit-2 ideas not yet done: on phones the signal tiles sit above the action table; 발주 현황 shows '-' for a 0 order quantity while Overview shows 0, and it has its own brand filter next to the global one.
 
 - Do they approve the 발주 현황 screen and the sales improvements (screenshots were sent)? Wait for approval before starting 바코드 · 거래처 조회.
 - Is it fine that the order-status table puts 품번 first (sticky) instead of 구분?

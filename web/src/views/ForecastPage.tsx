@@ -184,12 +184,13 @@ function SummaryBar({m}: {m: Model}) {
 }
 
 /** 상태 배지: 화면에는 4단계(위험·주의·여유·참고), 세부 등급은 툴팁 */
-const GRADE_VARIANT = {위험: 'error', 주의: 'warning', 여유: 'success', 참고: 'neutral'} as const;
+// 옅은 배경 + 진한 글자 (Astryx 의 error / warning / success 는 꽉 찬 색이라 표 안에서 너무 튐)
+const GRADE_VARIANT = {위험: 'red', 주의: 'yellow', 여유: 'green', 참고: 'neutral'} as const;
 export function GradeBadge({grade}: {grade: string}) {
   const g = groupOf(grade) as keyof typeof GRADE_VARIANT;
   return (
     <span title={`세부 등급: ${grade}`}>
-      <Badge variant={grade === '긴급' ? 'red' : GRADE_VARIANT[g]} label={grade === '긴급' ? `${g} (긴급)` : g} />
+      <Badge variant={GRADE_VARIANT[g]} label={grade === '긴급' ? `${g} (긴급)` : g} />
     </span>
   );
 }
@@ -271,7 +272,7 @@ function Detail({x}: {x: FRow}) {
             <MiniTable
               head={['거래처', '주문횟수', '평균 발주수량', '평균 발주주기', '다음 예상 주문', '분기 환산']}
               rows={d.pattern.map((p: {거래처: string; 주문횟수: number; 평균발주수량: number; 평균발주주기: number | null; 분기환산수량: number; next: {overdue: boolean} | null}) => [
-                <>{p.거래처}{ui.forecastCustomer && p.거래처 === ui.forecastCustomer && <> <Badge variant="success" label="선택됨" /></>}</>,
+                <>{p.거래처}{ui.forecastCustomer && p.거래처 === ui.forecastCustomer && <> <Badge variant="green" label="선택됨" /></>}</>,
                 fmt(p.주문횟수), fmt(Math.round(p.평균발주수량)), p.평균발주주기 ? Math.round(p.평균발주주기) + '일' : '-',
                 <span className={p.next && p.next.overdue ? 'text-danger' : undefined}>{patternNextText(p.next)}</span>,
                 <strong>{fmt(Math.round(p.분기환산수량))}</strong>,
@@ -287,7 +288,7 @@ function Detail({x}: {x: FRow}) {
         <MiniTable
           head={['창고', '가용재고']}
           rows={[
-            ...wh.rows.map((r: {창고: string; 가용재고: number; picked: boolean}) => [<>{r.창고}{r.picked && <> <Badge variant="success" label="추가됨" /></>}</>, fmt(r.가용재고)]),
+            ...wh.rows.map((r: {창고: string; 가용재고: number; picked: boolean}) => [<>{r.창고}{r.picked && <> <Badge variant="green" label="추가됨" /></>}</>, fmt(r.가용재고)]),
             ...(wh.total !== null ? [[<strong>합계</strong>, <strong>{fmt(wh.total)}</strong>]] : []),
           ]}
         />
@@ -349,7 +350,7 @@ function RulesEditor() {
   const trigger = (
     <HStack gap={2} vAlign="center">
       <Text type="label">⚙ 기준 설정 (고급) · 히어로 품목</Text>
-      {alertN > 0 && <Badge variant="error" label={`🚨 알람 ${alertN}개`} />}
+      {alertN > 0 && <Badge variant="red" label={`알람 ${alertN}개`} />}
     </HStack>
   );
   return (
@@ -359,10 +360,10 @@ function RulesEditor() {
           <Text type="body">생산~입고 <strong>리드타임</strong> {num('leadDays')}일 — 위험하면 이 기간 뒤에 입고된다고 보고 판정합니다.</Text>
           <Text type="supporting">소진예상일 = (현재 가용재고 + 입고예정) ÷ 일평균 수요 &nbsp;(일평균 수요 = 예상 분기수요 ÷ 91일) · 발주여유일 = 소진예상일 − 리드타임</Text>
           <Text type="body"><Badge variant="red" label="긴급" /> 소진예상 <strong>{R.urgentDays}일</strong> 미만 (기준 {num('urgentDays')}일) — 위험해도 입고 전에 결품. 긴급 대응 필요</Text>
-          <Text type="body"><Badge variant="error" label="위험" /> 소진예상 <strong>{T.urgent}~{T.risk}일</strong> — 리드타임보다 재고가 적음. <strong>지금 바로 발주</strong>해야 함 (발주 지연)</Text>
-          <Text type="body"><Badge variant="warning" label="주의" /> 소진예상 <strong>{T.risk}~{T.caution}일</strong> (리드타임 + {num('cautionExtra', 64)}일) — 한 달 안에 발주</Text>
+          <Text type="body"><Badge variant="red" label="위험" /> 소진예상 <strong>{T.urgent}~{T.risk}일</strong> — 리드타임보다 재고가 적음. <strong>지금 바로 발주</strong>해야 함 (발주 지연)</Text>
+          <Text type="body"><Badge variant="yellow" label="주의" /> 소진예상 <strong>{T.risk}~{T.caution}일</strong> (리드타임 + {num('cautionExtra', 64)}일) — 한 달 안에 발주</Text>
           <Text type="body"><Badge variant="blue" label="관찰" /> 소진예상 <strong>{T.caution}~{T.watch}일</strong> (리드타임 + {num('safeExtra', 64)}일까지) — 다음 발주 시점 검토</Text>
-          <Text type="body"><Badge variant="teal" label="안전(입고예정)" /> 현재고만으론 {T.watch}일 미만이지만 입고예정까지 더하면 충분 · <Badge variant="success" label="안전" /> 현재고만으로 {T.watch}일 이상</Text>
+          <Text type="body"><Badge variant="teal" label="안전(입고예정)" /> 현재고만으론 {T.watch}일 미만이지만 입고예정까지 더하면 충분 · <Badge variant="green" label="안전" /> 현재고만으로 {T.watch}일 이상</Text>
           <Text type="body"><Badge variant="neutral" label="휴면" /> 마지막 출고가 {num('dormantMonths', 60)}개월 이상 전이면 긴급·위험·주의·관찰 대신 <strong>휴면(참고)</strong>으로 분류 (단종·옛 품번 때문에 생기는 혼선 방지, 0이면 사용 안 함)</Text>
           <Text type="body"><Badge variant="neutral" label="단발성" /> 최근 12개월 주문이 {num('minOrders', 60)}회 미만이면 긴급·위험·주의·관찰 대신 <strong>단발성(참고)</strong>으로 분류 (한 번 크게 나간 건 때문에 위험이 과대 표시되는 것을 방지)</Text>
           {edit ? (

@@ -122,12 +122,12 @@ function UploadPanel() {
                 <Text type="body" weight="medium">{f.fileName}</Text>
                 {f.error ? (
                   <>
-                    <Badge variant="warning" label="읽기 실패" />
+                    <Badge variant="orange" label="읽기 실패" />
                     <Text type="supporting">{f.errorMsg || ''}</Text>
                   </>
                 ) : (
                   <>
-                    <Badge variant={f.key ? 'success' : 'warning'} label={f.key ? '인식됨: ' + sigLabel(f.key) : '자동 인식 실패 — 직접 선택'} />
+                    <Badge variant={f.key ? 'green' : 'orange'} label={f.key ? '인식됨: ' + sigLabel(f.key) : '자동 인식 실패 — 직접 선택'} />
                     <div style={{minWidth: 200}}>
                       <Selector
                         label="시트 종류"
