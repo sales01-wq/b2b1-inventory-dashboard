@@ -1,85 +1,8 @@
 // 비교 테스트: 운영 중인 index.html 의 계산 결과(정답)와 src/lib 로 옮긴 계산 결과가 완전히 같은지 확인합니다.
 // 운영 페이지를 jsdom 안에서 그대로 실행하고, 같은 시트 · 같은 기준일로 같은 순서의 작업을 양쪽에 수행합니다.
-import fs from 'node:fs';
-import path from 'node:path';
-import {JSDOM, VirtualConsole} from 'jsdom';
 import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
 import {makeSheets} from './__fixtures__/sheets.js';
-
-const NOW = new Date(2026, 10, 11, 9, 30).getTime(); // 2026-11-11 09:30 (로컬 시간)
-const INDEX_HTML = fs.readFileSync(path.resolve(__dirname, '../../../index.html'), 'utf8');
-
-/** 운영 index.html 을 실행하고 계산 함수 · 전역 객체를 꺼냅니다. */
-function loadOracle() {
-  const vc = new VirtualConsole(); // 다운로드 클릭 시의 "navigation not implemented" 같은 jsdom 경고는 무시
-  const csv = {};
-  const dom = new JSDOM(INDEX_HTML, {
-    runScripts: 'dangerously',
-    url: 'http://localhost/',
-    virtualConsole: vc,
-    beforeParse(w) {
-      // 페이지 안의 시계를 기준일로 고정
-      w.eval(`(function(){ const R = Date, T = ${NOW};
-        Date = class extends R { constructor(...a){ a.length ? super(...a) : super(T); } static now(){ return T; } };
-      })()`);
-      // CSV 다운로드를 가로채서 내용과 파일명만 기록
-      w.Blob = class { constructor(parts) { this.text = parts.join(''); } };
-      w.URL.createObjectURL = b => { csv.last = {csv: b.text}; return 'blob:x'; };
-      w.URL.revokeObjectURL = () => {};
-      w.HTMLAnchorElement.prototype.click = function () { csv.last.filename = this.download; };
-    },
-  });
-  const w = dom.window;
-  const api = new Proxy({}, {get: (_, k) => (['state', 'ui', 'settings'].includes(k) ? w.eval(k) : w[k])});
-  // 기존 화면은 PLT 입력칸 값을 직접 읽으므로 같은 값을 입력칸에 넣어줍니다.
-  const setPltInputs = inputs => {
-    const put = (id, v) => {
-      let el = w.document.getElementById(id);
-      if (!el) { el = w.document.createElement('input'); el.id = id; w.document.body.appendChild(el); }
-      el.value = v;
-    };
-    put('exportPltL', inputs.L); put('exportPltW', inputs.W); put('exportPltH', inputs.H);
-    put('exportPltBaseHeight', inputs.baseHeight); put('exportPltTare', inputs.tare);
-    w.document.querySelectorAll('input[name="pltMixMode"]').forEach(r => r.remove());
-    const r = w.document.createElement('input');
-    r.type = 'radio'; r.name = 'pltMixMode'; r.value = inputs.mixMode; r.checked = true;
-    w.document.body.appendChild(r);
-  };
-  return {
-    api,
-    calcExportPlt: inputs => { setPltInputs(inputs); w.calcExportPlt(); },
-    csv: name => { csv.last = undefined; w[name](); return csv.last; },
-    close: () => w.close(),
-  };
-}
-
-/** src/lib 로 옮긴 모듈 (매번 새로 불러와 전역 상태를 초기화) */
-async function loadPort() {
-  vi.resetModules();
-  const mods = await Promise.all([
-    import('./store.js'), import('./parse.js'), import('./forecast.js'), import('./sales.js'), import('./lookup.js'),
-  ]);
-  const api = Object.assign({}, ...mods);
-  const CSV = {downloadForecastListCsv: 'forecastListCsv', downloadForecastCsv: 'forecastCsv', downloadSkuStatusCsv: 'skuStatusCsv', downloadExportCsv: 'exportCsv'};
-  return {api, calcExportPlt: inputs => api.calcExportPlt(inputs), csv: name => api[CSV[name]](), close() {}};
-}
-
-/** 서로 다른 실행 환경(jsdom / node)의 Map · Set · Date 를 비교 가능한 모양으로 바꿈 */
-function canon(v) {
-  const t = Object.prototype.toString.call(v);
-  if (t === '[object Map]') return {map: [...v].map(([k, x]) => [canon(k), canon(x)])};
-  if (t === '[object Set]') return {set: [...v].map(canon)};
-  if (t === '[object Date]') return 'D:' + (isNaN(v.getTime()) ? 'invalid' : v.getTime());
-  if (t === '[object RegExp]') return String(v);
-  if (typeof v === 'function') return 'fn';
-  if (Array.isArray(v)) {
-    const extra = Object.keys(v).filter(k => !/^\d+$/.test(k));
-    const arr = v.map(canon);
-    return extra.length ? {arr, extra: Object.fromEntries(extra.map(k => [k, canon(v[k])]))} : arr;
-  }
-  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).map(k => [k, canon(v[k])]));
-  return v;
-}
+import {NOW, loadOracle, loadPort, canon} from './__fixtures__/harness.js';
 
 /** 양쪽에 똑같이 수행하는 업무 시나리오. 단계별 결과를 모아 반환합니다. */
 function scenario({api: a, calcExportPlt, csv}) {

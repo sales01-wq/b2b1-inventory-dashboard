@@ -55,3 +55,10 @@ export const ui = {
 };
 
 export const settings = {rules:{}, hero:{}, box:{}};
+
+// port: React 화면 연결 — 계산 함수나 데이터 처리가 상태를 바꾼 뒤 emit() 하면 화면이 다시 그려집니다.
+const listeners = new Set();
+let version = 0;
+export function subscribe(fn){ listeners.add(fn); return ()=>listeners.delete(fn); }
+export function getVersion(){ return version; }
+export function emit(event){ version++; listeners.forEach(fn=>fn(event)); }

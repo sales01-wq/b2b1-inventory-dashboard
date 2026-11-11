@@ -110,27 +110,33 @@ changes a displayed figure or filter. **P2** = formatting / helpers.
 
 ---
 
-## Status (port step 1)
+## Status: logic migration complete
 
-Ported into `src/lib/` with function bodies copied unchanged from `index.html` (extracted by parser, not retyped):
+All calculation, upload, settings and data-loading code is ported. Function bodies were extracted from
+`index.html` by a parser (not retyped). Every change is marked `port:` in the code and only replaces a place that
+wrote to the old page.
 
-| Module | Contents |
-|---|---|
-| `store.js` | `state`, `ui`, `settings` (same shape as before) |
-| `parse.js` | sheet signatures/detection, header search, `num`, `parseDateStr`, the 5 parsers, team detection |
-| `forecast.js` | brand/team/warehouse rules, grading, order pattern, `computeDerived`, forecast CSVs |
-| `sales.js` | product list, SKU status, pivot, per-customer shortage |
-| `lookup.js` | barcode/name lookup, selection lists, LOT recommendation, export rows, PLT calculation + packing, export CSV |
+| File | Contents | Compared against production by |
+|---|---|---|
+| `src/lib/store.js` | `state`, `ui`, `settings` + `emit()`/`subscribe()` for React | all tests |
+| `src/lib/parse.js` | sheet detection, 5 parsers, dates/numbers, team detection | `legacy.test.js` |
+| `src/lib/forecast.js` | grading, order patterns, `computeDerived`, forecast CSVs | `legacy.test.js` |
+| `src/lib/sales.js` | pivot, per-customer shortage, SKU status, SKU CSV | `legacy.test.js` |
+| `src/lib/lookup.js` | lookup, selection lists, LOT pick, export rows, PLT, export CSV | `legacy.test.js` |
+| `src/lib/views.js` | the calculations that were inside `render*` (overview counts, forecast filters/chips/totals/monthly, detail rows, customer table, SKU table, multi-select lists, rules/hero validation, status texts) | `views.test.js` (reads what production actually drew) |
+| `src/lib/upload.js` | file reading (CSV/Excel), `applyUploadedData` | `views.test.js` |
+| `src/data/shared.js` | Google login, `/api/*` calls, snapshot + IndexedDB cache, new-data check, updater refresh, chunked fallback, manual Apps Script refresh | `shared.test.js` (same fake server for both) |
+| `src/data/settings.js` | rules / hero / box settings, local + server save | `shared.test.js` |
 
-The only changes, each marked `port:` in the code:
-- CSV functions return `{csv, filename}` instead of starting a browser download.
-- `calcExportPlt(inputs)` takes the pallet input values as a parameter. These must still come from number fields, as before.
-- Calls that redraw the old page (`renderLookupBatch`, `renderExportPanel`) and the old customer-dropdown refresh are removed; React redraws instead.
+**Results:** 96 checks, all identical to production. A deliberate-bug check (16 small bugs, injected one at a time)
+was caught every time after the test data was extended for the 3 that initially slipped through.
 
-**Verification:** `src/lib/legacy.test.js` runs the production `index.html` in jsdom and the new modules on the same
-fixture sheets at the same fixed date. It compares 29 steps (parsing, 4 team/rule/hero settings, grade boundaries,
-order patterns, pivots, lookup, LOT picks, export rows, PLT in both modes, all 4 CSVs). All results are identical.
-A check with deliberately injected bugs confirmed that the test fails when the logic changes.
+**Intended differences (2):**
+1. Status-bar messages are plain text, not HTML. Production inserted server values (file names, emails) as HTML;
+   the new code shows them literally. Covered by a test.
+2. `fetchSnapshot` was not ported: it is never called in production.
 
-Not ported yet (they need the screen or the data layer): screen filters inside `render*` functions (e.g. forecast grade/overstock
-filters), `applyUploadedData`, settings sync (`persistSetting`, `loadRemoteSettings`, `setBoxDim`/`persistBox`), and login/snapshot loading.
+**Notes for the screens:**
+- Pallet size inputs must be number fields (`NumberInput`), as in production. Text like `1,600` is rejected by the browser there.
+- Production's upload button passed the click event as `mode`; the new screen passes `'upload'`, which is the intended value.
+- Not covered by tests: the Excel (`.xlsx`) reading path. It needs SheetJS from cdn.sheetjs.com, which this sandbox cannot reach. The code is unchanged.
