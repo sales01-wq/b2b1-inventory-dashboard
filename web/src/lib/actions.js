@@ -1,8 +1,8 @@
 // 기존 index.html 의 버튼 · 입력 처리(addEventListener 안쪽)에서 상태를 바꾸던 부분을 그대로 옮긴 것.
 // 화면을 다시 그리던 render*() 호출 대신 emit() 을 부릅니다. actions.test.js 가 운영 화면을 직접 눌러 본 결과와 비교합니다.
 import {state, ui, emit} from './store.js';
-import {salesForTeam, computeDerived} from './forecast.js';
-import {addPnTokens, addForecastPnTokens} from './views.js';
+import {salesForTeam, computeDerived, brandPasses} from './forecast.js';
+import {addPnTokens, addForecastPnTokens, inSignal} from './views.js';
 
 /* teamToggle 클릭 (3113행) */
 export function setTeam(team){
@@ -79,4 +79,11 @@ export function toggleForecastDetail(pn){
 export function forecastPnEnter(value){ if(value.trim()){ addForecastPnTokens(value); } emit(); }
 export function removeForecastPnChip(pn){ ui.forecastPnChips.delete(pn); emit(); }
 export function clearForecastPnChips(){ ui.forecastPnChips.clear(); emit(); }
+/** 개요의 신호 칸 · '전체 보기' → 발주 현황을 그 상태로 거름 (새 화면 기능).
+ *  개요 숫자와 같은 품목이 보이도록 발주 현황의 다른 필터는 풀고, 그 상태에 판매 이력 없는 품목이 있으면 '판매 이력 없는 품목도 보기'를 켬 */
+export function openForecastSignal(grade){
+  ui.forecastGrade = grade; ui.forecastCustomer = ''; ui.forecastBrand = ''; ui.forecastSearch = ''; ui.forecastPnChips.clear(); ui.forecastPage = 50;
+  if(state.forecast.some(x=>brandPasses(x.brand) && inSignal(x, grade) && x.sold6===0)) ui.forecastShowNoSales = true;
+  emit();
+}
 export function setRulesOpen(open){ ui.rulesOpen = open; }

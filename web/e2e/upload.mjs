@@ -51,7 +51,9 @@ async function checkStickyColumns(page, scrollBy) {
       const check = when => {
         const wl = wrap.getBoundingClientRect().left;
         for (const s of t.querySelectorAll('.sticky-col')) {
-          const r = s.getBoundingClientRect(), next = s.nextElementSibling;
+          const r = s.getBoundingClientRect();
+          let next = s.nextElementSibling;
+          while (next && !next.getClientRects().length) next = next.nextElementSibling; // 좁은 화면에서 숨긴 칸은 건너뜀
           if (Math.abs(r.left - wl) > 1) out.push(`${when}: '${s.textContent.slice(0, 8)}' 이 왼쪽 끝(${Math.round(wl)})이 아니라 ${Math.round(r.left)}`);
           if (when === '처음' && next && r.right > next.getBoundingClientRect().left + 0.5) out.push(`처음: '${s.textContent.slice(0, 8)}' 이 옆 칸과 겹침`);
         }
@@ -68,13 +70,35 @@ async function checkStickyColumns(page, scrollBy) {
 const browser = await chromium.launch();
 try {
   const {page, errors} = await openWithData(browser, {viewport: {width: 1440, height: 900}});
-  assert.match(await page.getByText(/^\[B2B1팀\] 품목/).textContent(), /^\[B2B1팀\] 품목 11개 · 거래처 4곳 · 판매실적 30건 · 마지막 업로드 /);
+  await page.getByText(/^품목 11개 · 거래처 4곳 · 판매실적 30건$/).waitFor();
 
   // ---- 전체 개요: 운영 대시보드가 같은 데이터로 그리는 값 (views.test.js 에서 비교 확인된 숫자)
   const main = await text(page.getByRole('main'));
-  for (const re of [/품목 11개/, /위험 1 .*신호 품목의 20% 주의/, /주의 1 .*신호 품목의 20% 여유/, /여유 3 .*신호 품목의 60% 참고/, /참고 \(휴면·단발성\) 6 신호 계산에서 제외 거래처 수 4 최근 6개월 총판매 7,080/])
+  for (const re of [/품목 11개/, /위험 1 .*신호 품목 5개 중 20% 소진예상 60일 미만/, /주의 1 .*신호 품목 5개 중 20% 소진예상 60~90일/, /여유 3 .*신호 품목 5개 중 60% 소진예상 90일 이상/, /참고 6 휴면 · 단발성 · 데이터 부족 \(신호 계산에서 제외\)/, /거래처 4곳 · 최근 6개월 총판매 7,080/])
     assert.match(main, re);
+  // 지금 발주할 품목 = 발주 현황 '발주 필요' 와 같은 품목 · 순서
+  assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB004', 'SB001']);
+  await checkStickyColumns(page);
   await shot(page, 'overview');
+  // 브랜드: 아무것도 안 고르면 '모든 브랜드'가 눌린 상태, 브랜드를 고르면 풀리고, 다시 누르면 전체로
+  const pressed = name => page.getByRole('button', {name, exact: true, pressed: true}).count();
+  assert.equal(await pressed('모든 브랜드'), 1);
+  await page.getByRole('button', {name: '밀크터치', exact: true}).click();
+  assert.deepEqual([await pressed('모든 브랜드'), await pressed('밀크터치')], [0, 1]);
+  await page.getByRole('button', {name: '모든 브랜드', exact: true}).click();
+  assert.deepEqual([await pressed('모든 브랜드'), await pressed('밀크터치')], [1, 0]);
+  // 신호 칸 → 발주 현황이 그 상태로 걸러짐 (개요 숫자 = 표 행 수)
+  for (const [grade, pns] of [['주의', ['SB001']], ['위험', ['SB004']]]) {
+    await page.goto(base + '/#/overview');
+    await page.getByRole('link', {name: new RegExp(`^${grade} \\d+개 — 발주 현황에서 보기$`)}).click();
+    await page.waitForURL(/#\/forecast$/);
+    await page.getByRole('button', {name: new RegExp(`^${grade} \\d+$`), pressed: true}).waitFor(); // 발주 현황 상태 칩이 그 신호로 눌림
+    assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), pns);
+  }
+  await page.goto(base + '/#/overview');
+  await page.getByRole('link', {name: '발주 현황에서 전체 보기'}).click();
+  await page.waitForURL(/#\/forecast$/);
+  assert.deepEqual((await page.locator('tbody tr td.sticky-col code').allInnerTexts()).slice(0, 2), ['SB004', 'SB001']);
 
   // ---- 판매 현황 · 거래처별: 합계 많은 순 첫 행 = SB001 (B2B1팀+EMP 가용재고 1,500, 판매 합계 6,400)
   await page.goto(base + '/#/customer');
@@ -86,17 +110,21 @@ try {
   assert.equal(await page.getByRole('button', {name: '거래처 2개 선택'}).count(), 1);
   assert.deepEqual((await page.getByRole('columnheader').allInnerTexts()).slice(0, 5), ['품번', '브랜드', '품명', '가용재고', '거래처']); // 머리글이 실제 칸 순서와 일치
   assert.match(await page.locator('td[rowspan="2"]').first().innerText(), /SB001/);
+  // 고른 거래처는 칩으로 보임 · 합계 행 (더한 값은 views.test.js 에서 확인) · 판매 기록 없는 분기는 '-'
+  assert.equal(await page.getByRole('button', {name: /A상사/}).count() >= 1, true);
+  assert.match(await text(page.locator('tfoot tr')), /^합계 .*100,585 .* 6,890$/);
+  assert.ok((await page.locator('tbody td.num').allInnerTexts()).includes('-'));
   await checkStickyColumns(page);
   await shot(page, 'sales-customer');
 
   // ---- 판매 현황 · 품목별: '세럼' 입력 후 Enter → 선택 + 합계 행 + CSV
   await page.getByRole('tab', {name: '품목별'}).click();
-  const box = page.getByRole('textbox', {name: '품번 또는 품명 검색'});
+  const box = page.getByRole('textbox', {name: '품번 / 품명 검색'});
   await box.fill('세럼');
   await box.press('Enter');
   await page.getByText('SB001 · 성분 에디터 세럼').waitFor();
   assert.match(await text(page.locator('tfoot tr')), /^합계 .* 6,400$/);
-  let [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', {name: '엑셀 다운로드'}).click()]);
+  let [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', {name: 'CSV 다운로드'}).click()]);
   assert.match(await page.evaluate(() => window.__lastDownloadName), /^품목별판매현황_SB001_\d{4}-\d{2}-\d{2}\.csv$/);
   let csv = await readDownload(download);
   assert.ok(csv.startsWith('﻿선택 품번: SB001\r\n거래처,'), csv.slice(0, 40));
@@ -152,13 +180,24 @@ try {
   // ---- 팀 전환 · 업로드 완료 문구
   await page.goto(base + '/#/overview');
   await page.getByRole('radio', {name: '전체'}).click();
-  assert.match(await page.getByText(/^\[전체\] 품목/).textContent(), /^\[전체\] 품목 11개 · 거래처 5곳 · 판매실적 35건 · /);
+  await page.getByText(/^품목 11개 · 거래처 5곳 · 판매실적 35건$/).waitFor();
   await page.goto(base + '/#/data');
   assert.equal(await page.getByText(/^업데이트 완료/).textContent(), '업데이트 완료 — 새로 반영: 가용재고조회, 제품일정표, 일자별판매실적분석, 유통기한, 상품마스터. 좌측 메뉴에서 Main을 확인하세요.');
   assert.deepEqual(errors, []);
 
   // ---- 휴대폰: 넓은 표는 표 안에서만 옆으로 스크롤, 첫 칸은 고정
   const phone = await openWithData(browser, {...devices['iPhone 13']});
+  // 휴대폰: 제목 · 필터 버튼이 본문 안에 있어 같이 스크롤됨, 팀 · 브랜드는 '필터' 버튼 하나로
+  assert.equal(await phone.page.locator('.astryx-layout-content h1').count(), 1);
+  await phone.page.getByRole('button', {name: 'B2B1팀 · 모든 브랜드'}).click();
+  await phone.page.getByRole('button', {name: '마미케어', exact: true}).click();
+  await phone.page.keyboard.press('Escape');
+  await phone.page.getByRole('button', {name: 'B2B1팀 · 마미케어'}).waitFor();
+  await phone.page.getByRole('button', {name: 'B2B1팀 · 마미케어'}).click();
+  await phone.page.getByRole('button', {name: '모든 브랜드', exact: true}).click();
+  await phone.page.keyboard.press('Escape');
+  await checkStickyColumns(phone.page, 200);
+  await shot(phone.page, 'overview-mobile');
   await phone.page.goto(base + '/#/customer');
   await checkStickyColumns(phone.page, 200);
   await phone.page.goto(base + '/#/forecast');

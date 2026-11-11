@@ -235,11 +235,39 @@ export function syncStatusText(shared){
 /* renderMetaLine (1177행) */
 export function metaLineText(){
   if(!state.loaded) return '파일을 업로드해주세요.';
+  const ts = state.lastSync ? state.lastSync.toLocaleString('ko-KR') : '-';
+  return `[${ui.team}] ${metaSummaryText()} · 마지막 업로드 ${ts}`;
+}
+/** 머리글에 보이는 요약: metaLineText 에서 팀 · 마지막 업로드를 뺀 것 (둘 다 머리글의 팀 선택 · 데이터 상태에 이미 보임) */
+export function metaSummaryText(){
+  if(!state.loaded) return '파일을 업로드해주세요.';
   const pnCount = state.forecast.length;
   const custCount = state.customers.length;
   const salesCount = state.sales.length;
-  const ts = state.lastSync ? state.lastSync.toLocaleString('ko-KR') : '-';
-  return `[${ui.team}] 품목 ${fmt(pnCount)}개 · 거래처 ${fmt(custCount)}곳 · 판매실적 ${fmt(salesCount)}건${salesCount===0?' (이 팀의 판매 파일이 아직 없습니다)':''} · 마지막 업로드 ${ts}`;
+  return `품목 ${fmt(pnCount)}개 · 거래처 ${fmt(custCount)}곳 · 판매실적 ${fmt(salesCount)}건${salesCount===0?' (이 팀의 판매 파일이 아직 없습니다)':''}`;
+}
+
+/* ---------- 개요 → 발주 현황 연결 (새 화면 기능, 계산은 기존 등급 그대로) ---------- */
+/** 발주 현황 상태 칩과 같은 기준: '조치필요' = 긴급·위험·주의, 그 밖에는 groupOf 의 4단계 */
+export function inSignal(x, grade){
+  return grade==='조치필요' ? (x.grade==='긴급' || x.grade==='위험' || x.grade==='주의') : groupOf(x.grade)===grade;
+}
+/** 개요의 '지금 발주할 품목': 발주 현황 '발주 필요(위험+주의)' 와 같은 품목 · 같은 순서 (state.forecast 정렬 그대로) */
+export function urgentItems(){
+  return state.forecast.filter(x=>brandPasses(x.brand) && inSignal(x, '조치필요'));
+}
+
+/** 거래처별 표의 합계 행: 필터된 모든 행(더 보기로 아직 안 보인 행 포함).
+ *  거래처별로 나뉜 행(거래처 2개 이상)은 같은 품번이 여러 줄이라 가용재고는 품번당 한 번만 더함. 판매 수량은 행마다 다른 (품번, 거래처) 라 겹치지 않음 */
+export function customerTotals(m){
+  const quarters = new Map(), avail = new Map();
+  let total = 0;
+  m.rows.forEach(r=>{
+    r.quarters.forEach((v,q)=>quarters.set(q, (quarters.get(q)||0)+v));
+    total += r.total;
+    avail.set(r.품번, r.available);
+  });
+  return {quarters, total, available:[...avail.values()].reduce((s,v)=>s+v,0)};
 }
 
 /* applyUploadedData 의 완료 문구 (3646행) */

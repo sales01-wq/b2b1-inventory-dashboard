@@ -334,3 +334,64 @@ describe('업로드 처리 = 운영 업로드 동작', () => {
     expect(exp[1].loaded).toBe(true);
   });
 });
+
+// 새 화면 기능: 운영 화면에는 없어서 운영과 비교하는 대신, 같은 데이터에서 직접 다시 센 값과 비교합니다.
+describe('개요 → 발주 현황 연결 · 거래처별 합계 행', () => {
+  let a, act;
+  beforeAll(async () => {
+    vi.useFakeTimers({toFake: ['Date']});
+    vi.setSystemTime(NOW);
+    a = (await loadPort()).api;
+    act = await import('./actions.js'); // loadPort 와 같은 store 를 씀
+  });
+  afterAll(() => vi.useRealTimers());
+
+  const setCase = ([team, brands, hero]) => {
+    a.ui.team = team; a.settings.hero = hero || {}; load(a); setSet(a.ui.brandSelected, brands);
+  };
+
+  it.each(OVERVIEW_CASES.map((c, i) => [i, JSON.stringify(c)]))('신호 칸을 누르면 발주 현황에 개요 숫자와 같은 품목 #%s %s', i => {
+    setCase(OVERVIEW_CASES[i]);
+    const ov = a.overviewModel();
+    const want = {위험: ov.nNow, 주의: ov.nSoon, 여유: ov.nOk, 참고: ov.nRef, 조치필요: ov.nNow + ov.nSoon};
+    for (const [grade, n] of Object.entries(want)) {
+      // 발주 현황에 다른 필터가 걸려 있어도 풀림
+      a.ui.forecastShowNoSales = false; a.ui.forecastCustomer = 'A상사'; a.ui.forecastBrand = '마미케어'; a.ui.forecastSearch = 'zz'; setSet(a.ui.forecastPnChips, ['MC']);
+      act.openForecastSignal(grade);
+      const list = a.forecastModel().list;
+      expect([grade, list.length]).toEqual([grade, n]);
+      if (grade === '조치필요') expect(list.map(x => x.품번)).toEqual(a.urgentItems().map(x => x.품번)); // 개요 목록과 같은 순서
+    }
+  });
+
+  it('판매 이력 없는 위험 품목이 있으면 그 품목도 보이게 함', () => {
+    setCase(['B2B1팀', [], {SB006: {minQty: 1e9}}]); // SB006: 판매 없이 재고만 있는 품목 → 히어로 기준으로 위험
+    const noSales = a.urgentItems().filter(x => x.sold6 === 0);
+    expect(noSales.length).toBeGreaterThan(0); // 이 경우를 실제로 확인하는지
+    a.ui.forecastShowNoSales = false;
+    act.openForecastSignal('위험');
+    expect(a.ui.forecastShowNoSales).toBe(true);
+    expect(a.forecastModel().list.map(x => x.품번)).toEqual(expect.arrayContaining(noSales.map(x => x.품번)));
+  });
+
+  it.each(CUSTOMER_CASES.map((c, i) => [i, JSON.stringify(c)]))('거래처별 합계 = 판매실적을 직접 더한 값 (중복 없음) #%s %s', i => {
+    setCase(['B2B1팀', []]);
+    const [custs, search] = CUSTOMER_CASES[i];
+    setSet(a.ui.custSelected, custs); a.ui.customerPnSearch = search;
+    const m = a.customerTableModel(), t = a.customerTotals(m);
+    // 표에 남은 (품번[, 거래처]) 의 판매실적을 처음부터 다시 더함
+    const keys = new Set(m.rows.map(r => r.품번 + '|' + (m.groupByCust ? r.거래처 : '')));
+    const q = new Map(); let total = 0;
+    for (const s of a.state.sales) {
+      if (custs.length && !custs.includes(s.거래처)) continue;
+      if (!keys.has(s.품번 + '|' + (m.groupByCust ? s.거래처 : ''))) continue;
+      const ql = a.quarterLabel(s.실적일자);
+      q.set(ql, (q.get(ql) || 0) + s.수량); total += s.수량;
+    }
+    expect(Object.fromEntries(t.quarters)).toEqual(Object.fromEntries(q));
+    expect(t.total).toBe(total);
+    const pns = [...new Set(m.rows.map(r => r.품번))];
+    expect(t.available).toBe(pns.reduce((s, pn) => s + a.usableAvailable(a.state.invByProduct.get(pn)), 0));
+    if (i === 2) expect(pns.length).toBeLessThan(m.rows.length); // 같은 품번이 여러 줄인 경우를 실제로 확인
+  });
+});

@@ -19,15 +19,17 @@ import {NoData} from './NoData';
 import {BrandBadge} from './BrandBadge';
 import {useStore} from '../app/useStore';
 import {state, ui} from '../lib/store.js';
-import {customerTableModel, mselItems, shortQuarter, skuSearchMatches, skuStatusModel} from '../lib/views.js';
+import {customerTableModel, customerTotals, mselItems, skuSearchMatches, skuStatusModel} from '../lib/views.js';
 import {productList, skuMonthLabel, skuStatusCsv} from '../lib/sales.js';
 import * as act from '../lib/actions.js';
 import {fmt} from '../lib/format';
 import {saveCsv} from '../lib/saveCsv';
 
-// 기존 QUARTER_COLORS (index.html 1523행). 글자색으로 쓰기엔 대비가 부족해서(3.1~4.4:1) 머리글 막대 · 열 배경으로 사용
-const QUARTER_COLORS = ['#C15B72', '#6E88A6', '#BD8A3E', '#6F8F5E', '#8B6F94', '#B6693F', '#7A8B7E', '#A5794F'];
-const qColor = (i: number) => ({'--q': QUARTER_COLORS[i % QUARTER_COLORS.length]}) as React.CSSProperties;
+// 분기 구분: 색(기존 QUARTER_COLORS) 대신 연도 머리글 + 연도가 바뀌는 열의 왼쪽 선. 색은 상태 · 브랜드에만 씀
+const yearOf = (q: string) => q.slice(0, 4);
+/** 없는 값(판매 기록 없음)은 '-', 실제 0 은 0 (둘 다 흐리게) */
+const qtyCell = (v: number | undefined) => (v === undefined ? '-' : fmt(v));
+const qtyClass = (v: number | undefined, extra = '') => `num${v ? '' : ' muted'}${extra}`;
 
 let subview: 'customer' | 'skustatus' = 'customer'; // 기존처럼 다른 화면에 다녀와도 마지막 보기 유지
 
@@ -57,18 +59,22 @@ export function SalesPage() {
 
 function CustomerView() {
   const m = customerTableModel();
+  const picked = ui.custSelected.size + ui.pnSelected.size;
   return (
     <VStack gap={3}>
-      <Text type="supporting">품목을 행으로, 분기를 열로 나열한 표입니다. 거래처/품번을 여러 개 선택해서 비교할 수 있습니다.</Text>
-      <HStack gap={2} vAlign="center" hAlign="between" wrap="wrap">
-        <HStack gap={2} vAlign="center" wrap="wrap">
-          <MselPicker which="cust" />
-          <MselPicker which="pn" />
-          <div className="grow-field">
-            <TextInput label="품번 / 품명 검색" isLabelHidden placeholder="품번 / 품명 검색" size="sm" startIcon={MagnifyingGlassIcon} hasClear value={ui.customerPnSearch} onChange={act.setCustomerPnSearch} />
-          </div>
-        </HStack>
+      <HStack gap={2} vAlign="center" wrap="wrap">
+        <MselPicker which="cust" />
+        <MselPicker which="pn" />
+        <div className="grow-field">
+          <TextInput label="품번 / 품명 검색" isLabelHidden placeholder="품번 / 품명 검색" size="sm" startIcon={MagnifyingGlassIcon} hasClear value={ui.customerPnSearch} onChange={act.setCustomerPnSearch} />
+        </div>
+      </HStack>
+      {/* 고른 거래처 · 품번을 칩으로 (팝오버를 닫아도 무엇을 골랐는지 보임) + 표 행 수 */}
+      <HStack gap={1} vAlign="center" wrap="wrap">
         <Text type="supporting">{m.groupByCust ? `${fmt(m.rows.length)}개 행` : `${fmt(m.rows.length)}개 품목`}</Text>
+        {[...ui.custSelected].map((c: string) => <Token key={'c' + c} size="sm" label={c} onRemove={() => act.toggleCustomer(c, false)} />)}
+        {[...ui.pnSelected].map((pn: string) => <Token key={'p' + pn} size="sm" label={pn} onRemove={() => act.removePnChip(pn)} />)}
+        {picked > 0 && <Button label="선택 해제" size="sm" variant="ghost" onClick={() => { act.mselClear('cust'); act.mselClear('pn'); }} />}
       </HStack>
       <CustomerTable m={m} />
     </VStack>
@@ -100,8 +106,9 @@ function MselPicker({which}: {which: 'cust' | 'pn'}) {
         onChange={isCust ? act.setCustMselSearch : act.setPnMselSearch}
         onKeyDown={onKeyDown}
       />
-      <HStack hAlign="end">
-        <Button label="선택 해제" size="sm" variant="ghost" onClick={() => act.mselClear(which)} />
+      <HStack hAlign="between" vAlign="center">
+        <Text type="supporting">{selected.size > 0 ? `${fmt(selected.size)}개 선택` : '선택 없음 = 전체'}</Text>
+        {selected.size > 0 && <Button label="선택 해제" size="sm" variant="ghost" onClick={() => act.mselClear(which)} />}
       </HStack>
       <div className="msel-list">
         {items.length === 0 ? (
@@ -141,6 +148,8 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
   // 거래처 2개 이상: 같은 품번 행을 묶어서 품번 · 브랜드 · 품명 · 가용재고를 한 번만 (rowSpan)
   const groupSize = (k: number) => { let j = k; while (j < shown.length && shown[j].품번 === shown[k].품번) j++; return j - k; };
   let groupIdx = -1;
+  const t = customerTotals(m);
+  const ystart = (i: number) => (i > 0 && yearOf(m.quarterCols[i]) !== yearOf(m.quarterCols[i - 1]) ? ' ystart' : '');
   return (
     <VStack gap={2}>
       {/* 좁은 화면에서는 칸을 찌그러뜨리지 않고 옆으로 스크롤 */}
@@ -149,12 +158,18 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
           <TableHeader>
             <TableRow>
               <TableHeaderCell className="sticky-col">품번</TableHeaderCell>
-              <TableHeaderCell>브랜드</TableHeaderCell>
+              <TableHeaderCell className="hide-narrow">브랜드</TableHeaderCell>
               <TableHeaderCell>품명</TableHeaderCell>
               {/* 운영 화면은 여기서 머리글이 '거래처 · 가용재고' 순서였지만 실제 칸은 '가용재고 · 거래처' 순서여서 머리글을 칸에 맞춤 */}
               <TableHeaderCell className="num">가용재고</TableHeaderCell>
               {m.groupByCust && <TableHeaderCell>거래처</TableHeaderCell>}
-              {m.quarterCols.map((q: string, i: number) => <TableHeaderCell key={q} className="num qhead" style={qColor(i)}>{shortQuarter(q)}</TableHeaderCell>)}
+              {/* 연도는 그 해 첫 분기 칸 위에만 (예: 2026 / Q1), 연도가 바뀌는 열 왼쪽에 선 */}
+              {m.quarterCols.map((q: string, i: number) => (
+                <TableHeaderCell key={q} className={'num q-head' + ystart(i)}>
+                  <span className="q-year">{i === 0 || ystart(i) ? yearOf(q) : ''}</span>
+                  {q.slice(5)}
+                </TableHeaderCell>
+              ))}
               <TableHeaderCell className="num">합계</TableHeaderCell>
             </TableRow>
           </TableHeader>
@@ -168,22 +183,37 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
                   {first && (
                     <>
                       <TableCell rowSpan={span} className="sticky-col"><code>{r.품번}</code></TableCell>
-                      <TableCell rowSpan={span}><BrandBadge brand={r.brand} /></TableCell>
-                      <TableCell rowSpan={span}>{r.품명}</TableCell>
+                      <TableCell rowSpan={span} className="hide-narrow"><BrandBadge brand={r.brand} /></TableCell>
+                      <TableCell rowSpan={span} className="name-cell">{r.품명}<span className="show-narrow"><BrandBadge brand={r.brand} /></span></TableCell>
                     </>
                   )}
-                  {m.groupByCust && first && <TableCell rowSpan={span} className="num strong">{fmt(r.available)}</TableCell>}
+                  {m.groupByCust && first && <TableCell rowSpan={span} className="num">{fmt(r.available)}</TableCell>}
                   {m.groupByCust && <TableCell><Text type="supporting">{r.거래처}</Text></TableCell>}
-                  {!m.groupByCust && <TableCell className="num strong">{fmt(r.available)}</TableCell>}
+                  {!m.groupByCust && <TableCell className="num">{fmt(r.available)}</TableCell>}
                   {m.quarterCols.map((q: string, i: number) => {
                     const v = r.quarters.get(q);
-                    return <TableCell key={q} className={v ? 'num qcell medium' : 'num qcell muted'} style={qColor(i)}>{v ? fmt(v) : '-'}</TableCell>;
+                    return <TableCell key={q} className={qtyClass(v, ystart(i))}>{qtyCell(v)}</TableCell>;
                   })}
                   <TableCell className="num strong">{fmt(r.total)}</TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
+          {/* 합계: 더 보기로 아직 안 보인 행까지 포함한 전체. 가용재고는 품번당 한 번 (customerTotals) */}
+          <TableFooter>
+            <TableRow>
+              <TableCell className="sticky-col strong">합계</TableCell>
+              <TableCell className="hide-narrow" />
+              <TableCell><Text type="supporting">{shown.length < m.rows.length ? `전체 ${fmt(m.rows.length)}개 행` : ''}</Text></TableCell>
+              <TableCell className="num">{fmt(t.available)}</TableCell>
+              {m.groupByCust && <TableCell />}
+              {m.quarterCols.map((q: string, i: number) => {
+                const v = t.quarters.get(q);
+                return <TableCell key={q} className={qtyClass(v, ystart(i)) + ' strong'}>{qtyCell(v)}</TableCell>;
+              })}
+              <TableCell className="num strong">{fmt(t.total)}</TableCell>
+            </TableRow>
+          </TableFooter>
         </Table>
       </Card>
       {m.rows.length > shown.length && (
@@ -209,25 +239,23 @@ function SkuView() {
   };
   return (
     <VStack gap={3}>
-      <Text type="supporting">
-        품번(SKU)이나 품명을 검색해서 선택하면, 그 품목(들)을 거래처별·월별로 얼마나 팔았는지 표로 보여줍니다. 여러 품번을 줄바꿈이나 쉼표로 구분해서 붙여넣고{' '}
-        <Text type="supporting" weight="bold">Enter</Text>를 누르면 검색된 품번이 모두 합산되어 바로 선택됩니다. (여러 줄을 입력만 하고 싶을 땐 Shift+Enter)
-      </Text>
       <div
         className="sku-search"
         onKeyDown={onKeyDown}
         onFocus={() => setOpen(true)}
         onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOpen(false); }}>
         <TextArea
-          label="품번 또는 품명 검색"
+          label="품번 / 품명 검색"
           isLabelHidden
           rows={2}
-          placeholder="품번 또는 품명 검색 (여러 개는 줄바꿈/쉼표로 구분)"
+          placeholder="품번 / 품명 검색 — 여러 개는 줄바꿈 · 쉼표로 구분해서 붙여넣기"
           value={ui.skuStatusSearch}
           onChange={v => { act.setSkuSearch(v); setOpen(true); }}
         />
+        <Text type="supporting">Enter: 검색된 품번을 모두 선택(합산) · Shift+Enter: 줄바꿈</Text>
+        {/* 검색 결과는 입력칸 아래에 떠서 표를 밀어내지 않음 */}
         {open && matches && (
-          <Card padding={2}>
+          <Card padding={2} className="sku-matches">
             {matches.length === 0 ? (
               <Text type="supporting">일치하는 품번/품명이 없습니다.</Text>
             ) : (
@@ -263,7 +291,7 @@ function SkuTable() {
         {[...ui.skuStatusSelected].map((pn: string) => (
           <Token key={pn} size="sm" label={`${pn} · ${names.get(pn) || ''}`} onRemove={() => act.removeSku(pn)} />
         ))}
-        <Button label="전체 지우기" size="sm" variant="ghost" onClick={act.clearSku} />
+        <Button label="선택 해제" size="sm" variant="ghost" onClick={act.clearSku} />
       </HStack>
       {ui.skuStatusSelected.size > 1 && <Text type="supporting">선택한 {fmt(ui.skuStatusSelected.size)}개 품번을 합산한 수량입니다.</Text>}
       {s.custList.length === 0 ? (
@@ -271,7 +299,7 @@ function SkuTable() {
       ) : (
         <>
           <HStack>
-            <Button label="엑셀 다운로드" variant="secondary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
+            <Button label="CSV 다운로드" variant="secondary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
           </HStack>
           <Card padding={0}>
             <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 200 + s.months.length * 70 + 92}}>
@@ -286,7 +314,8 @@ function SkuTable() {
                 {s.rows.map((r: {cust: string; values: number[]; total: number}) => (
                   <TableRow key={r.cust}>
                     <TableCell className="sticky-col">{r.cust}</TableCell>
-                    {r.values.map((v, i) => <TableCell key={i} className="num">{fmt(v)}</TableCell>)}
+                    {/* 그 달 판매 기록이 없으면 '-', 기록이 있고 합이 0 이면 0 */}
+                    {s.months.map((mk: string, i: number) => { const v = s.byCust.get(r.cust).has(mk) ? r.values[i] : undefined; return <TableCell key={mk} className={qtyClass(v)}>{qtyCell(v)}</TableCell>; })}
                     <TableCell className="num strong">{fmt(r.total)}</TableCell>
                   </TableRow>
                 ))}
@@ -294,7 +323,7 @@ function SkuTable() {
               <TableFooter>
                 <TableRow>
                   <TableCell className="sticky-col strong">합계</TableCell>
-                  {s.monthTotals.map((v: number, i: number) => <TableCell key={i} className="num strong">{fmt(v)}</TableCell>)}
+                  {s.months.map((mk: string, i: number) => { const v = s.custList.some((c: string) => s.byCust.get(c).has(mk)) ? s.monthTotals[i] : undefined; return <TableCell key={mk} className={qtyClass(v) + ' strong'}>{qtyCell(v)}</TableCell>; })}
                   <TableCell className="num strong">{fmt(s.grandTotal)}</TableCell>
                 </TableRow>
               </TableFooter>

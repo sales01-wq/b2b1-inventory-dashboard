@@ -17,7 +17,7 @@
   --color-border: light-dark(#e6e6e9, #27272c);
   --color-border-emphasized: light-dark(#d4d4d8, #3a3a41);
   --color-text-primary: light-dark(#18181b, #ededf0);
-  --color-text-secondary: light-dark(#71717a, #a1a1aa);
+  --color-text-secondary: light-dark(#6b6b74, #a1a1aa); /* 회색 바탕(muted) 위에서도 4.5:1 이상 */
 
   /* 모서리 */
   --radius-page: 0.75rem;
@@ -64,7 +64,7 @@
 }
 .astryx-table-cell { font-size: 0.8125rem; }
 .astryx-table code, .astryx-table-cell code {
-  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   font-size: 0.75rem;
   color: var(--color-text-primary);
 }
@@ -81,3 +81,6 @@
 /* ---------- 여러 개 고르는 토글 묶음: 팀 선택(SegmentedControl)과 같은 회색 바탕 ---------- */
 .astryx-toggle-button-group { background: var(--color-background-muted); border-radius: var(--radius-element); padding: 0.125rem; gap: 0.125rem; }
 .astryx-toggle-button-group .astryx-toggle-button[data-is-pressed='true'] { background: var(--color-background-surface); color: var(--color-text-primary); box-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 0 0 1px var(--color-border); }
+
+/* ---------- 팝오버: 표 위에 뜨는 창은 그림자로 확실히 떼어 보이게 ---------- */
+[data-astryx-layer-root] > [role='dialog'] { box-shadow: var(--shadow-high); }
