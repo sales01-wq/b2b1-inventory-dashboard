@@ -71,7 +71,9 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
 
 - `npm run build:demo` builds into `web/dist-demo/` (git-ignored) with `VITE_DEMO_DATA=1`. `src/app/demo.ts`: skips login and shared mode, applies the test sheets from `src/lib/__fixtures__/sheets.js` through the normal upload path, replaces `window.fetch` with a function that always rejects (no Apps Script, no `/api`), and makes 새로고침 / 지금 가져오기 re-apply the test data. A banner says it is test data. A normal `npm run build` contains none of this (checked: 0 bundle files).
 - Verified in Chromium (desktop + iPhone 13): data loads, no page errors, `fetch('/api/me')` is blocked; only the CDN libraries and font load.
-- Proposed hosting (needs owner approval, not done): a **separate** Vercel project from the same repo, Root Directory `web`, build `npm run build:demo`, output `dist-demo`, production branch `feat/react-astryx`, no environment variables, deployment protection on. The existing production project is not touched.
+- **Login gate fix:** on any host other than localhost, `shared.gated` starts `true`; preview mode must set it to `false` (`startDemo`), or the app stays on "로그인 정보를 확인하는 중입니다...". `npm run e2e:preview` builds the preview and checks it as static files on a non-localhost host (`preview.test`), desktop + phone: no login screen, test data shown, `/api` and Apps Script fetches blocked, refresh re-applies test data.
+- **`web/vercel.json` pins the preview build** (`npm run build:demo` → `dist-demo`, Vite) so a dashboard setting like `npm run build` can't produce the normal app there. The normal app on a host without `/api` falls back to local mode, where 새로고침 would fetch the production Apps Script URL. Only projects with Root Directory `web` read this file. **Remove or change it at cutover.**
+- Hosting (owner is setting it up): a **separate** Vercel project from the same repo, Root Directory `web`, build `npm run build:demo`, output `dist-demo`, production branch `feat/react-astryx`, no environment variables, deployment protection on. The existing production project is not touched.
 
 ## Folder map (`web/`)
 

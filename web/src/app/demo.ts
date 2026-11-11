@@ -7,6 +7,7 @@
 import {emit} from '../lib/store.js';
 import {applyUploadedData, unresolvedFiles} from '../lib/upload.js';
 import {detectSheetType} from '../lib/parse.js';
+import {shared} from '../data/shared.js';
 
 export const DEMO = import.meta.env.VITE_DEMO_DATA === '1';
 
@@ -21,6 +22,7 @@ export async function loadDemoData() {
 
 /** 시작할 때 한 번: 네트워크 차단 + 테스트 데이터 적용 */
 export function startDemo() {
+  shared.gated = false; // localhost 가 아니면 처음부터 로그인 화면(shared.gated)이라, 로그인을 건너뛰는 미리보기에서는 꺼야 함
   window.fetch = () => Promise.reject(new Error('미리보기 모드: 네트워크 요청이 차단되어 있습니다 (테스트 데이터만 사용).'));
   void loadDemoData();
 }
