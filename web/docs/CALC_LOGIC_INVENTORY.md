@@ -107,3 +107,30 @@ changes a displayed figure or filter. **P2** = formatting / helpers.
 - Products with a single order, regular repeat orders, and no orders for 6+ months.
 - Barcodes with `-1`, `-2` suffixes (alternatives), and LOTs with less than / more than 2 years of shelf life.
 - Anonymizing customer names is fine as long as the same customer keeps the same replacement name.
+
+---
+
+## Status (port step 1)
+
+Ported into `src/lib/` with function bodies copied unchanged from `index.html` (extracted by parser, not retyped):
+
+| Module | Contents |
+|---|---|
+| `store.js` | `state`, `ui`, `settings` (same shape as before) |
+| `parse.js` | sheet signatures/detection, header search, `num`, `parseDateStr`, the 5 parsers, team detection |
+| `forecast.js` | brand/team/warehouse rules, grading, order pattern, `computeDerived`, forecast CSVs |
+| `sales.js` | product list, SKU status, pivot, per-customer shortage |
+| `lookup.js` | barcode/name lookup, selection lists, LOT recommendation, export rows, PLT calculation + packing, export CSV |
+
+The only changes, each marked `port:` in the code:
+- CSV functions return `{csv, filename}` instead of starting a browser download.
+- `calcExportPlt(inputs)` takes the pallet input values as a parameter. These must still come from number fields, as before.
+- Calls that redraw the old page (`renderLookupBatch`, `renderExportPanel`) and the old customer-dropdown refresh are removed; React redraws instead.
+
+**Verification:** `src/lib/legacy.test.js` runs the production `index.html` in jsdom and the new modules on the same
+fixture sheets at the same fixed date. It compares 29 steps (parsing, 4 team/rule/hero settings, grade boundaries,
+order patterns, pivots, lookup, LOT picks, export rows, PLT in both modes, all 4 CSVs). All results are identical.
+A check with deliberately injected bugs confirmed that the test fails when the logic changes.
+
+Not ported yet (they need the screen or the data layer): screen filters inside `render*` functions (e.g. forecast grade/overstock
+filters), `applyUploadedData`, settings sync (`persistSetting`, `loadRemoteSettings`, `setBoxDim`/`persistBox`), and login/snapshot loading.
