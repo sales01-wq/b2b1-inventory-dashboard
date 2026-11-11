@@ -1,5 +1,6 @@
 // index.html 에서 그대로 옮긴 계산 로직입니다. 바꾼 곳에는 "port:" 주석을 달았습니다. 결과는 src/lib/legacy.test.js 가 운영 index.html 과 비교합니다.
 // 기존 전역 상태 객체 (state = 데이터·계산 결과, ui = 필터·선택·출고목록, settings = 공유 설정)
+/** @type {Record<string, any>} 기존 전역 객체 — 화면(TS)에서 자유롭게 읽도록 */
 export const state = {
   salesByTeam: {}, // {'B2B1팀': [...], 'B2B2팀': [...]} 팀별 판매실적
   loaded: false,
@@ -13,6 +14,7 @@ export const state = {
   lastSync: null, loading: false, error: null, fetchMode: null,
 };
 
+/** @type {Record<string, any>} 기존 전역 객체 — 화면(TS)에서 자유롭게 읽도록 */
 export const ui = {
   team: (function(){ try{ const t = localStorage.getItem('inv_team'); if(['전체','B2B1팀','B2B2팀'].includes(t)) return t; }catch(_e){} return 'B2B1팀'; })(), // 팀 필터
   forecastPage: 50, customerPage: 50,
@@ -54,6 +56,7 @@ export const ui = {
   expiryList: [], // {key, 품번, 품명, 바코드, 거래처, LOT, 유통기한, 가용재고수량}
 };
 
+/** @type {Record<string, any>} 기존 전역 객체 — 화면(TS)에서 자유롭게 읽도록 */
 export const settings = {rules:{}, hero:{}, box:{}};
 
 // port: React 화면 연결 — 계산 함수나 데이터 처리가 상태를 바꾼 뒤 emit() 하면 화면이 다시 그려집니다.

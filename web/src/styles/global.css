@@ -21,6 +21,11 @@ body {
   word-break: keep-all;
 }
 
+.file-row {
+  padding-block: 0.5rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
 .feature-list {
   margin: 0;
   padding-inline-start: 1.25rem;

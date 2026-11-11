@@ -5,12 +5,14 @@ import {fmt} from '../lib/format';
 import {detectSheetType} from '../lib/parse.js';
 import {unresolvedFiles, applyUploadedData} from '../lib/upload.js';
 import {loadRemoteSettings} from './settings.js';
+import {uploadDoneText} from '../lib/views.js';
 
+/** @type {Record<string, any>} 기존 전역 객체 — 화면(TS)에서 자유롭게 읽도록 */
 export const shared = {active:false, token:null, user:null, clientId:'', domain:'', meta:null, loading:false, updating:false};
 // port: 예전에는 화면 요소에 직접 쓰던 값들. gated 의 처음 값은 기존 index.html 10행과 같은 규칙 (localhost 가 아니면 로그인 화면)
 Object.assign(shared, {
   gated: (function(){ try{ var h=location.hostname; return /^https?:$/.test(location.protocol)&&h!=='localhost'&&h!=='127.0.0.1'; }catch(e){ return false; } })(),
-  gate: null, bar: null, infoText: '', gsStatus: null, gsLoading: false, syncText: '',
+  gate: null, bar: null, infoText: '', gsStatus: null, gsLoading: false, syncText: '', gsUrl: '',
 });
 
 export const TOKEN_KEY = 'inv_idtoken';
@@ -331,8 +333,11 @@ export async function refreshFromGoogleSheet(webAppUrlInput){
       const detected = detectSheetType(rows);
       unresolvedFiles.push({fileName:`구글시트 — ${sheetName}`, rows, key:detected});
     });
-    shared.gsStatus = null; shared.syncText = '';
-    emit({applied:applyUploadedData('googlesheet'), mode:'googlesheet'});
+    // port: 성공 문구는 기존처럼 이 패널(gsStatus)에 남기고, 실패하면 진행 문구가 그대로 남음 (기존 동작)
+    const applied = applyUploadedData('googlesheet');
+    if(!applied.error) shared.gsStatus = {kind:'info', text:uploadDoneText(applied)};
+    shared.syncText = '';
+    emit({applied, mode:'googlesheet'});
   }catch(e){
     polling = false;
     shared.gsStatus = {kind:'err', text:`새로고침 실패: ${(e&&e.message)||String(e)}`};
