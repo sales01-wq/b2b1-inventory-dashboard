@@ -85,7 +85,7 @@ tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var
 
 /* ---------- 숫자 칸 묶음 (개요): 칸 사이 1px 선, 좁으면 줄바꿈 ---------- */
 .stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1px; background: var(--color-border); border-radius: inherit; overflow: hidden; }
-.stat { background: var(--color-background-surface); padding: 1rem 1.25rem; }
+.stat { background: var(--color-background-surface); padding: 1.125rem 1.25rem; }
 .stat .astryx-text { font-variant-numeric: tabular-nums; }
 /* 누를 수 있는 칸 (개요 → 발주 현황) */
 .stat-link { display: block; color: inherit; text-decoration: none; transition: background-color 120ms ease-out; }

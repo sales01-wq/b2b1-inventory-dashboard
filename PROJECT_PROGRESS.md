@@ -37,6 +37,17 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
 4. **Screens draw only.** Any calculation found inside an old `render*` function goes into `views.js` (copied the
    same way) and gets a comparison test against what the production page actually draws.
 
+## Visual direction A "떠 있는 작업면" (owner chose A of three mockups, applied)
+
+- Owner compared A (Linear-like floating panel), B (Vercel-like monochrome with Geist), C (dark sidebar console); mockups were made by injecting a stylesheet into the running app.
+- Applied in `src/styles/theme.css` only (plus a stat padding tweak and the 거래처별 column widths):
+  - light grey canvas `#f5f5f6`; on desktop (≥768px) the page sits on a white panel with a 1px border and 12px radius (`.astryx-layout-content .astryx-layout` — scope matters: the AppShell itself is also an Astryx Layout, so unscoped `.astryx-layout` / `.astryx-layout-header` rules hit the shell's hidden header and add a top band);
+  - sidebar has the canvas colour; selected item is a white pill with a hairline border and the accent icon;
+  - one accent `--app-accent` (#545fc8 light / #8b93e8 dark) for the selected-nav icon and links only;
+  - type: page title 22px, section title 14px, KPI 28px; secondary text #67676f (≥4.9:1 on every background used);
+  - tables: header without background (one bottom rule), 38px rows, soft hover.
+- 거래처별 table now uses fixed column widths (`CW` in SalesPage.tsx) like the other tables: with Astryx's `max-width: 0` cells the automatic layout clipped brand names, and lifting it on one column made that column take all spare width.
+
 ## Design direction (approved by the owner, Impeccable round 1 done)
 
 Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel, built with Astryx components. Korean UI and the Overview's horizontal progress bars must stay.

@@ -163,6 +163,9 @@ function MselPicker({which}: {which: 'cust' | 'pn'}) {
   );
 }
 
+// 거래처별 열 너비(px). 품명은 지정하지 않아 남는 너비를 씀 (표 최소 너비에는 CW.name 만큼)
+const CW = {pn: 100, brand: 108, name: 180, avail: 84, cust: 120, q: 76, total: 88};
+
 interface PivotRow {품번: string; 품명: string; brand: string; 거래처: string | null; quarters: Map<string, number>; total: number; available: number}
 
 function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
@@ -183,25 +186,26 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
       {/* 좁은 화면에서는 칸을 찌그러뜨리지 않고 옆으로 스크롤 (휴대폰은 최근 분기 쪽에서 시작) */}
       <div ref={scrollRef}>
       <Card padding={0}>
-        <Table className="sticky-first" density="compact" dividers="rows" hasHover style={{minWidth: 520 + (m.groupByCust ? 100 : 0) + m.quarterCols.length * 72 + gaps.filter(Boolean).length * 56}}>
+        {/* 열 너비 고정 (품명은 남는 너비): 자동 배치는 브랜드 · 품번을 말줄임으로 찌그러뜨림 */}
+        <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: CW.pn + CW.brand + CW.name + CW.avail + (m.groupByCust ? CW.cust : 0) + m.quarterCols.length * CW.q + gaps.filter(Boolean).length * 56 + CW.total}}>
           <TableHeader>
             <TableRow>
-              <TableHeaderCell className="sticky-col">품번</TableHeaderCell>
-              <TableHeaderCell className="hide-narrow">브랜드</TableHeaderCell>
+              <TableHeaderCell className="sticky-col" style={{width: CW.pn}}>품번</TableHeaderCell>
+              <TableHeaderCell className="hide-narrow" style={{width: CW.brand}}>브랜드</TableHeaderCell>
               <TableHeaderCell>품명</TableHeaderCell>
               {/* 운영 화면은 여기서 머리글이 '거래처 · 가용재고' 순서였지만 실제 칸은 '가용재고 · 거래처' 순서여서 머리글을 칸에 맞춤 */}
-              <TableHeaderCell className="num">가용재고</TableHeaderCell>
-              {m.groupByCust && <TableHeaderCell>거래처</TableHeaderCell>}
+              <TableHeaderCell className="num" style={{width: CW.avail}}>가용재고</TableHeaderCell>
+              {m.groupByCust && <TableHeaderCell style={{width: CW.cust}}>거래처</TableHeaderCell>}
               {/* 연도는 그 해 첫 분기 칸 위에만 (예: 2026 / Q1), 연도가 바뀌는 열 왼쪽에 선 */}
               {m.quarterCols.flatMap((q: string, i: number) => [
                 gaps[i] > 0 && <GapHead key={'g' + q} n={gaps[i]} unit="분기" year />,
-                <TableHeaderCell key={q} className={'num q-head' + ystart(i) + cur(q)}>
+                <TableHeaderCell key={q} className={'num q-head' + ystart(i) + cur(q)} style={{width: CW.q}}>
                   <span className="q-year">{i === 0 || ystart(i) ? yearOf(q) : ''}</span>
                   <span title={cur(q) ? CUR_TITLE : undefined}>{q.slice(5)}</span>
                   {cur(q) && <span className="q-note">집계 중</span>}
                 </TableHeaderCell>,
               ])}
-              <TableHeaderCell className="num">합계</TableHeaderCell>
+              <TableHeaderCell className="num" style={{width: CW.total}}>합계</TableHeaderCell>
             </TableRow>
           </TableHeader>
           <TableBody>
