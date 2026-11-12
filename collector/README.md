@@ -29,5 +29,6 @@ ERP 엑셀 5개(가용재고조회_olive · WMS창고재고관리(EMP)_olive(유
 - 마지막 성공 데이터는 어떤 경우에도 유지되며, 멈춘 이유는 `%LOCALAPPDATA%\erp-collector\state.json` 의 `lastError` 와 `run.log` 에 남습니다 (계정 정보는 가려서 기록).
 
 ## 점검
+`npm run netcheck` — ERP 접속이 막힐 때(`ERR_BLOCKED_BY_CLIENT` 등) 전용 프로필과 새 임시 프로필로 각각 열어 비교하고, 막힌 요청 · Chrome 버전 · 실행 옵션을 보여 줌 (계정 · 내용 없음).
 `npm run check` — 수집기가 쓰는 브라우저 프로필 · 채널 · 로그인 감지 결과를 보여 줌 (계정 정보 · 데이터 없음). `npm run check -- --login` 은 같은 프로필로 창을 열어 둠.
 평소 쓰는 Chrome 의 로그인은 **다른 프로필**이라 수집기가 쓸 수 없습니다. 또 ERP 가 "브라우저를 닫으면 사라지는 세션 쿠키"를 쓰면 수동 로그인도 다음 실행에 남지 않으므로, 무인 실행은 자동 재로그인(암호화된 계정)에 의존합니다.
