@@ -22,7 +22,7 @@ ERP 엑셀 5개(가용재고조회_olive · WMS창고재고관리(EMP)_olive(유
 새 파일 추가 + `checkForNewFilesInner_` 3줄. `BUNDLE_PROTECTED_TABS` 를 실제 상품마스터 탭 이름으로 확인하세요.
 
 ## 자동 재로그인 (무인 실행)
-- 계정은 `scripts\set-credentials.ps1` 로 **이 PC · 이 Windows 사용자만** 풀 수 있게 암호화해 저장합니다 (코드 · Git · 로그에 없음). 세션이 살아 있으면 열지도 않습니다.
+- 계정은 `npm run set-credentials` 로 **이 PC · 이 Windows 사용자만** 풀 수 있게 암호화(DPAPI)해 저장합니다. 비밀번호는 화면에 보이지 않게 입력받고, 명령줄 · 파일 · 로그에 평문으로 남지 않습니다 (PowerShell `-Command` 를 쓰므로 `.ps1` 실행 정책에 걸리지 않으며 정책은 건드리지 않음). 세션이 살아 있으면 열지도 않습니다.
 - ERP 계정은 **읽기 전용 전용 계정**을 쓰고, **ERP 관리자 · 회사 보안 승인**을 받은 뒤 사용하세요. 이 PC의 ERP 주소가 `http://` 이면 계정과 세션이 사내망에서 암호화되지 않고 오갑니다 (HTTPS · VPN 여부 IT 확인 권장).
 - 안전하게 멈추는 경우 (우회하지 않음): 로그인 화면에 CAPTCHA, 로그인 뒤 추가 인증(OTP 등), 알 수 없는 로그인 화면 · 입력칸이 모호함(`config.json` 의 `login.userSelector` 로 아이디 칸 지정 가능), 비밀번호가 틀려 **연속 2회 실패**(계정 잠금 방지).
 - 연속 실패로 멈추면 비밀번호 · ERP 상태를 확인한 뒤 `npm run reset-login` 으로 다시 켭니다.

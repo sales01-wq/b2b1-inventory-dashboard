@@ -14,7 +14,7 @@ console.log('설정 폴더      :', config.workDir);
 console.log('브라우저 프로필:', profile, fs.existsSync(profile) ? '(있음)' : '(아직 없음)');
 console.log('브라우저       :', config.browserChannel ? `설치된 ${config.browserChannel}` : 'Playwright Chromium');
 console.log('ERP 주소 설정  :', config.erpUrl ? '있음' : '없음 → config.json 에 erpUrl 필요');
-console.log('저장된 계정    :', fs.existsSync(path.join(config.workDir, 'erp-cred.xml')) ? '있음' : '없음 → scripts\\set-credentials.ps1 필요');
+console.log('저장된 계정    :', fs.existsSync(path.join(config.workDir, 'erp-cred.xml')) ? '있음' : '없음 → npm run set-credentials 필요');
 if (!config.erpUrl) process.exit(1);
 const pw = createRequire(import.meta.url)('playwright');
 const ctx = await pw.chromium.launchPersistentContext(profile, {headless: false, ...(config.browserChannel ? {channel: config.browserChannel} : {})});

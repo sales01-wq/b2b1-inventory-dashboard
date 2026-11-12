@@ -1,19 +1,13 @@
 // 실제 ERP 엑셀 다운로드 (Playwright). 화면 조작은 PC 의 erp-recipe.js (녹화한 동작) 가 맡고, 여기서는 브라우저 · 로그인 · 순서 · 오류 처리만 함.
 // 규칙: 읽기 전용 계정, 자격증명은 Windows 암호화 저장소(set-credentials.ps1)에서만 읽음, 조회 · 내보내기만. 일부만 받으면 throw (검사 단계가 전부 아니면 전무로 막음).
-import {execFileSync} from 'node:child_process';
+import {loadCredential} from '../credentials.js';
 import {createRequire} from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {authGuard, AuthStop} from '../auth.js';
 
-/** 이 Windows 사용자 + 이 PC 에서만 복호화되는 계정 읽기 */
-export function loadCredential(workDir) {
-  const file = path.join(workDir, 'erp-cred.xml');
-  const out = execFileSync('powershell', ['-NoProfile', '-Command',
-    `$c = Import-Clixml -Path '${file}'; $n = $c.GetNetworkCredential(); @{user=$n.UserName; password=$n.Password} | ConvertTo-Json -Compress`], {encoding: 'utf8'});
-  return JSON.parse(out);
-}
+export {loadCredential}; // 계정 읽기 · 저장은 credentials.js (DPAPI)
 
 const toBuffer = async r => {
   if (Buffer.isBuffer(r)) return r;
