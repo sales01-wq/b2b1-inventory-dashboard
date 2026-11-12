@@ -1,5 +1,6 @@
 // index.html 에서 그대로 옮긴 구글 로그인 · 공유 데이터(Vercel API) 처리입니다. API 호출 방식은 바꾸지 않았습니다.
 // 바꾼 곳("port:")은 화면을 직접 고치던 부분뿐이며, 이제 shared 의 값을 바꾸고 emit() 으로 화면에 알립니다.
+import {READ_ONLY} from '../app/defaults';
 import {state, emit} from '../lib/store.js';
 import {fmt} from '../lib/format';
 import {detectSheetType} from '../lib/parse.js';
@@ -168,7 +169,7 @@ export async function loadSharedData(opts){
       if(snapErr) setSharedBar('info', `저장된 데이터를 보여드리는 중입니다 (최신 확인 실패: ${snapErr})`);
       return;
     }
-    if(res && res.none){ snapErr = '서버에 저장본이 아직 없음'; sApi('/api/data?action=ensure').catch(()=>{}); }
+    if(res && res.none){ snapErr = '서버에 저장본이 아직 없음'; if(!READ_ONLY) sApi('/api/data?action=ensure').catch(()=>{}); }
 
     // 저장본이 없거나 받지 못했을 때: 시트를 나눠서 직접 읽는 방식으로 대신 불러옴
     const meta = await sApi('/api/data?action=meta');
@@ -211,7 +212,7 @@ export async function loadSharedData(opts){
 
 export async function sharedRefresh(){
   const u = shared.user; if(!u || shared.updating) return;
-  if(!u.isUpdater){ return loadSharedData({noCache:true, fresh:true}); }
+  if(!u.isUpdater || READ_ONLY){ return loadSharedData({noCache:true, fresh:true}); }
   shared.updating = true;
   emit(); // port: 버튼 상태(업데이트 중...)는 화면이 shared.updating 으로 그림
   try{
@@ -293,6 +294,10 @@ export function renderGoogleSheetProgress(p){
 export async function refreshFromGoogleSheet(webAppUrlInput){
   if(shared.active){ return sharedRefresh(); }
   const webAppUrl = (webAppUrlInput||'').trim();
+  if(READ_ONLY){
+    shared.gsStatus = {kind:'info', text:'읽기 전용 미리보기에서는 Apps Script 웹앱을 호출하지 않습니다 (운영 파일 처리 방지). CSV / 엑셀 업로드를 사용해 주세요.'}; emit();
+    return;
+  }
   if(!webAppUrl){
     shared.gsStatus = {kind:'info', text:'Apps Script 웹앱 URL을 먼저 입력해주세요.'}; emit();
     return;

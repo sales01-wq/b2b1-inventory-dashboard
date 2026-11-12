@@ -18,6 +18,19 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // 화면 코드는 화면별로 나눴고, 남은 큰 묶음은 Astryx 라이브러리 하나(약 1MB, gzip 약 340kB: AppShell 이 쓰는 움직임 · 제스처 등 내부 모듈).
+    // 더 쪼개도 첫 화면에서 모두 필요해서 줄지 않으므로, 그 묶음만 통과하는 한도로 둠. 화면 코드가 커지면 여전히 경고가 남.
+    chunkSizeWarningLimit: 1100,
+    rollupOptions: {
+      output: {
+        // 라이브러리는 화면 코드와 따로 묶어서, 화면만 바뀐 배포에서도 브라우저 캐시를 다시 씀
+        manualChunks(id) {
+          if (id.includes('node_modules/@astryxdesign/')) return 'astryx';
+          if (/node_modules\/(react|react-dom|scheduler)\//.test(id)) return 'react';
+          if (id.includes('node_modules/@heroicons/')) return 'icons';
+        },
+      },
+    },
   },
   test: {
     environment: 'node',

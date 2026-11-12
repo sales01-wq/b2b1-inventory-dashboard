@@ -1,4 +1,4 @@
-import {useEffect} from 'react';
+import {lazy, Suspense, useEffect, type ComponentType} from 'react';
 import {AppShell} from '@astryxdesign/core/AppShell';
 import {SideNav, SideNavHeading, SideNavItem, SideNavSection} from '@astryxdesign/core/SideNav';
 import {Avatar} from '@astryxdesign/core/Avatar';
@@ -20,15 +20,21 @@ import {DEMO, startDemo} from './demo';
 import {emit, subscribe} from '../lib/store.js';
 import {shared, initSharedMode, logout} from '../data/shared.js';
 import {settingsLoadLocal} from '../data/settings.js';
-import {OverviewPage} from '../views/OverviewPage';
-import {ForecastPage} from '../views/ForecastPage';
-import {SalesPage} from '../views/SalesPage';
-import {LookupPage} from '../views/LookupPage';
-import {DataPage} from '../views/DataPage';
+// 화면마다 따로 불러옴 (처음 여는 화면의 코드만 먼저 받음)
+const page = <K extends string>(load: () => Promise<Record<K, ComponentType>>, name: K) => {
+  // 첫 화면을 그린 뒤 나머지 화면도 미리 받아 둠 → 메뉴를 눌렀을 때 빈 화면 없이 바로 바뀜
+  setTimeout(() => { load().catch(() => {}); }, 0);
+  return lazy(() => load().then(m => ({default: m[name]})));
+};
+const OverviewPage = page(() => import('../views/OverviewPage'), 'OverviewPage');
+const ForecastPage = page(() => import('../views/ForecastPage'), 'ForecastPage');
+const SalesPage = page(() => import('../views/SalesPage'), 'SalesPage');
+const LookupPage = page(() => import('../views/LookupPage'), 'LookupPage');
+const DataPage = page(() => import('../views/DataPage'), 'DataPage');
 
 const SECTIONS: RouteDef['section'][] = ['현황', '업무 도구', '데이터'];
 
-const PAGES: Record<ViewId, () => React.ReactNode> = {
+const PAGES: Record<ViewId, ComponentType> = {
   overview: OverviewPage,
   forecast: ForecastPage,
   customer: SalesPage,
@@ -93,7 +99,9 @@ export function App() {
 
   return (
     <AppShell sideNav={sideNav} banner={<StatusBanners />} variant="elevated" height="fill">
-      <Page />
+      <Suspense fallback={null}>
+        <Page />
+      </Suspense>
     </AppShell>
   );
 }

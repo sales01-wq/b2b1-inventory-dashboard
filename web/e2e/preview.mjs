@@ -35,6 +35,7 @@ try {
     await page.waitForURL(/#\/overview$/, {timeout: 10000});
     await page.getByText('미리보기 — 테스트 데이터입니다').waitFor();
     assert.equal(await page.getByText('로그인 정보를 확인하는 중입니다...').count(), 0);
+    await page.getByText('재고 신호등').waitFor(); // 화면 코드는 따로 받아옴
     assert.match(await page.getByRole('main').innerText(), /재고 신호등[\s\S]*SB004/); // 테스트 데이터가 그려짐
     // 글꼴: CDN 을 모두 막은 상태에서도 앱에 포함된 Pretendard 가변 글꼴이 실제로 내려받아져 쓰임
     const font = await page.evaluate(async () => {

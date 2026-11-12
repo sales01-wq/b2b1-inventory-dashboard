@@ -3,6 +3,7 @@ import {state, ui, settings, emit} from '../lib/store.js';
 import {num} from '../lib/parse.js';
 import {computeDerived} from '../lib/forecast.js';
 import {shared, setSharedBar} from './shared.js';
+import {READ_ONLY} from '../app/defaults';
 import {rulesValid, RULES_INVALID_MSG, heroInput} from '../lib/views.js';
 
 export function canEditSettings(){ return typeof shared==='undefined' || !shared.active || !!(shared.user && shared.user.isUpdater); }
@@ -28,7 +29,7 @@ export function showSettingsError(msg){
 
 export async function persistSetting(kind, key, value){
   localSettingsSave();
-  if(typeof shared==='undefined' || !shared.active || !shared.token) return {ok:true, local:true};
+  if(typeof shared==='undefined' || !shared.active || !shared.token || READ_ONLY) return {ok:true, local:true};
   try{
     const r = await fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json', Authorization:'Bearer '+shared.token}, body:JSON.stringify({kind, key, value})});
     const j = await r.json().catch(()=>({}));

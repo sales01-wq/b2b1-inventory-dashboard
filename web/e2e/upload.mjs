@@ -139,6 +139,7 @@ try {
 
   // ---- 판매 현황 · 거래처별: 합계 많은 순 첫 행 = SB001 (B2B1팀+EMP 가용재고 1,500, 판매 합계 6,400)
   await page.goto(base + '/#/customer');
+  await page.getByRole('heading', {level: 1, name: '판매 현황'}).waitFor(); // 화면 코드는 처음 열 때 받아옴
   assert.match(await text(page.locator('tbody tr').first()), /^SB001 성분에디터 성분 에디터 세럼 1,500 .* 6,400$/);
   await page.getByRole('button', {name: '거래처 전체'}).click();
   await page.getByRole('checkbox', {name: 'A상사'}).check();

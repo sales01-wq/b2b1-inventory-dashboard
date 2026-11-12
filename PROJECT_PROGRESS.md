@@ -252,6 +252,18 @@ All run on the branch with test data only:
 - The real Apps Script web app and its data.
 - Results on real ERP exports (fixtures are synthetic).
 
+## Real-world verification (in progress)
+
+**Done locally (no credentials, test data only):**
+- Route-based code splitting: each screen is its own chunk and is preloaded right after start-up (no blank page on first visit). Libraries are split into `react` / `icons` / `astryx` chunks. The remaining large chunk is the Astryx library itself (~1.06 MB, ~340 kB gzip; motion and gesture internals used by `AppShell`), so `chunkSizeWarningLimit` is 1100 with the reason in `vite.config.ts`. Two e2e checks now wait for the lazily loaded page.
+- **Read-only preview switch `VITE_READ_ONLY=1`** (off by default; production behaviour unchanged without it): no `POST /api/settings` (box / rules / hero stay in that browser), no `/api/data?action=update` or `action=ensure`, no Apps Script web-app call in upload mode; a "읽기 전용 미리보기" banner. Reads still work. Reason: any logged-in user's box-size input is saved to the shared production settings, and '새로고침' runs the Apps Script that processes the Drive upload folder. `VITE_WEBAPP_URL` can override or empty the default Apps Script URL. Covered by `src/data/readonly.test.js` (fails if the guard is removed).
+- Real (non-demo) build served on a non-localhost host with no `/api` (as a Preview without env vars): falls back to upload mode, CSV upload → all five screens, no JavaScript errors; console errors only for CDNs blocked in this sandbox (Google sign-in, SheetJS) and the missing `/api/config`; no Apps Script calls, no POSTs. The demo fixtures are not in the real bundle.
+- **Excel:** with SheetJS 0.18.5 from npm (scratch copy, not a project dependency; production uses 0.20.3 from `cdn.sheetjs.com`, blocked here) a multi-sheet workbook with numeric cells (5 data sheets + a memo sheet) plus a separate B2B2 sales workbook: every sheet recognised as in production (memo → "자동 인식 실패 — 직접 선택"), the B2B2 file by its name, and the results identical to the same data as CSV. Uploaded through the built React page: same overview.
+- **`src/lib/realdata.test.js`** (skipped unless `ERP_DIR` is set): loads every CSV / Excel file in a folder into production `index.html` and into the new code and compares sheet recognition, the raw rows, parsed data, per-team forecasts, scoped stock, sales pivot, item sales, customer shortages, forecast and item CSVs, the lookup of every item with the recommended selection (alternatives included), LOTs, the download list, PLT per-item and mixed, and the download CSVs. Passed on the synthetic CSV and Excel sets. Usage: `ERP_DIR=folder XLSX_LIB=path/to/xlsx.full.min.js npx vitest run src/lib/realdata.test.js`; the files stay on that computer.
+- Sandbox quirk: Playwright could not attach files from disk whose paths contain Korean characters (the same files attached as buffers, with Korean names, work). Real browsers need a manual check with real file names.
+
+**Needs the owner (credentials, live services or real files):** see the verification plan in the conversation of 2026-11-12: a separate Vercel project for the Preview, the OAuth origin, environment variables, the Apps Script source to confirm which actions write, real ERP files, and manual browser checks.
+
 ## Remaining work (in this order, one screen at a time, report after each)
 
 The old code to port lives in root `index.html`. Line numbers refer to commit `d369ec2`.
