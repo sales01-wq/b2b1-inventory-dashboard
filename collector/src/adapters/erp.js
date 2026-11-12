@@ -26,15 +26,17 @@ export default function erp(config, deps = {}) {
   return {
     async fetchAll(defs, now) {
       const playwright = deps.playwright || createRequire(import.meta.url)('playwright');
-      const recipe = deps.recipe || await import(pathToFileURL(config.recipe || path.join(config.workDir, 'erp-recipe.js')).href);
-      const cred = deps.credential || loadCredential(config.workDir);
+      const recipe = deps.recipe || await import(config.recipe ? pathToFileURL(config.recipe).href : '../recipe.js');
+      // 자격증명은 로그인이 실제로 필요할 때만 읽음 (세션이 살아 있으면 암호화 저장소를 열지 않음)
+      let c; const load = () => (c ||= deps.credential || loadCredential(config.workDir));
+      const cred = {get user() { return load().user; }, get password() { return load().password; }};
       const ctx = await playwright.chromium.launchPersistentContext(path.join(config.workDir, 'browser-profile'), {headless: config.headless !== false, acceptDownloads: true, ...(config.browserChannel ? {channel: config.browserChannel} : {})});
       try {
         const page = ctx.pages()[0] || await ctx.newPage();
         page.setDefaultTimeout(config.timeoutMs || 90000);
-        await recipe.login(page, cred);
+        await recipe.login(page, cred, config);
         const out = new Map();
-        for (const d of defs) out.set(d.id, await toBuffer(await recipe.download(page, d, now)));
+        for (const d of defs) out.set(d.id, await toBuffer(await recipe.download(page, d, now, config)));
         return out;
       } finally { await ctx.close(); }
     },

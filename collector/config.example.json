@@ -3,5 +3,6 @@
   "uploadFolder": "G:\\.shortcut-targets-by-id\\<폴더ID>\\...\\재고관리_업로드용",
   "workDir": "%LOCALAPPDATA%\\erp-collector",
   "adapter": "erp",
-  "browserChannel": "chrome"
+  "browserChannel": "chrome",
+  "erpUrl": "http://<ERP 주소>/"
 }
