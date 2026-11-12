@@ -32,3 +32,6 @@ ERP 엑셀 5개(가용재고조회_olive · WMS창고재고관리(EMP)_olive(유
 `npm run netcheck` — ERP 접속이 막힐 때(`ERR_BLOCKED_BY_CLIENT` 등) 전용 프로필과 새 임시 프로필로 각각 열어 비교하고, 막힌 요청 · 문서 이동 경로(서버 3xx / 브라우저 내부 전환 / 페이지 스크립트 구분, `blockedReason` 포함) · 접속 관련 Chrome 정책 · Chrome 과 같은 헤더로 본 서버 응답 · Chrome 버전 · 실행 옵션을 보여 줌 (계정 · 내용 없음, 보안 설정은 바꾸지 않음).
 `npm run check` — 수집기가 쓰는 브라우저 프로필 · 채널 · 로그인 감지 결과를 보여 줌 (계정 정보 · 데이터 없음). `npm run check -- --login` 은 같은 프로필로 창을 열어 둠.
 평소 쓰는 Chrome 의 로그인은 **다른 프로필**이라 수집기가 쓸 수 없습니다. 또 ERP 가 "브라우저를 닫으면 사라지는 세션 쿠키"를 쓰면 수동 로그인도 다음 실행에 남지 않으므로, 무인 실행은 자동 재로그인(암호화된 계정)에 의존합니다.
+
+## 문제 해결: `ERR_BLOCKED_BY_CLIENT` (http → https 자동 전환)
+`npm run netcheck` 에서 `non-authoritative-reason: HttpsUpgrades` 의 내부 307 뒤에 https 요청이 `ERR_BLOCKED_BY_CLIENT` 로 실패하면, ERP 주소가 `http://` 인데 Chrome 이 스스로 https 로 바꾸고 그 요청이 막힌 것입니다. HTTPS 자동 전환을 끄거나 보안 옵션으로 우회하지 말고 `IT-요청서.md` 로 IT 승인(HTTPS 주소, 또는 이 호스트의 `HttpAllowlist`)을 받으세요.

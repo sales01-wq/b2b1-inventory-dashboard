@@ -277,6 +277,16 @@ Windows PC collector → `ERP_BUNDLE_*.zip` in the existing Drive upload folder 
 - Real ERP download: `src/adapters/erp.js` runs Playwright (persistent profile, DPAPI credentials) and calls a PC-side `erp-recipe.js` (`login`, `download`) recorded with `playwright codegen`; tested in a real Chromium against a local fake ERP (login → 5 downloads → validation → bundle; one failed download publishes nothing). The ERP's actual screens / selectors are still unknown.
 - Known limits: the 3-line change to `checkForNewFilesInner_` and the real Drive / Apps Script runtime are untested here; file names in `collector/src/files.js` (except `가용재고조회_olive`) are assumptions; the dashboard shows the existing "마지막 업데이트 · 수집기(자동)" time but not collector errors (they are in the PC's `run.log` / `state.json`).
 
+## ERP access finding: Chrome upgrades the ERP's HTTP address to HTTPS (confirmed on the owner's PC)
+
+`npm run netcheck` on the company PC (installed Chrome; dedicated profile and a fresh profile alike):
+- The ERP's `http://` address answers 200 from Node; no server-side redirect.
+- In the Playwright-controlled Chrome the main document goes through an **internal 307 Temporary Redirect** with `non-authoritative-reason: HttpsUpgrades` (Chrome's own HTTP→HTTPS upgrade, not the server), and the resulting `https://` navigation fails with `net::ERR_BLOCKED_BY_CLIENT`. The HTTPS request is blocked client-side, so the login page is never reached.
+- `chrome://policy` reported no explicit `HttpsOnlyMode` / `HttpsUpgradesEnabled` policy. The regular Chrome opens the ERP normally (probably by falling back to HTTP; not confirmed).
+- Not yet known: what blocks the HTTPS request (`blockedReason` and the full policy list were not reported) and whether the ERP serves HTTPS at all.
+- Decision: do **not** disable HTTPS upgrades, add insecure flags, or bypass company controls. Options for IT (see `collector/IT-요청서.md`, ERP host left as a placeholder on purpose): (1) an IT-approved HTTPS address for the ERP (preferred; it also encrypts credentials), (2) the Chrome policy `HttpAllowlist` for this one host, (3) identify what blocks the HTTPS request, (4) a read-only ERP API or an ERP-side scheduled export instead of browser automation. Until one is in place the unattended collector cannot log in; uploads stay disabled. No code change is needed except `erpUrl` if an HTTPS address is provided.
+- Read-only checks the owner can run on the PC: `Test-NetConnection <ERP host> -Port 443` and `curl.exe -sS -I --max-time 15 https://<ERP host>/` (without `-k`).
+
 ## Remaining work (in this order, one screen at a time, report after each)
 
 The old code to port lives in root `index.html`. Line numbers refer to commit `d369ec2`.

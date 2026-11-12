@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import {PassThrough} from 'node:stream';
 import {credFile, saveCredential, loadCredential, readHidden, setCredentials, runPowerShell} from '../src/credentials.js';
 
-const WD = "C:\\Users\\a'b\\AppData\\Local\\erp-collector";
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+const WD = fs.mkdtempSync(path.join(os.tmpdir(), "erp'cred-")); // 작은따옴표가 든 경로 (저장 시 이스케이프 확인)
 const PW = 'S3cret-비밀번호!';
 function tty() { const i = new PassThrough(); i.isTTY = true; i.modes = []; i.setRawMode = m => { i.modes.push(m); }; const o = []; return {i, o, out: {write: s => o.push(s)}}; }
 const type = (i, s) => i.write(s);
@@ -42,7 +45,7 @@ test('저장: 비밀번호는 명령줄(스크립트)에 없고 stdin(base64)으
   const {script, input} = f.calls[0];
   assert.ok(!script.includes(PW) && !script.includes('svc') && !input.includes(PW)); // 평문은 어디에도 없음 (stdin 도 base64)
   assert.deepEqual(JSON.parse(Buffer.from(input, 'base64').toString('utf8')), {user: 'svc', password: PW});
-  assert.match(script, /Export-Clixml -Path 'C:\\Users\\a''b\\AppData\\Local\\erp-collector[\\/]erp-cred\.xml'/);
+  assert.ok(script.includes(`Export-Clixml -Path '${credFile(WD).replace(/'/g, "''")}'`)); // 경로의 작은따옴표는 두 번
   assert.ok(!/ExecutionPolicy|Bypass/i.test(script));
   assert.throws(() => saveCredential(WD, {user: '', password: 'x'}, f.run), /필요/);
 });

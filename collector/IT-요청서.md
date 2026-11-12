@@ -1,0 +1,23 @@
+# IT 요청서: ERP 자동 수집용 브라우저 접속 승인
+
+(ERP 주소는 이 문서에 적지 않았습니다. 전달할 때 `<ERP 호스트>` 자리에 실제 주소를 넣어 주세요.)
+
+## 용도
+회사 PC 1대에서 영림원 ERP의 읽기 전용 계정으로 엑셀 5개(가용재고, WMS 재고, 판매실적 B2B1/B2B2, 제품일정표)를 30분마다 내려받아 회사 구글 드라이브 업로드 폴더에 올립니다. 외부에서 PC로 들어오는 접속은 열지 않고, 계정은 이 PC의 Windows 암호화 저장소(DPAPI)에만 보관합니다. 승인된 설치 Chrome을 Playwright로 제어합니다.
+
+## 확인된 현상
+- ERP 주소는 `http://<ERP 호스트>/` 이고 서버는 HTTP로 정상 응답합니다 (서버 쪽 https 리다이렉트 없음).
+- **자동화로 띄운 Chrome**이 이 주소를 열 때 Chrome이 스스로 `https://<ERP 호스트>/` 로 바꿉니다 (내부 307 리다이렉트, `non-authoritative-reason: HttpsUpgrades`). 그 https 요청이 `net::ERR_BLOCKED_BY_CLIENT` 로 차단되어 로그인 화면에 도달하지 못합니다.
+- 일반 Chrome에서는 같은 주소가 정상적으로 열립니다.
+- 접속 관련 Chrome 정책(`HttpsOnlyMode`, `HttpsUpgradesEnabled`)은 명시적으로 설정돼 있지 않다고 확인됐습니다.
+- 회사 보안 설정을 끄거나 우회하지 않고, IT가 승인하는 방식으로만 해결하려고 합니다.
+
+## 요청 (우선순위 순)
+1. **ERP의 HTTPS 접속 주소 제공 (권장).** 유효한 인증서가 있는 `https://…` 주소(ERP 업체 제공 또는 사내 리버스 프록시)를 알려 주세요. 로그인 정보와 세션이 사내망에서도 암호화되는 이점이 있습니다. 주소를 받으면 수집기 설정(`erpUrl`)만 바꾸면 됩니다.
+2. **HTTPS가 어렵다면: 이 ERP 호스트의 HTTP 접속 예외 승인.** Chrome 정책 `HttpAllowlist` 에 `<ERP 호스트>` 를 등록해 이 호스트만 HTTPS 자동 전환 대상에서 제외해 주세요 (이 PC에만 적용해도 됩니다). 전체 HTTPS 보호를 끄는 설정(`HttpsUpgradesEnabled=false` 등)은 요청하지 않습니다.
+3. **https 요청을 막는 주체 확인.** 위 현상에서 https 요청이 네트워크로 나가기 전에 `BLOCKED_BY_CLIENT` 로 막혔습니다. 이 PC의 보안 프로그램, 프록시, Chrome 정책(`URLBlocklist`, `ExtensionInstallForcelist` 등) 중 자동화 Chrome의 `https://<ERP 호스트>/` 요청을 막는 것이 있는지 확인해 주세요.
+4. **위가 모두 불가능하면 브라우저를 쓰지 않는 방법:** ERP의 읽기 전용 API, 또는 ERP 자체의 예약 내보내기(스케줄 리포트로 엑셀을 지정 폴더에 저장)가 가능한지 영림원/IT에 문의해 주세요.
+
+## 함께 승인받을 것
+- 읽기 전용 전용 ERP 계정 발급 (추가 인증(OTP) 없는 계정이어야 무인 실행 가능).
+- 이 PC에서 Google Drive 업로드 폴더로의 통신 (이미 설치된 Drive 데스크톱 사용).
