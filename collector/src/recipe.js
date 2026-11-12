@@ -30,9 +30,18 @@ async function screenState(page, ms, afterSubmit) {
   return 'unknown';
 }
 
+/** ERP 주소 열기. http 주소가 Chrome 의 HTTPS 보호에 막히면(ERR_BLOCKED_BY_CLIENT) 원인과 필요한 승인을 알려 줌 (보호를 끄지 않음) */
+export async function openErp(page, url) {
+  try { await page.goto(url); }
+  catch (e) {
+    if (/ERR_BLOCKED_BY_CLIENT/.test(String(e?.message)) && /^http:/i.test(url)) throw new Error('ERP 주소(http)가 Chrome 의 HTTPS 보호(http 접속 경고 · 자동 https 전환)에 막혔습니다. 보호를 끄거나 우회하지 않으며 IT 승인이 필요합니다 — IT-요청서.md 참고 (ERP 의 HTTPS 주소, 또는 이 호스트에 대한 Chrome 정책 HttpAllowlist)');
+    throw e;
+  }
+}
+
 /** 진단용 (계정 정보 없음): 주소를 열고 화면 상태를 알려 줌 */
 export async function diagnose(page, config) {
-  await page.goto(config.erpUrl);
+  await openErp(page, config.erpUrl);
   await btn(page, '즐겨찾기 레이어 닫기').click({timeout: 3000}).catch(() => {});
   const state = await screenState(page, 15000, false);
   return {state, url: page.url(), title: await page.title().catch(() => '')};
@@ -41,7 +50,7 @@ export async function diagnose(page, config) {
 /** 세션이 살아 있는지 (주소를 새로 열어 확인). 화면 상태가 사라지므로 판매실적 준비 기록도 지움 */
 export async function isLoggedIn(page, config) {
   salesReady.delete(page);
-  await page.goto(config.erpUrl);
+  await openErp(page, config.erpUrl);
   return loggedIn(page, 8000);
 }
 
@@ -52,7 +61,7 @@ export async function isLoggedIn(page, config) {
 export async function login(page, cred, config, auth) {
   if (!config.erpUrl) throw new Error('config.json 에 erpUrl 이 없습니다');
   salesReady.delete(page);
-  await page.goto(config.erpUrl);
+  await openErp(page, config.erpUrl);
   await btn(page, '즐겨찾기 레이어 닫기').click({timeout: 3000}).catch(() => {}); // 레이어가 없으면 그대로 진행
   const st = await screenState(page, 15000, false);
   if (st === 'in') { auth?.success(); return; }

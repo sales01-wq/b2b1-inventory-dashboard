@@ -105,3 +105,11 @@ test('점검(diagnose): 로그인됨 · 입력 화면 · 낯선 화면을 구분
     assert.equal((await diagnose(page, {erpUrl: s.base})).state, 'in');
   } finally { await ctx.close(); await s.close(); }
 });
+
+test('http 주소가 Chrome 의 HTTPS 보호에 막히면(ERR_BLOCKED_BY_CLIENT) 우회하지 않고 IT 승인이 필요하다고 안내', async () => {
+  const {login, openErp} = await import('../src/recipe.js');
+  const page = {goto: async () => { throw new Error('page.goto: net::ERR_BLOCKED_BY_CLIENT at http://erp.example/'); }};
+  await assert.rejects(login(page, {}, {erpUrl: 'http://erp.example/'}), /HTTPS 보호.*IT 승인/);
+  await assert.rejects(openErp({goto: async () => { throw new Error('net::ERR_BLOCKED_BY_CLIENT'); }}, 'https://erp.example/'), /ERR_BLOCKED_BY_CLIENT/); // https 주소의 같은 오류는 그대로
+  await assert.rejects(openErp({goto: async () => { throw new Error('net::ERR_CONNECTION_REFUSED'); }}, 'http://erp.example/'), /ERR_CONNECTION_REFUSED/);
+});
