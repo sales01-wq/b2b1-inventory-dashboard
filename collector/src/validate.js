@@ -1,16 +1,16 @@
 import crypto from 'node:crypto';
-import XLSX from 'xlsx';
+import {readSheets} from './xlsx.js';
 import {detectSheetType, teamFromRows, findHeaderRow, SHEET_SIGNATURES} from '../../web/src/lib/parse.js'; // 대시보드와 같은 시트 인식 규칙
 
 export const MIN_RATIO = 0.5; // 직전보다 행이 절반 아래로 줄면 이상으로 봄
 const BIG = 20; // 행이 이만큼 이상일 때만 비교 (처음이거나 작은 파일은 건너뜀)
 
 /** 엑셀 1개 검사. 통과하면 {rows, hash}, 아니면 Error */
-export function validateFile(def, buf, prevRows) {
-  let wb;
-  try { wb = XLSX.read(buf, {type: 'buffer'}); } catch (e) { throw new Error(`${def.id}: 엑셀을 읽을 수 없음 (${e.message})`); }
-  if (wb.SheetNames.length !== 1) throw new Error(`${def.id}: 시트가 ${wb.SheetNames.length}개 (1개여야 기존 탭 이름이 유지됨)`);
-  const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1, raw: false, defval: ''});
+export async function validateFile(def, buf, prevRows) {
+  let sheets;
+  try { sheets = await readSheets(buf); } catch (e) { throw new Error(`${def.id}: 엑셀을 읽을 수 없음 (${e.message})`); }
+  if (sheets.length !== 1) throw new Error(`${def.id}: 시트가 ${sheets.length}개 (1개여야 기존 탭 이름이 유지됨)`);
+  const rows = sheets[0].rows;
   const type = detectSheetType(rows);
   if (type !== def.type) throw new Error(`${def.id}: 시트 종류가 ${type || '인식 안 됨'} (기대: ${def.type})`);
   const sig = SHEET_SIGNATURES.find(s => s.key === type);
@@ -23,12 +23,12 @@ export function validateFile(def, buf, prevRows) {
 }
 
 /** 전체 묶음 검사: 5개가 모두 있고 모두 통과해야 함 (전부 아니면 전무) */
-export function validateAll(defs, buffers, prevRows = {}) {
+export async function validateAll(defs, buffers, prevRows = {}) {
   const errs = [], res = {};
   for (const d of defs) {
     const buf = buffers.get(d.id);
     if (!buf) { errs.push(`${d.id}: 파일을 받지 못함`); continue; }
-    try { res[d.id] = validateFile(d, buf, prevRows[d.id]); } catch (e) { errs.push(e.message); }
+    try { res[d.id] = await validateFile(d, buf, prevRows[d.id]); } catch (e) { errs.push(e.message); }
   }
   if (errs.length) throw new Error(errs.join(' / '));
   const hash = crypto.createHash('sha256').update(defs.map(d => res[d.id].hash).join('|')).digest('hex');

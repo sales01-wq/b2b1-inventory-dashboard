@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import AdmZip from 'adm-zip';
+import {unzipSync} from 'fflate';
 import {runOnce} from '../src/run.js';
 import {acquire} from '../src/lock.js';
 import mock from '../src/adapters/mock.js';
@@ -26,7 +26,7 @@ test('정상: 묶음 zip 1개에 파일 5개, 기존 이름 규칙 (날짜만 �
   const r = await e.run();
   assert.equal(r.result, 'published');
   assert.deepEqual(e.ls(), [r.bundle]);
-  const names = new AdmZip(path.join(e.config.uploadFolder, r.bundle)).getEntries().map(x => x.entryName).sort();
+  const names = Object.keys(unzipSync(new Uint8Array(fs.readFileSync(path.join(e.config.uploadFolder, r.bundle))))).sort();
   assert.deepEqual(names, ['WMS창고재고관리(EMP)_olive_20261112.xlsx', '가용재고조회_olive_20261112.xlsx', '일자별판매실적분석_20261112_B2B1팀.xlsx', '일자별판매실적분석_20261112_B2B2팀.xlsx', '제품일정표_olive_20261112.xlsx']);
   assert.ok(!names.some(n => n.includes('상품마스터')));
   assert.ok(e.state().lastSuccessAt);

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
-import AdmZip from 'adm-zip';
+import {zipSync} from 'fflate';
 import {FILES, NEVER, fileName, ymd} from './files.js';
 import {validateAll} from './validate.js';
 import {acquire} from './lock.js';
@@ -47,17 +47,16 @@ export async function runOnce({config, adapter, now = new Date(), log = () => {}
     // 2) 받기 + 전부 검사
     let checked;
     const buffers = await adapter.fetchAll(defs, now);
-    try { checked = validateAll(defs, buffers, state.rows); }
+    try { checked = await validateAll(defs, buffers, state.rows); }
     catch (e) { state.lastError = {at: now.getTime(), msg: e.message}; state.lastCheckedAt = now.getTime(); save(); log('검사 실패: ' + e.message); return {result: 'invalid', error: e.message}; }
     state.lastCheckedAt = now.getTime();
     // 3) 바뀐 게 없으면 올리지 않음
     if (checked.hash === state.lastHash) { delete state.lastError; save(); log('변경 없음'); return {result: 'unchanged'}; }
     // 4) 묶음 1개로 올림: 임시 이름으로 쓰고 다 쓴 뒤 이름 변경 (쓰는 도중에는 Apps Script 가 보지 못함)
-    const zip = new AdmZip();
-    defs.forEach(d => zip.addFile(fileName(d, now), buffers.get(d.id)));
+    const zip = zipSync(Object.fromEntries(defs.map(d => [fileName(d, now), new Uint8Array(buffers.get(d.id))])), {level: 0}); // 엑셀은 이미 압축돼 있어 저장만
     const name = `ERP_BUNDLE_${stamp(now)}_${checked.hash.slice(0, 8)}.zip`;
     const tmp = path.join(config.uploadFolder, name + '.tmp');
-    try { fs.writeFileSync(tmp, zip.toBuffer()); fs.renameSync(tmp, path.join(config.uploadFolder, name)); }
+    try { fs.writeFileSync(tmp, zip); fs.renameSync(tmp, path.join(config.uploadFolder, name)); }
     catch (e) { fs.rmSync(tmp, {force: true}); throw e; }
     Object.assign(state, {lastHash: checked.hash, rows: checked.rows, lastSuccessAt: now.getTime(), lastBundle: name}); delete state.lastError; save();
     log('업로드 완료: ' + name);
