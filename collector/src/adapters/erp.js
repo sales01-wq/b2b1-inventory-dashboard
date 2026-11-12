@@ -20,6 +20,7 @@ const toBuffer = async r => {
   throw new Error('레시피는 다운로드(Download) 또는 Buffer 를 돌려줘야 합니다');
 };
 
+// browserChannel: 'chrome' 이면 PC 에 이미 설치된 (회사가 허용한) Google Chrome 을 사용 — Playwright 가 내려받는 Chromium 은 회사 보안 정책이 막을 수 있음
 /** deps: 시험용 주입 (playwright, credential, recipe). 실제 실행에서는 모두 자동 */
 export default function erp(config, deps = {}) {
   return {
@@ -27,7 +28,7 @@ export default function erp(config, deps = {}) {
       const playwright = deps.playwright || createRequire(import.meta.url)('playwright');
       const recipe = deps.recipe || await import(pathToFileURL(config.recipe || path.join(config.workDir, 'erp-recipe.js')).href);
       const cred = deps.credential || loadCredential(config.workDir);
-      const ctx = await playwright.chromium.launchPersistentContext(path.join(config.workDir, 'browser-profile'), {headless: config.headless !== false, acceptDownloads: true});
+      const ctx = await playwright.chromium.launchPersistentContext(path.join(config.workDir, 'browser-profile'), {headless: config.headless !== false, acceptDownloads: true, ...(config.browserChannel ? {channel: config.browserChannel} : {})});
       try {
         const page = ctx.pages()[0] || await ctx.newPage();
         page.setDefaultTimeout(config.timeoutMs || 90000);
