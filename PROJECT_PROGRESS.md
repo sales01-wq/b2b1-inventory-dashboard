@@ -342,3 +342,6 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 - Should the unreachable production selection feature (row checkboxes → "발주할 품목" panel → selected CSV) be added as a new feature, or left out as in production's actual behaviour?
 - When will the ERP samples be available?
 - Is Vercel preview deployment enabled? A pushed branch may already create a preview that also serves the `web/` source files.
+
+## Update 2026-11-12: Preview project build
+- `web/vercel.json` now builds the normal app (`npm run build` → `dist`) instead of the fixture-only demo build, so real ERP files can be uploaded on the preview. Set `VITE_READ_ONLY=1` (and no other variables) in the separate preview project; no `/api`, Google login or Apps Script. Root Directory `web`, production branch `feat/react-astryx`, Deployment Protection on. Not deployed yet (waiting for owner approval).
