@@ -110,6 +110,7 @@ tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var
 .name-cell { min-width: 8rem; }
 @media (max-width: 767px) {
   .hide-narrow { display: none; }
+  .astryx-toggle-button-group { flex-wrap: wrap; height: auto; }
   .show-narrow { display: block; margin-block-start: 0.125rem; }
   .stat-strip { grid-template-columns: 1fr 1fr; }
   .stat { padding: 0.75rem 0.875rem; }
@@ -123,6 +124,30 @@ tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var
 /* 휴대폰: 글자 크기는 그대로, 여백 · 간격만 줄여 알람 높이를 낮춤 */
 @media (max-width: 767px) { .alert { gap: 0.25rem; padding: 0.625rem 0.75rem; } .alert-list { padding-inline-start: 1.5rem; } }
 
+
+/* 완료 안내 (업로드): 히어로 알람과 같은 상자, 옅은 초록 */
+.alert-ok { border-color: color-mix(in srgb, var(--color-text-success) 30%, transparent); background: color-mix(in srgb, var(--color-text-success) 6%, var(--color-background-surface)); }
+/* 짧은 안내 항목 목록 (업로드 화면) */
+.help-list { margin: 0; padding-inline-start: 1.125rem; display: grid; gap: 0.25rem; }
+.help-list li::marker { color: var(--color-text-secondary); }
+
+/* ---------- 발주 현황 ---------- */
+/* 월 칸처럼 좁은 숫자 칸: 좌우 여백 6px (표 오른쪽 끝 칸은 공통 16px 유지) */
+.astryx-table-row > .dense { padding-inline-start: 0.375rem; }
+.astryx-table-row > .dense:not(:last-child) { padding-inline-end: 0.375rem; }
+/* 요약 줄: 문장은 보통 굵기 15px, 품목 수 · 총 수량만 굵게 */
+.summary-line { font-size: 0.9375rem; }
+.summary-line b { font-weight: 650; }
+.hero-mark { display: inline-flex; vertical-align: -0.125em; color: light-dark(#a16207, #fbbf24); }
+/* 펼친 근거 안 작은 표: 글자가 칸 안에서 꺾이지 않고, 좁으면 표 안에서 옆으로 스크롤 */
+/* 칸 너비가 내용(한 단어)보다 좁아지지 않게 Astryx 의 max-width: 0 을 풀고, 글자 칸은 띄어쓰기에서만 줄바꿈 · 숫자 칸과 머리글은 한 줄 */
+.mini-table th, .mini-table td { max-width: none; overflow-wrap: normal; word-break: keep-all; }
+.mini-table th, .mini-table td.num { white-space: nowrap; }
+.mini-table .astryx-table-row > :not(:first-child):not(:last-child) { padding-inline: 0.5rem; }
+.astryx-table-scroll-wrapper:has(> div > table.mini-table) { overflow-x: auto; }
+/* 거래처별 발주 패턴 표는 두 칸 폭 (펼친 영역이 좁으면 한 칸) */
+.detail-wide { grid-column: span 2; }
+@container (max-width: 660px) { .detail-wide { grid-column: auto; } }
 
 /* ---------- 브랜드 표시 · 글자 굵기 ---------- */
 .brand-label { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: var(--color-text-secondary); white-space: nowrap; }

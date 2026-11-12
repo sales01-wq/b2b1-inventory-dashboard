@@ -48,6 +48,25 @@ async function checkNoClippedCells(page) {
   assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('table th, table td')].filter(e => e.offsetParent && e.scrollWidth > e.clientWidth + 1).map(e => e.textContent.trim())), []);
 }
 
+/** 표 칸 안에서 한 단어(띄어쓰기 없는 글자)가 두 줄로 꺾이지 않음 (예: '거래처' → '거래/처') */
+async function checkNoBrokenWords(page) {
+  assert.deepEqual(await page.evaluate(() => {
+    const out = [];
+    for (const cell of document.querySelectorAll('table th, table td')) {
+      if (!cell.offsetParent) continue;
+      const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const t = n.textContent.trim();
+        if (t.length < 2 || /\s/.test(t)) continue;
+        const range = document.createRange(); range.selectNodeContents(n);
+        const lines = new Set([...range.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top)));
+        if (lines.size > 1) out.push(t);
+      }
+    }
+    return out;
+  }), []);
+}
+
 /** 고정 첫 칸: 표 스크롤 영역 왼쪽 끝에 붙어 있고(스크롤 후에도), 스크롤 전에는 옆 칸과 겹치지 않음 */
 async function checkStickyColumns(page, scrollBy) {
   const problems = await page.evaluate(by => {
@@ -182,10 +201,17 @@ try {
   assert.match(await text(page.getByRole('main')), /지금 발주 필요 1개 품목 \/ 총 900개/);
   assert.deepEqual((await page.locator('tbody tr td.sticky-col code').allInnerTexts()).slice(0, 2), ['SB004', 'SB001']);
   await checkStickyColumns(page);
+  await checkNoClippedCells(page); // 월 판매 · 입고예정 숫자, '발주할 수량 = ① − ② − ③' 머리글
+  // 계산 설명: 처음엔 접힘, 누르면 펼쳐짐 (내용은 그대로)
+  assert.equal(await page.getByText(/^발주할 수량 = ① 3개월 예상수요/).isVisible(), false);
+  await page.getByText('발주할 수량 계산 방법').click();
+  await page.getByText(/^발주할 수량 = ① 3개월 예상수요/).waitFor();
   // 행 펼치기: 창고별 가용재고 합계 = 전체 창고 2,300
   await page.locator('tr', {has: page.getByText('SB001', {exact: true})}).getByRole('button', {name: '거래처별 근거 보기'}).click();
   await page.getByRole('heading', {name: '창고별 가용재고 (전체 창고)'}).waitFor();
   assert.match(await text(page.getByRole('main')), /합계 2,300/);
+  await checkNoClippedCells(page);
+  await checkNoBrokenWords(page); // 펼친 근거 표의 거래처 이름 · 머리글
   await shot(page, 'forecast-detail');
   // 표 내려받기(CSV)
   [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', {name: '표 내려받기(CSV)'}).click()]);
@@ -199,7 +225,7 @@ try {
   assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB006']);
   await page.getByRole('button', {name: /^발주 필요 \(위험\+주의\)/}).click();
   // 기준 설정: 잘못된 값 → 안내, 리드타임 45 저장 → 구간 문구 변경 + 저장, 기본값으로
-  await page.getByText('⚙ 기준 설정 (고급) · 히어로 품목').click();
+  await page.getByText('기준 설정 (고급) · 히어로 품목').click();
   const lead = page.getByRole('textbox', {name: '리드타임(일)'}).or(page.getByRole('spinbutton', {name: '리드타임(일)'}));
   await lead.fill('20'); await lead.press('Tab');
   await page.getByRole('button', {name: '기준 저장'}).click();
@@ -217,6 +243,13 @@ try {
   await heroMin.fill('200'); await heroMin.press('Tab');
   await page.getByRole('button', {name: '추가/수정'}).click();
   await page.getByText('히어로 품목 위험 알람 (1개) — B2B1팀').waitFor();
+  await checkNoClippedCells(page);
+  // 히어로 표: 글자 칸(품명)은 왼쪽, 숫자 칸(현재 가용재고)은 오른쪽 정렬
+  assert.deepEqual(await page.evaluate(() => {
+    const ths = [...document.querySelectorAll('table.mini-table th')];
+    const align = name => getComputedStyle(ths.find(t => t.textContent.trim() === name)).textAlign;
+    return [align('품명'), align('현재 가용재고')];
+  }), ['start', 'end']);
   await shot(page, 'forecast-rules');
   await page.getByRole('button', {name: '삭제'}).click();
   await page.getByText('등록된 히어로 품목이 없습니다.').waitFor();
@@ -227,7 +260,7 @@ try {
   await page.getByRole('radio', {name: '전체'}).click();
   await page.getByText(/^품목 11개 · 거래처 5곳 · 판매실적 35건$/).waitFor();
   await page.goto(base + '/#/data');
-  assert.equal(await page.getByText(/^업데이트 완료/).textContent(), '업데이트 완료 — 새로 반영: 가용재고조회, 제품일정표, 일자별판매실적분석, 유통기한, 상품마스터. 좌측 메뉴에서 Main을 확인하세요.');
+  assert.equal(await page.getByText(/^업데이트 완료/).textContent(), '업데이트 완료 — 새로 반영: 가용재고조회, 제품일정표, 일자별판매실적분석, 유통기한, 상품마스터. 좌측 메뉴에서 전체 개요를 확인하세요.');
   assert.deepEqual(errors, []);
 
   // ---- 휴대폰: 넓은 표는 표 안에서만 옆으로 스크롤, 첫 칸은 고정
@@ -251,6 +284,15 @@ try {
   await phone.page.goto(base + '/#/forecast');
   await phone.page.locator('tbody tr td.sticky-col code').first().waitFor();
   await checkStickyColumns(phone.page, 300);
+  await checkNoClippedCells(phone.page);
+  // 휴대폰 상태 · 브랜드 필터: 모든 버튼이 화면 안에 있고, 마지막 버튼(과잉재고)까지 누를 수 있음
+  assert.deepEqual(await phone.page.evaluate(() => [...document.querySelectorAll('[role=main] [aria-label="상태"] button, [role=main] [aria-label="브랜드"] button')]
+    .filter(b => b.checkVisibility()) // 닫힌 머리글 '필터' 팝업 안의 브랜드 버튼은 제외
+    .filter(b => { const r = b.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).map(b => b.textContent)), []);
+  assert.equal(await phone.page.locator('[aria-label="상태"] button:visible').count(), 7); // 발주 필요 · 위험 · 주의 · 여유 · 참고 · 전체 · 과잉재고
+  await phone.page.getByRole('button', {name: '과잉재고'}).click();
+  await phone.page.getByRole('button', {name: '과잉재고', pressed: true}).waitFor();
+  await phone.page.getByRole('button', {name: /^발주 필요 \(위험\+주의\)/}).click();
   await shot(phone.page, 'forecast-mobile');
   assert.deepEqual(phone.errors, []);
   console.log('e2e 업로드 · 개요 · 판매 현황 · 발주 현황 · 휴대폰 배치: 통과');

@@ -1,7 +1,7 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-12 (af314d4 look refined and approved for Overview and Sales; next: review Order Status and Upload), branch `feat/react-astryx`.
+Last updated: 2026-11-12 (Order Status and Upload refinements; uncommitted, waiting for owner review), branch `feat/react-astryx`.
 
 **Next step needs owner approval:** the owner reviews the improved Overview and Sales (screenshots, Impeccable audit 25 → 28/40, then the owner's follow-up fixes below). Do not restyle other screens or start the lookup screen until they approve.
 
@@ -56,6 +56,15 @@ Refinements (Overview and Sales first; shared frame, sidebar and table styles al
   - Phone tables: sticky column keeps a 1px edge + soft shadow (always on phones; on desktop the edge appears only when scrolled), a swipe hint line in the legend, and the 품목별 거래처 column is 8rem on phones (200px on desktop).
   - Phone hero alarm: same 13px text, tighter padding and gaps.
   - 품목별 month cells use 6px side padding: with the new 12px default, '26.10월' was clipped to '26.1…' on desktop and phone. `checkNoClippedCells()` in the e2e test now fails on any clipped table cell on Overview, 거래처별 and 품목별 (verified to fail without the fix).
+- Order Status and Upload refinements (owner-approved list; uncommitted until the owner reviews screenshots):
+  - Order Status table: 발주할 수량 column 108px (the '= ① − ② − ③' header no longer wraps to a third line), 가용재고 / 입고예정 96px, 월평균 76px, month columns 64px with 6px side padding (`.dense`). '1,400' / '1,000' were clipped after the shared 12px cell padding.
+  - Expanded 근거: the 거래처별 발주 패턴 table spans two grid columns (one on narrow widths, container query); `MiniTable` now takes explicit numeric columns (`num`), cells keep whole words (no 'A상/사'), long names wrap only at spaces, numbers and headers stay on one line, and the table scrolls inside itself if needed.
+  - Hero settings table: 품명 / 상태 left-aligned, quantities right-aligned (the old rule right-aligned every column except 거래처 / 날짜).
+  - Icons: ⚙ → Cog6ToothIcon, ★ → StarIcon (amber, with an accessible name), 🔄 → ArrowPathIcon on Upload. Texts unchanged otherwise.
+  - Summary: 15px regular sentence, only '1개 품목' and '900개' bold in colour; same text so the e2e regex still matches. The calculation paragraph moved into a Collapsible '발주할 수량 계산 방법', closed by default (`defaultIsOpen={false}`; Astryx default is open); its text is unchanged except '행의 ▸' → '행 앞의 화살표 버튼'.
+  - Phone: toggle groups wrap, so every 상태 option (7) stays reachable.
+  - Upload: long paragraphs split into short list items with the same information (`.help-list`); success message is a subtle green box with an icon (`.alert-ok`, same shape as the hero alarm) instead of the filled Banner; '좌측 메뉴에서 Main을 확인하세요' → '전체 개요를 확인하세요' (`uploadDoneText`, marked `port:`; views.test.js maps the new wording back to production's for the comparison, e2e checks the new text).
+  - New e2e checks: no clipped cells on Order Status (default, expanded detail, rules open; desktop and phone), no word broken inside a table cell in the expanded detail (`checkNoBrokenWords`), hero table alignment, help closed by default, phone filters all inside the screen and the last one clickable. Both the clip check and the phone filter check were verified to fail with the fixes removed.
 - Approved by the owner. Not done (owner): the depletion timeline in expandable order details (later); Order Status and Upload refinements wait for a review round.
 
 ## Art direction v2 (current; owner asked for a real recomposition, not colour tweaks)

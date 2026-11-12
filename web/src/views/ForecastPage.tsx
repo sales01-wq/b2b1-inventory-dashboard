@@ -19,6 +19,7 @@ import {TextInput} from '@astryxdesign/core/TextInput';
 import {ToggleButton, ToggleButtonGroup} from '@astryxdesign/core/ToggleButton';
 import {Token} from '@astryxdesign/core/Token';
 import {VStack} from '@astryxdesign/core/VStack';
+import {Cog6ToothIcon, StarIcon} from '@heroicons/react/16/solid';
 import {PageFrame} from './PageFrame';
 import {HeroAlert} from './HeroAlert';
 import {NoData} from './NoData';
@@ -60,10 +61,13 @@ function Forecast() {
         <EmptyState isCompact title="조건에 맞는 품목이 없습니다." />
       ) : (
         <>
-          <Text type="supporting">
-            <Text type="supporting" weight="bold">발주할 수량 = ① 3개월 예상수요 − ② 가용재고 − ③ 입고예정</Text> (<Text type="supporting" weight="bold">{teamLabel()}</Text> 정상창고 기준). ①은 거래처별로{' '}
-            <Text type="supporting" weight="bold">마지막 주문일 + 평균 주문주기</Text>를 계산해 3개월 안에 들어올 주문만 더한 값이라, 한 번에 많이 가져가고 쉬는 거래처도 반영됩니다. 아래 작은 글씨는 가장 가까운 예상 주문입니다. 행의 ▸ 를 누르면 거래처별 근거가 열립니다.
-          </Text>
+          {/* 계산 설명: 기본은 접힘 (내용은 기존 문구 그대로) */}
+          <Collapsible defaultIsOpen={false} trigger={<Text type="supporting" weight="medium">발주할 수량 계산 방법</Text>}>
+            <Text type="supporting">
+              <Text type="supporting" weight="bold">발주할 수량 = ① 3개월 예상수요 − ② 가용재고 − ③ 입고예정</Text> (<Text type="supporting" weight="bold">{teamLabel()}</Text> 정상창고 기준). ①은 거래처별로{' '}
+              <Text type="supporting" weight="bold">마지막 주문일 + 평균 주문주기</Text>를 계산해 3개월 안에 들어올 주문만 더한 값이라, 한 번에 많이 가져가고 쉬는 거래처도 반영됩니다. 아래 작은 글씨는 가장 가까운 예상 주문입니다. 행 앞의 화살표 버튼을 누르면 거래처별 근거가 열립니다.
+            </Text>
+          </Collapsible>
           <ForecastTable m={m} shown={shown} />
           {m.list.length > shown.length && (
             <HStack hAlign="center">
@@ -169,12 +173,13 @@ function SummaryBar({m}: {m: Model}) {
   return (
     <Card>
       <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap">
-        <Text type="large" weight="bold">
+        {/* 문장은 보통 굵기, 품목 수 · 총 수량만 굵은 색 글자로 */}
+        <Text type="label" className="summary-line">
           {ui.forecastCustomer && <Text type="supporting">{ui.forecastCustomer} 기준 · </Text>}
           {m.needItems > 0 ? (
-            <span className="text-danger">지금 발주 필요 {fmt(m.needItems)}개 품목 <Text type="supporting">/ 총</Text> {fmt(m.needQty)}개</span>
+            <>지금 발주 필요 <b className="text-danger">{fmt(m.needItems)}개 품목</b> <Text type="supporting">/ 총</Text> <b className="text-danger">{fmt(m.needQty)}개</b></>
           ) : (
-            <span className="text-safe">지금 발주할 품목 없음</span>
+            <b className="text-safe">지금 발주할 품목 없음</b>
           )}
         </Text>
         <Button label="표 내려받기(CSV)" size="sm" variant="secondary" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(forecastListCsv())} />
@@ -198,7 +203,7 @@ export function GradeBadge({grade}: {grade: string}) {
 interface FRow {품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; horizon: number; available: number; incoming: number; avgQuarterly: number}
 
 // 열 너비(px): 고정 레이아웃이라 긴 머리글 · 품명이 다른 칸을 밀어내지 않음. 합계가 표의 최소 너비 (좁으면 옆으로 스크롤)
-const W = {pn: 150, brand: 100, name: 160, grade: 84, order: 90, horizon: 130, avail: 90, incoming: 90, avg: 72, month: 56};
+const W = {pn: 150, brand: 100, name: 160, grade: 84, order: 108, horizon: 130, avail: 96, incoming: 96, avg: 76, month: 64};
 const tableMin = (months: number) => W.pn + W.brand + W.name + W.grade + W.order + W.horizon + W.avail + W.incoming + W.avg + W.month * months;
 
 function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
@@ -217,7 +222,7 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
             <TableHeaderCell className="num" style={{width: W.avail}}>② 가용재고</TableHeaderCell>
             <TableHeaderCell className="num" style={{width: W.incoming}}>③ 입고예정</TableHeaderCell>
             <TableHeaderCell className="num" style={{width: W.avg}}>월평균<br />판매</TableHeaderCell>
-            {m.months.map((mm: {y: number; m: number}) => <TableHeaderCell key={mm.y + '-' + mm.m} className="num" style={{width: W.month}}>{mm.m + 1}월<br /><Text type="supporting">판매</Text></TableHeaderCell>)}
+            {m.months.map((mm: {y: number; m: number}) => <TableHeaderCell key={mm.y + '-' + mm.m} className="num dense" style={{width: W.month}}>{mm.m + 1}월<br /><Text type="supporting">판매</Text></TableHeaderCell>)}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -230,7 +235,7 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
                   <HStack gap={1} vAlign="center">
                     <IconButton label={open ? '근거 닫기' : '거래처별 근거 보기'} size="sm" variant="ghost" icon={<Icon icon={open ? 'chevronDown' : 'chevronRight'} />} onClick={() => act.toggleForecastDetail(x.품번)} />
                     <code className="nowrap">{x.품번}</code>
-                    {x.hero && <span title="히어로 품목: 수량 기준으로 판정"><Badge variant="yellow" label="★" /></span>}
+                    {x.hero && <span className="hero-mark" title="히어로 품목: 수량 기준으로 판정" role="img" aria-label="히어로 품목"><StarIcon width={14} height={14} aria-hidden /></span>}
                   </HStack>
                 </TableCell>
                 <TableCell><BrandBadge brand={x.brand} /></TableCell>
@@ -241,7 +246,7 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
                 <TableCell className="num">{fmt(x.available)}</TableCell>
                 <TableCell className="num">{x.incoming ? fmt(x.incoming) : '-'}</TableCell>
                 <TableCell className="num">{fmt(x.avgQuarterly / 3)}</TableCell>
-                {m.monthly(x).map((v: number, i: number) => <TableCell key={i} className="num muted">{v ? fmt(v) : '-'}</TableCell>)}
+                {m.monthly(x).map((v: number, i: number) => <TableCell key={i} className="num muted dense">{v ? fmt(v) : '-'}</TableCell>)}
               </TableRow>,
               open && (
                 <TableRow key={x.품번 + '-detail'}>
@@ -263,13 +268,14 @@ function Detail({x}: {x: FRow}) {
   const ml = state.scheduleMonthLabels;
   return (
     <Grid columns={{minWidth: 300, repeat: 'fit'}} gap={4}>
-      <VStack gap={2}>
+      <VStack gap={2} className="detail-wide">
         <Heading level={4}>거래처별 발주 패턴 (최근 12개월 · 주기로 다음 주문 예측)</Heading>
         {d.pattern.length === 0 ? (
           <Text type="supporting">최근 12개월간 판매 이력이 없습니다.</Text>
         ) : (
           <>
             <MiniTable
+              num={[1, 2, 3, 4, 5]}
               head={['거래처', '주문횟수', '평균 발주수량', '평균 발주주기', '다음 예상 주문', '분기 환산']}
               rows={d.pattern.map((p: {거래처: string; 주문횟수: number; 평균발주수량: number; 평균발주주기: number | null; 분기환산수량: number; next: {overdue: boolean} | null}) => [
                 <>{p.거래처}{ui.forecastCustomer && p.거래처 === ui.forecastCustomer && <> <Badge variant="green" label="선택됨" /></>}</>,
@@ -279,13 +285,14 @@ function Detail({x}: {x: FRow}) {
               ])}
             />
             <Text type="supporting">거래일자별 상세 (최근 20건)</Text>
-            <MiniTable head={['실적일자', '거래처', '수량']} rows={d.details.map((s: {실적일자: Date; 거래처: string; 수량: number}) => [s.실적일자.toLocaleDateString('ko-KR'), s.거래처, fmt(s.수량)])} />
+            <MiniTable num={[2]} head={['실적일자', '거래처', '수량']} rows={d.details.map((s: {실적일자: Date; 거래처: string; 수량: number}) => [s.실적일자.toLocaleDateString('ko-KR'), s.거래처, fmt(s.수량)])} />
           </>
         )}
       </VStack>
       <VStack gap={2}>
         <Heading level={4}>창고별 가용재고 (전체 창고)</Heading>
         <MiniTable
+          num={[1]}
           head={['창고', '가용재고']}
           rows={[
             ...wh.rows.map((r: {창고: string; 가용재고: number; picked: boolean}) => [<>{r.창고}{r.picked && <> <Badge variant="green" label="추가됨" /></>}</>, fmt(r.가용재고)]),
@@ -299,7 +306,7 @@ function Detail({x}: {x: FRow}) {
         {d.incomingRows.length === 0 ? (
           <Text type="supporting">예정된 입고가 없습니다.</Text>
         ) : (
-          <MiniTable head={['월', '날짜', '수량']} rows={d.incomingRows.map((r: {m: string; d: string; q: number}) => [r.m, r.d || '날짜 미정', fmt(r.q)])} />
+          <MiniTable num={[2]} head={['월', '날짜', '수량']} rows={d.incomingRows.map((r: {m: string; d: string; q: number}) => [r.m, r.d || '날짜 미정', fmt(r.q)])} />
         )}
         <Text type="supporting">예상 분기수요는 거래처별 평균 발주수량 × (91.25일 ÷ 평균 발주주기)의 합입니다.</Text>
       </VStack>
@@ -307,16 +314,17 @@ function Detail({x}: {x: FRow}) {
   );
 }
 
-/** 상세 안의 작은 표. 첫 칸 외에는 숫자 칸(오른쪽 정렬) */
-function MiniTable({head, rows}: {head: string[]; rows: ReactNode[][]}) {
+/** 상세 안의 작은 표. num = 숫자 칸(오른쪽 정렬) 열 번호. 칸 안에서 글자가 꺾이지 않고, 좁으면 표 안에서 옆으로 스크롤 */
+function MiniTable({head, rows, num}: {head: string[]; rows: ReactNode[][]; num: number[]}) {
+  const cls = (i: number) => (num.includes(i) ? 'num' : undefined);
   return (
     <Card padding={0}>
-    <Table className="wrap-head" density="compact" dividers="rows">
+    <Table className="mini-table" density="compact" dividers="rows">
       <TableHeader>
-        <TableRow>{head.map((h, i) => <TableHeaderCell key={h} className={i > 0 && h !== '거래처' && h !== '날짜' ? 'num' : undefined}>{h}</TableHeaderCell>)}</TableRow>
+        <TableRow>{head.map((h, i) => <TableHeaderCell key={h || i} className={cls(i)}>{h}</TableHeaderCell>)}</TableRow>
       </TableHeader>
       <TableBody>
-        {rows.map((r, k) => <TableRow key={k}>{r.map((c, i) => <TableCell key={i} className={i > 0 && head[i] !== '거래처' && head[i] !== '날짜' ? 'num' : undefined}>{c}</TableCell>)}</TableRow>)}
+        {rows.map((r, k) => <TableRow key={k}>{r.map((c, i) => <TableCell key={i} className={cls(i)}>{c}</TableCell>)}</TableRow>)}
       </TableBody>
     </Table>
     </Card>
@@ -349,7 +357,8 @@ function RulesEditor() {
   };
   const trigger = (
     <HStack gap={2} vAlign="center">
-      <Text type="label">⚙ 기준 설정 (고급) · 히어로 품목</Text>
+      <Cog6ToothIcon width={16} height={16} aria-hidden className="muted" />
+      <Text type="label">기준 설정 (고급) · 히어로 품목</Text>
       {alertN > 0 && <Badge variant="red" label={`알람 ${alertN}개`} />}
     </HStack>
   );
@@ -376,7 +385,7 @@ function RulesEditor() {
             <Text type="supporting">기준 변경은 업데이트 권한자만 할 수 있습니다.</Text>
           )}
           <hr className="rule" />
-          <Text type="body" weight="bold">★ 히어로 품목 위험 기준 <Text type="supporting">— 대량 출고가 많은 품목은 일수 대신 <strong>수량</strong>으로 판정합니다 (예: 가용재고 30,000개 이하면 위험 + 알람)</Text></Text>
+          <Text type="body" weight="bold"><StarIcon width={14} height={14} aria-hidden className="hero-mark" /> 히어로 품목 위험 기준 <Text type="supporting">— 대량 출고가 많은 품목은 일수 대신 <strong>수량</strong>으로 판정합니다 (예: 가용재고 30,000개 이하면 위험 + 알람)</Text></Text>
           <Text type="supporting">가용재고는 위쪽에서 선택한 팀({ui.team}) 창고 기준입니다. 위험 수량 이하 → 위험(알람), 주의 수량 이하 → 주의, 그 외 안전.</Text>
           {edit && (
             <HStack gap={2} vAlign="end" wrap="wrap">
@@ -391,6 +400,7 @@ function RulesEditor() {
             <Text type="supporting">등록된 히어로 품목이 없습니다.</Text>
           ) : (
             <MiniTable
+              num={[2, 3, 4]}
               head={['품번', '품명', '현재 가용재고', '위험 수량(이하)', '주의 수량(이하)', '상태', '']}
               rows={heroRows.map((h: {pn: string; h: {minQty: number; warnQty: number}; x?: {품명: string; available: number; grade: string}}) => [
                 <code>{h.pn}</code>, h.x ? h.x.품명 : '-', h.x ? fmt(h.x.available) : '-', fmt(h.h.minQty), h.h.warnQty > 0 ? fmt(h.h.warnQty) : '-',

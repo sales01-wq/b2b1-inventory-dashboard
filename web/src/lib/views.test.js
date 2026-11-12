@@ -328,7 +328,7 @@ describe('업로드 처리 = 운영 업로드 동작', () => {
     const p = await loadPort();
     const W = new JSDOM('').window;
     globalThis.FileReader = W.FileReader; globalThis.Papa = Papa;
-    const act = await run(p.api, W, STEPS, r => (r.error ? r.error : p.api.uploadDoneText(r)));
+    const act = await run(p.api, W, STEPS, r => (r.error ? r.error : p.api.uploadDoneText(r)).replace('전체 개요를 확인하세요', 'Main을 확인하세요')); // 메뉴 이름만 의도적으로 다름 (views.js uploadDoneText)
     vi.useRealTimers();
     expect(act).toEqual(exp);
     expect(exp[1].loaded).toBe(true);
