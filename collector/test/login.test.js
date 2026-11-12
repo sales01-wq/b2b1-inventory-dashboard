@@ -93,3 +93,15 @@ test('오류 문구에 계정 정보가 섞이면 가려서 내보냄', async ()
     assert.deepEqual(leaks(config, [r]), []);
   } finally { await s.close(); }
 });
+
+test('점검(diagnose): 로그인됨 · 입력 화면 · 낯선 화면을 구분하고 계정 정보는 다루지 않음', async () => {
+  const {diagnose} = await import('../src/recipe.js');
+  const s = await fakeErp(await mock().fetchAll(FILES, NOW), {auth: {...AUTH}});
+  const ctx = await pw.chromium.launchPersistentContext(path.join(setup(s).workDir, 'p'), {headless: true});
+  try {
+    const page = await ctx.newPage();
+    assert.equal((await diagnose(page, {erpUrl: s.base})).state, 'form'); // 세션 없음
+    await page.fill('input[type=password]', GOOD.password); await page.fill('input[name=id]', GOOD.user); await page.press('input[type=password]', 'Enter');
+    assert.equal((await diagnose(page, {erpUrl: s.base})).state, 'in');
+  } finally { await ctx.close(); await s.close(); }
+});

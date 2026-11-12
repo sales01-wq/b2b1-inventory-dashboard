@@ -6,6 +6,7 @@
     "start": "node src/run.js",
     "try": "node src/try.js",
     "reset-login": "node src/reset-login.js",
+    "check": "node src/check.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {

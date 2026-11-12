@@ -30,6 +30,14 @@ async function screenState(page, ms, afterSubmit) {
   return 'unknown';
 }
 
+/** 진단용 (계정 정보 없음): 주소를 열고 화면 상태를 알려 줌 */
+export async function diagnose(page, config) {
+  await page.goto(config.erpUrl);
+  await btn(page, '즐겨찾기 레이어 닫기').click({timeout: 3000}).catch(() => {});
+  const state = await screenState(page, 15000, false);
+  return {state, url: page.url(), title: await page.title().catch(() => '')};
+}
+
 /** 세션이 살아 있는지 (주소를 새로 열어 확인). 화면 상태가 사라지므로 판매실적 준비 기록도 지움 */
 export async function isLoggedIn(page, config) {
   salesReady.delete(page);
@@ -50,7 +58,7 @@ export async function login(page, cred, config, auth) {
   if (st === 'in') { auth?.success(); return; }
   // 로그인 화면: 자동으로 처리해도 되는 모양인지 먼저 확인 (제출 전)
   if (st === 'captcha') throw new Error('로그인 화면에 CAPTCHA(자동입력 방지)가 있어 자동 로그인할 수 없습니다 — 우회하지 않고 중단 (수동 로그인 필요)');
-  if (st !== 'form') throw new Error('ERP 로그인 화면을 알아볼 수 없어 자동 로그인하지 않습니다 (로그인 상태도 입력칸도 보이지 않음). 수동 로그인 후 확인해 주세요');
+  if (st !== 'form') throw new Error(`ERP 로그인 화면을 알아볼 수 없어 자동 로그인하지 않습니다 (로그인 상태도 입력칸도 보이지 않음). 현재 주소: ${page.url()} / 제목: ${await page.title().catch(() => '')} — npm run check 로 확인해 주세요`);
   const pw = page.locator('input[type=password]:visible');
   if (await pw.count() !== 1) throw new Error('ERP 로그인 화면을 알아볼 수 없어 자동 로그인하지 않습니다 (비밀번호 입력칸이 1개가 아님). 수동 로그인 후 확인해 주세요');
   const user = config.login?.userSelector
