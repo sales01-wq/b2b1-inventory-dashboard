@@ -1,0 +1,6 @@
+{
+  "_설명": "config.json 으로 복사해서 사용 (config.json 은 git 에 올라가지 않음)",
+  "uploadFolder": "G:\\.shortcut-targets-by-id\\<폴더ID>\\...\\재고관리_업로드용",
+  "workDir": "%LOCALAPPDATA%\\erp-collector",
+  "adapter": "erp"
+}

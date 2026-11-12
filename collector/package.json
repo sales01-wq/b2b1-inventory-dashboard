@@ -1,0 +1,13 @@
+{
+  "name": "erp-collector",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/run.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "adm-zip": "0.5.16",
+    "xlsx": "0.18.5"
+  }
+}

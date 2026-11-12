@@ -264,6 +264,14 @@ All run on the branch with test data only:
 
 **Needs the owner (credentials, live services or real files):** see the verification plan in the conversation of 2026-11-12: a separate Vercel project for the Preview, the OAuth origin, environment variables, the Apps Script source to confirm which actions write, real ERP files, and manual browser checks.
 
+## ERP collector MVP (`collector/`, mock data only)
+
+Windows PC collector → `ERP_BUNDLE_*.zip` in the existing Drive upload folder → Apps Script (existing 5-minute trigger) → sheet → snapshot → dashboard. No new server or database; product master untouched.
+- `collector/` (Node): validates all 5 files with the dashboard's own parser (`web/src/lib/parse.js`: sheet type, team, rows, no collapse vs previous), skips unchanged data (content hash), lock against overlapping runs, one zip per batch (a single Drive file, so the per-file watcher cannot apply half a batch), no stacking while the previous bundle is pending, keeps the last good state on any failure, re-uploads after an Apps Script rejection (`FAILED_` bundle). Real ERP adapter is a skeleton (`src/adapters/erp.js`); Windows scripts for encrypted credentials (DPAPI) and Task Scheduler (at logon + every 30 min).
+- `collector/apps-script/ErpBundle.gs`: additive Apps Script code (unzip → validate all → write all to `__new_*` tabs → swap by rename with rollback; allow-list of tab names; product master tab protected). Existing code changes: 3 lines in `checkForNewFilesInner_`. **Not applied to production**; apply to a copy first.
+- Tests: `cd collector && npm test` (20): collector flow and guards, and the Apps Script code on fake Drive / Sheets objects (all-or-nothing, rollback on write failure, master protection, temp sheets cleaned). Mutation checks confirmed.
+- Known limits: the 3-line change to `checkForNewFilesInner_` and the real Drive / Apps Script runtime are untested here; file names in `collector/src/files.js` (except `가용재고조회_olive`) are assumptions; the dashboard shows the existing "마지막 업데이트 · 수집기(자동)" time but not collector errors (they are in the PC's `run.log` / `state.json`).
+
 ## Remaining work (in this order, one screen at a time, report after each)
 
 The old code to port lives in root `index.html`. Line numbers refer to commit `d369ec2`.
