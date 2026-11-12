@@ -201,7 +201,16 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
    - **Expanded row:** pattern table (with "선택됨"), last 20 sales, warehouse table with 합계 / "재고없음", incoming table, notes. It stays inside the visible width while the table scrolls.
    - **Not built (unreachable in production):** the row-selection checkboxes, the "발주할 품목" panel and the selected-items CSV. Production has handlers for them, but `renderForecast` never draws the checkboxes, so users can't reach them. `forecastCsv()` is ported and tested in case it's wanted.
 
-**Test status:** `npm test` gives 121 / 121:
+8. **바코드 · 거래처 조회 (`LookupPage`), Phase 1 of 3 — approved by the owner and committed.** Owner decisions: alternatives move into a collapsible section in each card (open when there are any, a one-line note when none); warehouse rows stay add-only (removal only from the download list); mouse drag-to-scroll is part of this screen.
+   - **Input:** one card with 바코드 / 품번 and 품명 `TextArea`s (grow with content), 거래처 `TextInput` with the customer list (`datalist`), 조회, "바코드 지우기" (clears the barcode text and results, keeps 품명 / 거래처, as before), and a closed "입력 방법" `Collapsible` with the old help text. Input text lives in `ui.lookup*Text` so it survives page changes.
+   - **Results bar:** "조회 결과 N개 품목 · 못 찾음 N건", "선택 항목 보기 (N)" (N = download-list rows; scrolls to the download-list anchor), the "대체품목도 함께 담기" checkbox, "전체 추천 선택 (N개 품목)" (2+ items, as before). Not-found and "N개 더" messages per input.
+   - **Product card (was 5 panels + a right column):** head = 품번, brand, 품명, 거래처 · 바코드 · the input that matched; 필요 수량 (`NumberInput`, applied when the field is left or Enter, like the old change event) with "선택 창고 재고 대비 ±N개"; 추천 선택; 선택완료 (collapses to one line with the selection summary). Clicking the head toggles the old "선택됨" mark. Body: 창고별 가용재고 | 유통기한 (LOT) side by side (one column when the card is under 720px), 입고예정 chips below. Foot: 박스 · 중량 (`Collapsible`, open state in `ui.masterInfoExpanded`; only values missing in the file are editable, saved through `setBoxDim`) and the alternatives.
+   - **Selection states:** every selectable row has a checkbox column, a light green row tint and the old "추가됨" badge; incoming chips are Astryx `SelectableCard`s. Warehouses: add-only (clicking a picked row or its checkbox does nothing). LOTs and incoming chips: toggle. Rows work by mouse (whole row) and keyboard (checkbox, Space).
+   - **Drag-to-scroll (`app/useDragScroll.ts`):** horizontal overflow areas inside the page only; starts after 6px; a drag never becomes a row click; ignored on inputs, buttons, checkboxes, labels and `.col-resize-handle`; a mostly vertical drag is left to text selection; Alt + drag always selects text. Phase 2's 34-column table will get it automatically.
+   - **Phase 1 placeholder:** below the results, a "다운로드 목록 (N)" card marks where Phase 2 puts the table, PLT and CSV.
+   - Logic: no calculation changed. New view helpers in `views.js` (`expiryRows`, `incomingChips`, `boxModel`, `boxCompactRows`) and actions in `actions.js` (`lookupSearch`, `pickWarehouse`, `pickExpiry`, `pickIncoming`, `setNeededQty`, `autoSelectOne/All`, …) wrap the existing ported functions. Values passed on are stringified like production's `data-*` attributes.
+
+**Test status:** `npm test` gives 122 / 122:
 
 | File | Checks |
 |---|---|
@@ -209,6 +218,7 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
 | `views.test.js` | 72 (56 compared with production, incl. 5 hero-alarm cases and 35 order-status filter cases; 14 for new features: Overview tile → 발주 현황 counts for 7 cases, no-sales items made visible, 거래처별 totals vs raw sales for 6 cases, missing / current periods, one-month shift regression with month-unique quantities in 3 date formats) |
 | `shared.test.js` | 12 |
 | `actions.test.js` | 3 (team/brand; 19 sales steps; 28 order-status steps incl. rules save/reset and hero add/delete, each comparing filter state, the full filtered list and saved settings), all driven through production's real controls |
+| `lookup.view.test.js` | 1 (33 lookup steps driven through production's real lookup controls: search with quantities / commas / duplicates / customer / 품번 / empty input, warehouse add-only incl. 재고없음 and alternatives, LOT and incoming toggles, needed qty incl. 0, per-item and all recommendations with and without alternatives, collapse, active mark, box section, clear. Each step compares every rendered table row, chip, badge, diff text, collapsed summary and the selection lists) |
 
 `npm run e2e` passes and checks (since the design round also: '모든 브랜드' toggle, tile and link deep-links into 발주 현황, customer totals row 6,890, '-' cells, phone filter button and scrolling header):
 - the overview numbers (B2B1: 위험 1 / 주의 1 / 여유 3, 20 / 20 / 60 %, 참고 6, 거래처 4, 7,080);
@@ -219,6 +229,8 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
   - rules: invalid message, save 45 → "소진예상 30~45일", reset;
   - hero add → alarm, delete → alarm gone;
 - sticky first columns: no overlap on desktop; still pinned on a phone after scrolling; no page-level sideways scroll.
+- lookup (desktop): result counts, pasted quantity, warehouse add-only by row and by checkbox, keyboard Space, LOT and chip toggles, need diff after editing, alternatives open (2) / none note, 추천 선택 → 재고없음, 전체 추천 선택, "선택 항목 보기" scroll, collapse summary, box input kept after close/open, fixed values not editable, no clipped cells, "바코드 지우기";
+- lookup (phone): no clipped cells, no control outside the screen, a vertical drag does not scroll the table, a horizontal mouse drag scrolls it and is not treated as a row click (fails with the hook removed), a plain click still selects.
 
 `npm run typecheck` and `npm run build` are clean. Planted-bug checks: 38 real bugs so far (incl. 6 one-month shift bugs: parser ×2, month key ±1, quarter label, display cell; the display one is caught by e2e's cell-by-cell check against the raw sheet), all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
 
@@ -226,7 +238,7 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
 
 The old code to port lives in root `index.html`. Line numbers refer to commit `d369ec2`.
 
-1. **바코드 · 거래처 조회 (`LookupPage`)** (start only after owner approval), the most complex screen. Read these old functions first:
+1. **바코드 · 거래처 조회 (`LookupPage`)**: Phase 1 done (see Status 8, awaiting review). Phase 2 = download list table (34 columns, 3 sticky, resize, editable cells, drag-scroll); Phase 3 = PLT settings / summary / mixed detail and CSV. Start each only after approval. Old functions:
    - `renderLookupBatch` 2358, `renderResultBlock` 2256, `warehouseTableHtml` 2049, `expiryTableHtml` 2082, `incomingChipsHtml` 2123, `productMasterHtml` 2211, `renderExportPanel` 2680, `renderPltPackingHtml` 2830, the export column helpers (`EXPORT_COL_DEFAULTS`, `colWidth`, `stickyLeftOf` ~2150), `editableDimsCell`/`editableNumCell` 2573, and the lookup event wiring after 3207.
    - Move any calculations found there into `views.js` with comparison tests.
    - `warehouseRows(pn)` already exists (with `picked` for the "추가됨" badge); its `picked` flag is not covered by a test yet because the shipping list is empty in the order-status tests. Cover it when porting the lookup screen.
@@ -295,7 +307,7 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 
 - Approve the improved Overview and Sales? Remaining audit-2 ideas not yet done: on phones the signal tiles sit above the action table; 발주 현황 shows '-' for a 0 order quantity while Overview shows 0, and it has its own brand filter next to the global one.
 
-- Do they approve the 발주 현황 screen and the sales improvements (screenshots were sent)? Wait for approval before starting 바코드 · 거래처 조회.
+
 - Is it fine that the order-status table puts 품번 first (sticky) instead of 구분?
 - Should the unreachable production selection feature (row checkboxes → "발주할 품목" panel → selected CSV) be added as a new feature, or left out as in production's actual behaviour?
 - When will the ERP samples be available?

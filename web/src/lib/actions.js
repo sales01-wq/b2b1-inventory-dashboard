@@ -3,6 +3,8 @@
 import {state, ui, emit} from './store.js';
 import {salesForTeam, computeDerived, brandPasses} from './forecast.js';
 import {addPnTokens, addForecastPnTokens, inSignal} from './views.js';
+import {doLookupBatch, addToExport, toggleIncoming, toggleExpiry, applyAutoSelectForItem} from './lookup.js';
+import {num} from './parse.js';
 
 /* teamToggle 클릭 (3113행) */
 export function setTeam(team){
@@ -87,3 +89,43 @@ export function openForecastSignal(grade){
   emit();
 }
 export function setRulesOpen(open){ ui.rulesOpen = open; }
+
+/* ---------------- 바코드 · 거래처 조회 (lookupForm / lookupResults 이벤트, 3326행~) ---------------- */
+// port: 입력칸 글자는 화면을 옮겨도 남도록 ui 에 둠 (기존은 숨겨진 화면의 입력칸이 값을 들고 있었음)
+ui.lookupBarcodeText = ''; ui.lookupNameText = ''; ui.lookupCustomerText = '';
+export function setLookupText(field, v){ ui[field] = v; emit(); }
+/** 조회 (submit). 데이터가 없으면 화면이 안내하므로 여기서는 바코드 · 품명 둘 다 비었을 때만 무시 */
+export function lookupSearch(){
+  const bc = ui.lookupBarcodeText.trim(), nq = ui.lookupNameText.trim(), cu = ui.lookupCustomerText.trim();
+  if(!state.loaded || (!bc && !nq)) return;
+  doLookupBatch(bc, nq, cu); emit();
+}
+/* 바코드 칸 '지우기': 바코드 입력과 조회 결과를 비움 (품명 · 거래처 입력은 그대로) */
+export function clearLookupBarcode(){ ui.lookupBarcodeText = ''; ui.lookupItems = []; emit(); }
+export function autoSelectOne(batchIdx){ applyAutoSelectForItem(ui.lookupItems[batchIdx]); emit(); }
+export function autoSelectAll(){
+  if(!ui.lookupItems || ui.lookupItems.length===0) return;
+  ui.lookupItems.forEach(item=>applyAutoSelectForItem(item)); emit();
+}
+export function setAutoSelectAlternatives(v){ ui.autoSelectIncludeAlternatives = v; emit(); }
+export function toggleCollapse(batchIdx){
+  if(ui.collapsedItems.has(batchIdx)) ui.collapsedItems.delete(batchIdx); else ui.collapsedItems.add(batchIdx);
+  emit();
+}
+export function toggleMasterInfo(pn){
+  if(ui.masterInfoExpanded.has(pn)) ui.masterInfoExpanded.delete(pn); else ui.masterInfoExpanded.add(pn);
+  emit();
+}
+export function toggleActiveProduct(batchIdx){ ui.activeBatchIdx = (ui.activeBatchIdx===batchIdx) ? null : batchIdx; emit(); }
+/* 창고 행: 담기만 함 (이미 담긴 창고를 다시 눌러도 빠지지 않음 — 빼기는 다운로드 목록에서) */
+// 기존은 값을 data-* 속성(글자)으로 넘겼으므로 같은 모양(null → '')으로 맞춤
+const attr = v => String(v===null||v===undefined?'':v);
+export function pickWarehouse(row, warehouse, avail){ addToExport(attr(row.품번), attr(row.품명), attr(row.바코드), attr(row.거래처), attr(warehouse), Number(avail)); emit(); }
+export function pickIncoming(row, chip){ toggleIncoming(attr(row.품번), attr(row.품명), attr(row.바코드), attr(row.거래처), attr(chip.m), attr(chip.d||''), Number(chip.q)); emit(); }
+export function pickExpiry(row, lot){ toggleExpiry(attr(row.품번), attr(row.품명), attr(row.바코드), attr(row.거래처), attr(lot.lot), attr(lot.date), Number(lot.avail)); emit(); }
+/* 필요 수량: 0 이하 · 빈 값이면 지움 */
+export function setNeededQty(pn, value){
+  const v = num(value);
+  if(v>0) ui.neededQty.set(pn, v); else ui.neededQty.delete(pn);
+  emit();
+}

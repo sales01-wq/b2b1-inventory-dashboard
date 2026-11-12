@@ -4,6 +4,7 @@ import {fmt} from './format';
 import {state, ui, settings} from './store.js';
 import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, nextOrderOf, usableAvailable, getRules, ruleThresholds} from './forecast.js';
 import {custAdjust, custShortSummaryCached, productList, buildSkuStatusData, buildPivotRows} from './sales.js';
+import {boxInfoFor} from './lookup.js';
 
 /* renderOverview (1210행) */
 export function overviewModel(){
@@ -301,4 +302,74 @@ export function warehouseRows(pn){
     return {rows:[{창고:'재고없음', 가용재고:0, 현재고:0, 입고예정:0, 출고예정:0, picked:ui.exportList.some(x=>x.key===pn+'||재고없음')}], total:null};
   }
   return {rows:invRows.rows.map(r=>({...r, picked:ui.exportList.some(x=>x.key===pn+'||'+r.창고)})), total:invRows.total};
+}
+
+/* ---------------- 바코드 · 거래처 조회 (renderLookupBatch 2360행 · renderResultBlock 2251행) ---------------- */
+/* expiryTableHtml (2084행) 의 데이터 부분: 2년 이상 남은 LOT 이 있으면 그것만(유통기한 짧은 순), 없으면 전부(긴 순) + 주의 표시. LOT 이 없으면 null */
+export function expiryRows(pn){
+  const all = (state.expiryByProduct.get(pn)||[]).filter(e=>e.가용재고수량>0);
+  if(all.length===0) return null;
+  const now = new Date();
+  const twoYearsOut = new Date(now); twoYearsOut.setFullYear(twoYearsOut.getFullYear()+2);
+  const safe = all.filter(e=> e.유통기한 && e.유통기한>=twoYearsOut).sort((a,b)=>a.유통기한-b.유통기한);
+  const risky = all.filter(e=> !(e.유통기한 && e.유통기한>=twoYearsOut)).sort((a,b)=>{
+    if(!a.유통기한) return 1; if(!b.유통기한) return -1;
+    return b.유통기한-a.유통기한;
+  });
+  const list = safe.length>0 ? safe : risky;
+  return {warn: safe.length===0, rows: list.map(e=>{
+    const lot = e.LOT||'-', date = e.유통기한Str||'-';
+    return {lot, date, avail:e.가용재고수량, picked: ui.expiryList.some(x=>x.key===pn+'||EXP||'+lot+'||'+date)};
+  })};
+}
+
+/* incomingChipsHtml (2108행) 의 데이터 부분: 제품일정표 3개월 중 수량이 있는 달 */
+export function incomingChips(prod){
+  const ml = state.scheduleMonthLabels;
+  const chips = [];
+  if(prod.aug_q>0) chips.push({m:ml[0], d:prod.aug_d, q:prod.aug_q});
+  if(prod.sep_q>0) chips.push({m:ml[1], d:prod.sep_d, q:prod.sep_q});
+  if(prod.oct_q>0) chips.push({m:ml[2], d:prod.oct_d, q:prod.oct_q});
+  return chips.map(c=>({...c, picked: ui.incomingList.some(x=>x.key===prod.품번+'||'+c.m)}));
+}
+
+/* productMasterHtml (2211행): 박스 · 중량. 파일에 값이 있으면 고정 표시, 없으면 직접 입력(manual) */
+export function boxModel(pn){
+  const m = state.masterByProduct.get(pn) || {};
+  const manual = ui.manualBoxInfo.get(pn) || {};
+  const rows = [
+    {label:'아웃박스', prefix:'아웃', weightField:'아웃무게g', countField:'아웃입수'},
+    {label:'인박스', prefix:'인', weightField:'인무게g', countField:'인입수'},
+    {label:'제품', prefix:'제품', weightField:'제품무게g', countField:null},
+  ].map(r=>{
+    const mw = m[r.prefix+'W'], md = m[r.prefix+'D'], mh = m[r.prefix+'H'];
+    const cell = f => (m[f] ? {fixed:fmt(m[f])} : {field:f, value:manual[f]||null});
+    return {
+      label:r.label,
+      dims: (mw||md||mh) ? {fixed:`${fmt(mw||0)}×${fmt(md||0)}×${fmt(mh||0)}`}
+        : {fields:['W','D','H'].map(k=>({field:r.prefix+k, value:manual[r.prefix+k]||null, placeholder:k}))},
+      weight: cell(r.weightField),
+      count: r.countField ? cell(r.countField) : null,
+    };
+  });
+  const plt = (m.PLT박스수||m.PLT입수||m.PLT무게kg||m.PLT단수) ? {
+    kind: m.입고PLT종류||'',
+    cells: [
+      ['1단 박스수', m.PLT1단?fmt(m.PLT1단):'-'], ['단수', m.PLT단수?fmt(m.PLT단수):'-'],
+      ['총 높이', m.PLT총높이cm?fmt(m.PLT총높이cm)+'cm':'-'], ['PLT당 박스수', m.PLT박스수?fmt(m.PLT박스수):'-'],
+      ['PLT당 입수', m.PLT입수?fmt(m.PLT입수):'-'], ['PLT 무게', m.PLT무게kg?fmt(m.PLT무게kg)+'kg':'-'],
+    ],
+  } : null;
+  return {rows, plt};
+}
+
+/* productMasterHtml(compact) : 대체 품번 카드의 읽기 전용 요약 (boxInfoFor = 직접 입력값 우선) */
+export function boxCompactRows(pn){
+  const box = boxInfoFor(pn);
+  const dims = (w,d,h) => (w||d||h) ? `${fmt(w)}×${fmt(d)}×${fmt(h)}` : null;
+  return [
+    {label:'아웃박스', dim:dims(box.아웃W,box.아웃D,box.아웃H), weight:box.아웃무게g},
+    {label:'인박스', dim:dims(box.인W,box.인D,box.인H), weight:box.인무게g},
+    {label:'제품', dim:dims(box.제품W,box.제품D,box.제품H), weight:box.제품무게g},
+  ].map(r=>({label:r.label, dim:r.dim, weight: r.dim ? (r.weight?fmt(r.weight):'-') : null}));
 }

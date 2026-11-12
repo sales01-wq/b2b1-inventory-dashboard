@@ -263,6 +263,81 @@ try {
   assert.equal(await page.getByText(/^업데이트 완료/).textContent(), '업데이트 완료 — 새로 반영: 가용재고조회, 제품일정표, 일자별판매실적분석, 유통기한, 상품마스터. 좌측 메뉴에서 전체 개요를 확인하세요.');
   assert.deepEqual(errors, []);
 
+  // ---- 바코드 · 거래처 조회 (1단계: 입력 · 품목 카드). 선택 동작은 lookup.view.test.js 에서 운영 화면과 비교, 여기서는 실제 화면 조작
+  await page.goto(base + '/#/lookup');
+  await page.getByLabel('바코드 / 품번').fill('8800000000011 1500\nMT003\nUNKNOWN');
+  await page.getByLabel('품명 검색 (부분 일치)').fill('세트');
+  await page.getByRole('button', {name: '조회', exact: true}).click();
+  assert.equal(await text(page.locator('.lookup-toolbar > :first-child')), '조회 결과 5개 품목 · 못 찾음 1건');
+  const card = pn => page.locator('.product-card').filter({has: page.locator('code.pn-lg', {hasText: new RegExp('^' + pn + '$')})});
+  const sb1 = card('SB001');
+  assert.equal(await sb1.getByLabel('필요 수량').inputValue(), '1500'); // 바코드 뒤 숫자 = 필요 수량
+  assert.equal(await text(sb1.locator('.need-diff b')), '-1,500개');
+  // 창고: 행을 누르면 담김(체크 + 추가됨), 다시 눌러도 · 체크칸을 눌러도 빠지지 않음
+  const emp = sb1.locator('.pick-row', {hasText: 'EMP 물류'});
+  await emp.locator('td').nth(1).click();
+  assert.equal(await emp.getByRole('checkbox').isChecked(), true);
+  assert.equal(await emp.getByText('추가됨').count(), 1);
+  assert.equal(await text(sb1.locator('.need-diff b')), '-1,200개');
+  await emp.locator('td').nth(1).click();
+  await emp.getByRole('checkbox').click();
+  assert.equal(await emp.getByRole('checkbox').isChecked(), true);
+  await page.getByRole('button', {name: '선택 항목 보기 (1)'}).waitFor();
+  // 키보드: 체크칸에서 Space 로 담기
+  const b2 = sb1.locator('.pick-row', {hasText: 'B2B2팀 창고'});
+  await b2.getByRole('checkbox').focus();
+  await page.keyboard.press('Space');
+  assert.equal(await b2.getByRole('checkbox').isChecked(), true);
+  assert.equal(await text(sb1.locator('.need-diff b')), '-400개');
+  // LOT: 누르면 담기고 다시 누르면 빠짐
+  const lot = sb1.locator('.pick-row').filter({has: page.getByRole('checkbox', {name: 'LOT L-LONG2 담기', exact: true})});
+  await lot.locator('td').nth(1).click();
+  assert.equal(await lot.getByRole('checkbox').isChecked(), true);
+  await lot.locator('td').nth(2).click();
+  assert.equal(await lot.getByRole('checkbox').isChecked(), false);
+  // 입고예정 칩: 누르면 담기고 다시 누르면 빠짐
+  const chip = sb1.locator('.incoming-chips').getByRole('checkbox').first();
+  await chip.click({force: true});
+  assert.equal(await chip.isChecked(), true);
+  assert.equal(await sb1.locator('.incoming-chips').getByText('추가됨').count(), 1);
+  await chip.click({force: true});
+  assert.equal(await chip.isChecked(), false);
+  // 필요 수량 바꾸면 부족/여유도 바뀜
+  await sb1.getByLabel('필요 수량').fill('1000');
+  await sb1.getByLabel('필요 수량').press('Tab'); // 입력을 마치면 반영 (기존과 같음)
+  assert.equal(await text(sb1.locator('.need-diff b')), '+100개');
+  // 대체 품번: 있으면 펼친 채로(2개), 없으면 한 줄 안내
+  assert.equal(await card('SB004').locator('.alt-item').count(), 2);
+  assert.equal(await sb1.getByText(/^동일 바코드 다른 품번 없음/).count(), 1);
+  // 추천 선택: 재고 없는 품목은 '재고없음' 이 담김 · 전체 추천 선택
+  await card('MT003').getByRole('button', {name: '추천 선택'}).click();
+  assert.equal(await card('MT003').locator('.pick-row', {hasText: '재고없음'}).getByRole('checkbox').isChecked(), true);
+  await page.getByRole('button', {name: '전체 추천 선택 (5개 품목)'}).click();
+  assert.equal(await card('SB006').locator('.pick-row', {hasText: 'EMP 물류'}).first().getByRole('checkbox').isChecked(), true);
+  // 선택 항목 보기 → 다운로드 목록 자리로 이동
+  const jump = page.getByRole('button', {name: /^선택 항목 보기 \(\d+\)$/});
+  await jump.click();
+  await page.waitForFunction(() => { const r = document.getElementById('lookup-export').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }); // 맨 아래라 더 못 올라가도 목록 전체가 보임
+  // 선택완료(접기) → 선택 요약 한 줄 → 펼치기
+  await sb1.getByRole('button', {name: '선택완료'}).click();
+  assert.equal(await text(page.locator('.product-card.is-collapsed').first()), 'SB001 성분 에디터 세럼 창고 3개 · 유통기한 1개 펼치기'); // EMP · B2B2 + 추천(B2B1팀 창고) · 추천 LOT
+  await page.locator('.product-card.is-collapsed').getByRole('button', {name: '펼치기'}).click();
+  // 박스 정보: 파일에 값이 없는 칸만 입력, 접었다 펴도 입력값 유지
+  const sb5 = card('SB005');
+  await sb5.getByText('아웃박스 · 인박스 · 중량 정보').click();
+  await sb5.getByLabel('아웃박스 W(mm)').fill('400');
+  await sb5.getByText('아웃박스 · 인박스 · 중량 정보').click();
+  await sb5.getByText('아웃박스 · 인박스 · 중량 정보').click();
+  assert.equal(await sb5.getByLabel('아웃박스 W(mm)').inputValue(), '400');
+  assert.equal(await card('SB006').getByLabel('아웃박스 W(mm)').count(), 0); // SB006 은 파일에 규격이 있어 고정 표시
+  await checkNoClippedCells(page);
+  await shot(page, 'lookup');
+  // 바코드 지우기: 결과도 비움 (품명 입력은 그대로)
+  await page.getByRole('button', {name: '바코드 지우기'}).click();
+  assert.equal(await page.locator('.product-card').count(), 0);
+  assert.equal(await page.getByLabel('품명 검색 (부분 일치)').inputValue(), '세트');
+  assert.deepEqual(errors, []);
+
   // ---- 휴대폰: 넓은 표는 표 안에서만 옆으로 스크롤, 첫 칸은 고정
   const phone = await openWithData(browser, {...devices['iPhone 13']});
   // 휴대폰: 제목 · 필터 버튼이 본문 안에 있어 같이 스크롤됨, 팀 · 브랜드는 '필터' 버튼 하나로
@@ -294,8 +369,34 @@ try {
   await phone.page.getByRole('button', {name: '과잉재고', pressed: true}).waitFor();
   await phone.page.getByRole('button', {name: /^발주 필요 \(위험\+주의\)/}).click();
   await shot(phone.page, 'forecast-mobile');
+  // 휴대폰 조회: 입력은 한 줄에 하나, 버튼 · 칸이 화면 밖으로 나가지 않음, 넓은 창고 표는 마우스로 끌어 옆으로 이동
+  await phone.page.goto(base + '/#/lookup');
+  await phone.page.getByLabel('바코드 / 품번').fill('8800000000011 1500\n8800000000097');
+  await phone.page.getByRole('button', {name: '조회', exact: true}).click();
+  await phone.page.locator('.product-card').first().waitFor();
+  await checkNoClippedCells(phone.page);
+  assert.deepEqual(await phone.page.evaluate(() => [...document.querySelectorAll('[role=main] button, [role=main] input, [role=main] textarea')]
+    .filter(b => b.checkVisibility() && !b.closest('.pick-scroll'))
+    .filter(b => { const r = b.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).map(b => b.textContent || b.getAttribute('aria-label'))), []);
+  const wrow = phone.page.locator('.product-card').first().locator('.pick-row', {hasText: 'EMP 물류'});
+  await wrow.scrollIntoViewIfNeeded();
+  const cell = await wrow.locator('td').nth(2).boundingBox();
+  const scroller = () => phone.page.evaluate(() => { const t = document.querySelector('.product-card .pick-table'); for (let e = t; e; e = e.parentElement) if (e.scrollLeft > 0) return e.scrollLeft; return 0; });
+  assert.equal(await scroller(), 0);
+  // 세로로 끌면(글자 선택) 표가 움직이지 않음
+  await phone.page.mouse.move(cell.x + 10, cell.y + 5); await phone.page.mouse.down(); await phone.page.mouse.move(cell.x + 12, cell.y + 60, {steps: 5}); await phone.page.mouse.up();
+  assert.equal(await scroller(), 0);
+  // 옆으로 끌면 스크롤되고, 그 끌기는 행 선택(클릭)으로 처리되지 않음
+  await phone.page.mouse.move(cell.x + cell.width - 4, cell.y + cell.height / 2); await phone.page.mouse.down();
+  await phone.page.mouse.move(cell.x - 120, cell.y + cell.height / 2, {steps: 8}); await phone.page.mouse.up();
+  assert.ok(await scroller() > 0);
+  assert.equal(await wrow.getByRole('checkbox').isChecked(), false);
+  // 그냥 누르면 담김
+  await wrow.locator('td').nth(1).click();
+  assert.equal(await wrow.getByRole('checkbox').isChecked(), true);
+  await shot(phone.page, 'lookup-mobile');
   assert.deepEqual(phone.errors, []);
-  console.log('e2e 업로드 · 개요 · 판매 현황 · 발주 현황 · 휴대폰 배치: 통과');
+  console.log('e2e 업로드 · 개요 · 판매 현황 · 발주 현황 · 조회 · 휴대폰 배치: 통과');
 } finally {
   await browser.close();
   await server.close();

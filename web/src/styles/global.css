@@ -155,3 +155,75 @@ tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var
 .medium { font-weight: 500; }
 /* 열 너비를 정한 표(table-layout: fixed): Astryx 머리글 칸의 max-width: 0 (말줄임용) 이 지정한 너비를 무시하게 만들어서 해제 */
 .fixed-cols th { max-width: none; }
+
+/* ---------- 바코드 · 거래처 조회 ---------- */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.tnum { font-variant-numeric: tabular-nums; }
+.alert-note { border-color: var(--color-border); background: var(--color-background-muted); }
+/* 입력: 바코드 · 품명 · 거래처 · 버튼을 한 줄에 (좁으면 차례로 쌓임). 입력칸은 내용만큼 늘어남 */
+.lookup-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(12rem, 16rem) auto; gap: 0.75rem; align-items: start; }
+/* 입력칸이 내용만큼 늘어나도 버튼은 입력칸 첫 줄에 맞춤 (라벨 높이만큼 내림) */
+.lookup-actions { margin-block-start: 1.5625rem; }
+.lookup-area textarea { field-sizing: content; min-height: 2lh; max-height: 8lh; }
+.lookup-help { margin-block-start: 0.75rem; }
+@media (max-width: 1023px) { .lookup-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 767px) {
+  .lookup-form { grid-template-columns: minmax(0, 1fr); }
+  .lookup-actions { margin-block-start: 0; }
+  .lookup-actions > :first-child { flex: 1; }
+}
+.query-label { color: var(--color-text-secondary); }
+.query-label code, code.pn { font-family: var(--font-family-body); font-size: inherit; font-weight: 500; letter-spacing: 0.01em; color: var(--color-text-primary); }
+code.pn-lg { font-size: 0.9375rem; font-weight: 600; }
+.scroll-anchor { scroll-margin-top: 1rem; }
+
+/* 품목 카드: 머리(품번 · 품명 · 필요 수량 · 버튼) / 본문(창고 | LOT, 아래 입고예정) / 아래(박스 · 대체 품번) */
+.product-card { container-type: inline-size; }
+.product-card.is-active { box-shadow: 0 0 0 1px var(--color-text-secondary); }
+.product-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 0.75rem 1.5rem; padding: 1rem 1rem 0.875rem; border-block-end: 1px solid var(--color-border); cursor: pointer; }
+.product-meta .query-label { white-space: nowrap; }
+.need-input { width: 7.5rem; }
+.need-diff { display: grid; gap: 0.125rem; padding-block-end: 0.25rem; }
+.need-diff b { font-weight: 650; }
+.product-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 1.25rem 1.5rem; padding: 1rem; }
+.product-section { display: grid; gap: 0.5rem; align-content: start; min-width: 0; }
+.span-all { grid-column: 1 / -1; }
+@container (max-width: 720px) { .product-body { grid-template-columns: minmax(0, 1fr); } }
+.section-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.125rem 0.75rem; }
+.product-foot { display: grid; gap: 0.875rem; padding: 0.875rem 1rem 1rem; border-block-start: 1px solid var(--color-border); }
+.product-collapsed { display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; cursor: pointer; }
+.empty-box { padding: 0.75rem 1rem; border-radius: var(--radius-element); background: var(--color-background-muted); }
+
+/* 담을 수 있는 행: 체크 칸 + 행 전체를 눌러도 됨. 담긴 행은 옅은 초록 바탕 */
+.pick-scroll { min-width: 0; overflow-x: auto; }
+.pick-table th, .pick-table td { white-space: nowrap; } /* 창고 · LOT · 날짜는 한 줄, 좁으면 표 안에서 옆으로 스크롤 */
+.pick-table .pick-row { cursor: pointer; }
+.pick-table .pick-row.is-locked { cursor: default; }
+.pick-table .pick-row.is-picked > td { background-color: color-mix(in srgb, var(--color-text-success) 6%, var(--color-background-surface)); }
+.astryx-table-row.pick-row > .pick-cell, .pick-table .astryx-table-row > th.pick-cell { width: 2.25rem; padding-inline: 0.75rem 0.25rem; }
+.pick-table .total-row > td { background: var(--color-background-muted); }
+.incoming-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.incoming-chips > * { min-width: 9rem; }
+
+/* 박스 입력 · PLT 정보 */
+.box-num { display: inline-block; width: 5.5rem; }
+.dim-part { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--color-text-secondary); }
+.dim-part .box-num { width: 4.5rem; }
+.plt-info { display: grid; grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr)); gap: 0.5rem 1rem; }
+.plt-info > div { display: grid; gap: 0.125rem; }
+
+/* 대체 품번: 품번마다 창고 · LOT · 입고예정 · 박스를 작게 */
+.alt-none { padding-block: 0.125rem; }
+.alt-list { display: grid; gap: 0.75rem; padding-block-start: 0.75rem; }
+.alt-item { display: grid; gap: 0.75rem; padding: 0.875rem; border: 1px solid var(--color-border); border-radius: var(--radius-container); }
+.alt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.75rem 1.25rem; align-items: start; }
+.alt-grid .incoming-chips > * { min-width: 7.5rem; }
+.mini-table .astryx-table-row > td[colspan]:last-child { padding-inline-start: 0.5rem; } /* 대체 품번 박스 표의 '정보 없음' 을 규격 칸에 맞춤 */
+
+/* 드래그 스크롤 중 */
+.drag-scrolling, .drag-scrolling * { cursor: grabbing !important; user-select: none !important; }
+@media (max-width: 767px) {
+  .product-head { padding: 0.875rem 0.875rem 0.75rem; }
+  .product-body { padding: 0.875rem; }
+  .product-foot { padding: 0.75rem 0.875rem 0.875rem; }
+}
