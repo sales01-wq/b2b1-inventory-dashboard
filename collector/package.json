@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node src/run.js",
     "try": "node src/try.js",
+    "pack": "node src/pack.js",
     "reset-login": "node src/reset-login.js",
     "check": "node src/check.js",
     "netcheck": "node src/netcheck.js",

@@ -4,6 +4,7 @@ import {ProgressBar} from '@astryxdesign/core/ProgressBar';
 import {VStack} from '@astryxdesign/core/VStack';
 import {state} from '../lib/store.js';
 import {shared} from '../data/shared.js';
+import {syncNotice} from '../lib/views.js';
 import {useStore} from './useStore';
 import {DEMO} from './demo';
 import {READ_ONLY} from './defaults';
@@ -12,12 +13,15 @@ import {READ_ONLY} from './defaults';
 export function StatusBanners() {
   useStore();
   const b = shared.bar;
-  if (!b && !state.error && !DEMO && !READ_ONLY) return null;
+  const notice = shared.active ? syncNotice(shared.meta) : {problem: null, stale: null};
+  if (!b && !state.error && !DEMO && !READ_ONLY && !notice.problem && !notice.stale) return null;
   return (
     <VStack gap={2} padding={2}>
       {READ_ONLY && <Banner status="warning" title="읽기 전용 미리보기" description="운영 데이터를 바꾸는 요청(설정 저장 · 서버 업데이트 · Apps Script 파일 처리)은 보내지 않습니다. 입력한 설정은 이 브라우저에만 저장됩니다." collapsible={false} />}
       {DEMO && <Banner status="info" title="미리보기 — 테스트 데이터입니다" description="실제 재고 · 판매 데이터가 아니며, 로그인과 외부 연결(구글 시트 · 서버)은 꺼져 있습니다." collapsible={false} />}
       {b && <MessageBanner msg={b} />}
+      {notice.problem && <Banner status="error" title="최근 업로드 문제" description={notice.problem} collapsible={false} />}
+      {notice.stale && <Banner status="warning" title="데이터가 오래되었습니다" description={notice.stale} collapsible={false} />}
       {state.error && (
         <Banner
           status="error"

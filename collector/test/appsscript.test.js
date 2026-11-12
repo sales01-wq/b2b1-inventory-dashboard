@@ -1,48 +1,12 @@
 // Apps Script 추가 코드(ErpBundle.gs)를 가짜 Drive · 시트 객체 위에서 실행해 "전부 아니면 전무"와 상품마스터 보호를 확인
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import crypto from 'node:crypto';
-import vm from 'node:vm';
 import {zipSync, unzipSync} from 'fflate';
-import {readSheets} from '../src/xlsx.js';
 import mock from '../src/adapters/mock.js';
 import {FILES, fileName} from '../src/files.js';
+import {world} from './gas-fake.js';
 
 const NOW = new Date('2026-11-12T01:00:00Z');
-const GS = fs.readFileSync(new URL('../apps-script/ErpBundle.gs', import.meta.url), 'utf8');
-// 기존 Apps Script 의 cleanBaseName (원본과 동일한 규칙)
-const CLEAN = `function cleanBaseName(fileName) {
-  let name = fileName.replace(/\\.(xlsx|xls)$/i, ''); name = name.replace(/\\s*\\(\\d+\\)\\s*$/, '');
-  name = name.replace(/[_\\-\\s]?\\d{4}[-.]?\\d{2}[-.]?\\d{2}(?=[_\\-\\s]|$)/g, '');
-  name = name.replace(/[_\\-\\s]{2,}/g, '_').replace(/[_\\-\\s]+$/, ''); name = name.trim(); return name || 'data'; }`;
-
-function world({failWriteOn} = {}) {
-  const tabs = new Map(); // 대상 스프레드시트: 이름 → 2차원 배열
-  const props = {};
-  const trashed = [];
-  const mkSheet = (name, data = []) => { const sh = {name, data, getName: () => sh.name, setName: n => { tabs.delete(sh.name); sh.name = n; tabs.set(n, sh); }, clear: () => { sh.data = []; }, getDataRange: () => ({getValues: () => sh.data}), getRange: () => ({setValues: v => { if (failWriteOn && sh.name === failWriteOn) throw new Error('쓰기 실패(시뮬레이션)'); sh.data = v; }})}; tabs.set(name, sh); return sh; };
-  const ss = {getSheetByName: n => tabs.get(n) || null, insertSheet: n => mkSheet(n), deleteSheet: sh => tabs.delete(sh.name), getSheets: () => [...tabs.values()]};
-  const temps = new Map(), parsed = new Map();
-  const hash = b => crypto.createHash('sha1').update(Buffer.from(b)).digest('hex');
-  const blob = (name, bytes) => ({getName: () => name, getBytes: () => bytes, data: bytes, setContentType() { return this; }});
-  const folder = () => { const files = []; const f = {files, getFiles: () => { let i = 0; return {hasNext: () => i < files.length, next: () => files[i++]}; }}; return f; };
-  const source = folder(), processed = folder();
-  const addFile = (folderObj, name, bytes) => { const file = {name, bytes, parent: folderObj, getName: () => file.name, setName: n => { file.name = n; }, getBlob: () => blob(file.name, file.bytes), moveTo: t => { file.parent.files.splice(file.parent.files.indexOf(file), 1); t.files.push(file); file.parent = t; }}; folderObj.files.push(file); return file; };
-  const ctx = {
-    TARGET_SPREADSHEET_ID: 'T', MimeType: {GOOGLE_SHEETS: 'sheets'}, Logger: {log() {}},
-    PropertiesService: {getScriptProperties: () => ({setProperty: (k, v) => { props[k] = v; }, getProperty: k => props[k]})},
-    SpreadsheetApp: {openById: id => (id === 'T' ? ss : temps.get(id))},
-    DriveApp: {getFileById: id => ({setTrashed: () => trashed.push(id)})},
-    // Apps Script 의 Drive.Files.create 는 동기 호출이라, 시험에서는 addBundle 이 미리 읽어 둔 시트를 돌려줌
-    Drive: {Files: {create: (meta, b) => { const sheets = parsed.get(hash(b.data)); if (!sheets) throw new Error('변환 실패(시뮬레이션)'); const id = 'tmp' + temps.size; temps.set(id, {getSheets: () => sheets.map(sh => ({getDataRange: () => ({getValues: () => sh.rows})}))}); return {id}; }}},
-    Utilities: {unzip: b => Object.entries(unzipSync(new Uint8Array(b.data))).map(([n, d]) => blob(n, Buffer.from(d)))},
-  };
-  vm.createContext(ctx); vm.runInContext(CLEAN + '\n' + GS, ctx);
-  const addBundle = async (name, buf) => { for (const d of Object.values(unzipSync(new Uint8Array(buf)))) { try { parsed.set(hash(d), await readSheets(Buffer.from(d))); } catch { /* 엑셀이 아님 → 변환 실패 */ } } return addFile(source, name, buf); };
-  return {addBundle, temps, ctx, tabs, mkSheet, source, processed, addFile, props, trashed, run: () => vm.runInContext('processErpBundles_', ctx)(source, processed)};
-}
-
 async function bundle(tweak, entries = FILES) {
   const a = await mock({tweak}).fetchAll(FILES, NOW);
   return Buffer.from(zipSync(Object.fromEntries(entries.map(d => [fileName(d, NOW), new Uint8Array(a.get(d.id))]))));

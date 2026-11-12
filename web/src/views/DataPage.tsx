@@ -17,7 +17,8 @@ import {useStore} from '../app/useStore';
 import {emit} from '../lib/store.js';
 import {SHEET_SIGNATURES} from '../lib/parse.js';
 import {unresolvedFiles, handleFiles, applyUploadedData} from '../lib/upload.js';
-import {uploadDoneText} from '../lib/views.js';
+import {uploadChecks, uploadDoneText} from '../lib/views.js';
+import {CheckboxInput} from '@astryxdesign/core/CheckboxInput';
 import {shared, refreshFromGoogleSheet} from '../data/shared.js';
 import {DEMO, loadDemoData} from '../app/demo';
 
@@ -85,15 +86,19 @@ function SheetPanel() {
 /** CSV / 엑셀 수동 업로드 (기존 dropzone + #uploadStatus) */
 function UploadPanel() {
   const [reading, setReading] = useState(false);
+  const [ack, setAck] = useState(false); // 행 수 급감 경고를 확인했는지
+  const checks = uploadChecks(unresolvedFiles);
+  const blocked = checks.errors.length > 0 || (checks.warnings.length > 0 && !ack);
   const onFiles = async (files: File | File[] | null) => {
     if (!files) return;
-    uploadMsg = '';
+    uploadMsg = ''; setAck(false);
     setReading(true);
     await handleFiles(Array.isArray(files) ? files : [files]);
     setReading(false);
     emit();
   };
   const apply = () => {
+    if (blocked) return;
     const r = applyUploadedData('upload');
     uploadMsg = r.updatedList ? uploadDoneText(r) : '';
     emit({applied: r, mode: 'upload'});
@@ -156,8 +161,21 @@ function UploadPanel() {
                 )}
               </HStack>
             ))}
+            {checks.errors.length > 0 && (
+              <div className="alert alert-error" role="alert">
+                <HStack gap={2} vAlign="center"><Icon icon="warning" color="error" size="sm" /><Text type="label" weight="semibold">적용할 수 없습니다 — 아래를 고쳐 다시 올려 주세요 (현재 데이터는 그대로입니다)</Text></HStack>
+                <ul className="alert-list">{checks.errors.map(e => <li key={e}><Text type="supporting">{e}</Text></li>)}</ul>
+              </div>
+            )}
+            {checks.errors.length === 0 && checks.warnings.length > 0 && (
+              <div className="alert alert-note" role="alert">
+                <Text type="label" weight="semibold">확인이 필요합니다</Text>
+                <ul className="alert-list">{checks.warnings.map(e => <li key={e}><Text type="supporting">{e}</Text></li>)}</ul>
+                <CheckboxInput size="sm" label="위 내용을 확인했고 그래도 적용합니다" value={ack} onChange={setAck} />
+              </div>
+            )}
             <HStack gap={2}>
-              <Button label="대시보드에 적용" variant="primary" onClick={apply} />
+              <Button label="대시보드에 적용" variant="primary" isDisabled={blocked} onClick={apply} />
               <Button label="목록 지우기" variant="secondary" onClick={() => { unresolvedFiles.length = 0; emit(); }} />
             </HStack>
           </VStack>

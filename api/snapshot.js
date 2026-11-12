@@ -10,7 +10,7 @@ const FRESH_MS = 60 * 1000;
 async function refreshCache() {
   const j = await callGas({ action: 'bundle', have: cache ? String(cache.at) : '' });
   if (j.none) { cache = null; return false; }
-  const meta = { snapshot: j.snapshot, lastUpdate: j.lastUpdate };
+  const meta = { snapshot: j.snapshot, lastUpdate: j.lastUpdate, problem: j.problem || null }; // problem: 최근 업로드 · 저장본 문제 (Apps Script SnapshotGuard.gs)
   if (j.unchanged && cache) { cache.ts = Date.now(); cache.meta = meta; return true; }
   if (j.b64) { cache = { at: j.snapshot.at, buf: Buffer.from(j.b64, 'base64'), meta, ts: Date.now() }; return true; }
   cache = null; return false;

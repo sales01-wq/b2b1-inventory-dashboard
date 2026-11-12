@@ -6,7 +6,7 @@ import {fmt} from '../lib/format';
 import {detectSheetType} from '../lib/parse.js';
 import {unresolvedFiles, applyUploadedData} from '../lib/upload.js';
 import {loadRemoteSettings} from './settings.js';
-import {uploadDoneText} from '../lib/views.js';
+import {uploadDoneText, snapshotProblem} from '../lib/views.js';
 
 /** @type {Record<string, any>} 기존 전역 객체 — 화면(TS)에서 자유롭게 읽도록 */
 export const shared = {active:false, token:null, user:null, clientId:'', domain:'', meta:null, loading:false, updating:false};
@@ -152,6 +152,9 @@ export async function loadSharedData(opts){
 
     if(res && res.unchanged){ shared.meta = res.meta || shared.meta; return; }
     if(res && res.data){
+      // port: 새 저장본에 필수 시트 내용이 없으면 캐시 · 화면에 반영하지 않고 이전 데이터를 유지 (잘못된 업로드가 정상 데이터를 덮지 못하게)
+      const bad = snapshotProblem(res.data);
+      if(bad){ shared.meta = res.meta || shared.meta; setSharedBar('err', `새 저장본이 올바르지 않아 이전 데이터를 유지합니다: ${bad}`); return; }
       idbSet('snapshot', {data:res.data, meta:res.meta});
       if(haveCache){
         shared.pending = res;

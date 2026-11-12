@@ -5,10 +5,11 @@
  * 여기서는 ① 전부 읽고 검사 → ② 전부 임시 탭에 쓰기 → ③ 이름만 바꿔서 교체(실패하면 되돌림) 순서로 처리합니다.
  * 한 단계라도 실패하면 대상 시트는 하나도 바뀌지 않습니다. 상품마스터 탭은 건드리지 않습니다.
  *
- * 기존 코드 수정은 checkForNewFilesInner_ 안의 3줄뿐입니다 (맨 아래 설명 참고).
+ * SnapshotGuard.gs 와 함께 씁니다. 기존 코드 수정은 checkForNewFilesInner_ 3줄 + SnapshotGuard.gs 머리말의 3곳입니다 (맨 아래 설명 참고).
  */
 const BUNDLE_ALLOWED_TABS = /^(가용재고조회|WMS창고재고관리|일자별판매실적분석|제품일정표)/;   // 수집기가 쓸 수 있는 탭
-const BUNDLE_PROTECTED_TABS = /^상품마스터/;                                              // 상품마스터(_전체) 탭은 절대 건드리지 않음
+const BUNDLE_PROTECTED_TABS = /^상품마스터/;
+const BUNDLE_EXPECTED_TYPE = { '가용재고조회': 'inventory', 'WMS창고재고관리': 'expiry', '일자별판매실적분석': 'sales', '제품일정표': 'schedule' };                                              // 상품마스터(_전체) 탭은 절대 건드리지 않음
 
 function processErpBundles_(sourceFolder, processedFolder) {
   const bundles = [];
@@ -20,6 +21,7 @@ function processErpBundles_(sourceFolder, processedFolder) {
     try {
       processBundle_(f);
       PropertiesService.getScriptProperties().setProperty('UPDATE_BY', '수집기(자동)');
+      PropertiesService.getScriptProperties().deleteProperty('BUNDLE_ERROR');
       f.moveTo(processedFolder);
       done++;
       Logger.log('묶음 처리 완료: ' + f.getName());
@@ -45,6 +47,7 @@ function processBundle_(file) {
       if (!/\.xlsx$/i.test(name)) throw new Error('엑셀이 아닌 파일: ' + name);
       const target = cleanBaseName(name);   // 기존 규칙 그대로: 날짜 · (1) 제거한 파일 이름 = 탭 이름
       if (!BUNDLE_ALLOWED_TABS.test(target) || BUNDLE_PROTECTED_TABS.test(target)) throw new Error('허용되지 않는 탭 이름: ' + target);
+      const want = BUNDLE_EXPECTED_TYPE[target.match(BUNDLE_ALLOWED_TABS)[1]];
       if (seen[target]) throw new Error('같은 탭 이름이 둘: ' + target);
       seen[target] = true;
       const tmp = Drive.Files.create({ name: '__temp_import_' + name + '_' + new Date().getTime(), mimeType: MimeType.GOOGLE_SHEETS }, p, { fields: 'id' });
@@ -53,6 +56,9 @@ function processBundle_(file) {
       if (sheets.length !== 1) throw new Error('시트가 1개가 아님: ' + name);
       const data = sheets[0].getDataRange().getValues();
       if (data.length < 2 || data[0].length === 0) throw new Error('데이터가 없음: ' + name);
+      const got = sheetTypeOf_(data);   // SnapshotGuard.gs: 머리글로 시트 종류 확인
+      if (got !== want) throw new Error('시트 종류가 맞지 않음: ' + name + ' (' + (got || '인식 안 됨') + ', 기대 ' + want + ')');
+      if (dataRows_(data) < 1) throw new Error('데이터 행이 없음: ' + name);
       staged.push({ target: target, data: data });
     });
     // ② 전부 임시 탭에 쓰기 (실패하면 임시 탭만 지우고 끝)

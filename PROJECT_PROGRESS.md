@@ -277,6 +277,16 @@ Windows PC collector → `ERP_BUNDLE_*.zip` in the existing Drive upload folder 
 - Real ERP download: `src/adapters/erp.js` runs Playwright (persistent profile, DPAPI credentials) and calls a PC-side `erp-recipe.js` (`login`, `download`) recorded with `playwright codegen`; tested in a real Chromium against a local fake ERP (login → 5 downloads → validation → bundle; one failed download publishes nothing). The ERP's actual screens / selectors are still unknown.
 - Known limits: the 3-line change to `checkForNewFilesInner_` and the real Drive / Apps Script runtime are untested here; file names in `collector/src/files.js` (except `가용재고조회_olive`) are assumptions; the dashboard shows the existing "마지막 업데이트 · 수집기(자동)" time but not collector errors (they are in the PC's `run.log` / `state.json`).
 
+## Manual-upload workflow completed (ERP automation paused)
+
+The ERP browser automation is paused (see the HTTP→HTTPS finding below); all of `collector/` is kept, the scheduled collector and automatic uploads stay disabled. The manual workflow, step by step (`collector/수동-업로드-가이드.md`):
+1. ERP Excel files downloaded by hand → **`npm run pack -- "<folder>"`** (`collector/src/pack.js`): finds the five files by name (dates, `(1)`, `B2B1` vs `B2B1팀` tolerated; the product master and unknown files are skipped, newest wins), validates all with the dashboard's parser, and only if all five pass writes the files under the existing naming rules plus one `ERP_BUNDLE_*.zip` to a local folder. It never writes to Drive.
+2. Files (or the zip) → the Drive upload folder → Apps Script. New additive Apps Script code, **not applied to production**: `ErpBundle.gs` (zip bundle all-or-nothing, now also checks each file's header type and data rows) and `SnapshotGuard.gs` (`buildSnapshotChecked_`: validates the snapshot — required sheets with data, product master must stay if it existed, no row collapse > 50% — and only then replaces it; otherwise the last valid snapshot stays and `SNAPSHOT_PROBLEM` / `BUNDLE_ERROR` are recorded; `readProblems_` exposes them in the `bundle` response).
+3. `api/snapshot.js` passes `problem` through `X-Meta`; the dashboard shows "최근 업로드 문제" (keeps showing the previous data) and "데이터가 오래되었습니다" (≥ 36 h). The client also refuses to cache / apply a received snapshot that lacks inventory or sales content (`snapshotProblem`).
+4. Browser upload (DataPage) now checks before applying (`uploadChecks`): header-only file, sheet type / header mismatch and file-name team ≠ 부서 team block the apply (current data untouched); a row count below half of the current one needs a confirmation.
+- Tests: `web` 133 (new: `sync.test.js`, `pipeline.test.js` = files → pack → Apps Script fake → snapshot → dashboard results equal the direct upload for all teams, and a wrong upload leaves sheets and snapshot untouched), `collector` 49, e2e (adds the header-only upload block), preview e2e. Mutation checks on both Apps Script guards.
+- Not verified here: the real Drive / Apps Script runtime (only fakes; the 5 edits to existing functions are untested), real ERP files, real Google login / Vercel env vars. Manual steps are in the guide.
+
 ## ERP access finding: Chrome upgrades the ERP's HTTP address to HTTPS (confirmed on the owner's PC)
 
 `npm run netcheck` on the company PC (installed Chrome; dedicated profile and a fresh profile alike):

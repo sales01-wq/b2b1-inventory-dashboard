@@ -270,6 +270,14 @@ try {
   await page.getByText(/^품목 11개 · 거래처 5곳 · 판매실적 35건$/).waitFor();
   await page.goto(base + '/#/data');
   assert.equal(await page.getByText(/^업데이트 완료/).textContent(), '업데이트 완료 — 새로 반영: 가용재고조회, 제품일정표, 일자별판매실적분석, 유통기한, 상품마스터. 좌측 메뉴에서 전체 개요를 확인하세요.');
+  // 수동 업로드 검사: 머리글만 있는 파일은 적용할 수 없고, 현재 데이터는 그대로
+  await page.locator('input[type=file]').setInputFiles([{name: '가용재고조회_빈파일.csv', mimeType: 'text/csv', buffer: Buffer.from(Papa.unparse(sh.inventory.slice(0, 2)))}]);
+  await page.getByText('가용재고조회_빈파일.csv: 데이터 행이 없습니다').waitFor();
+  assert.equal(await page.getByRole('button', {name: '대시보드에 적용'}).isDisabled(), true);
+  await page.getByRole('button', {name: '목록 지우기'}).click();
+  assert.equal(await page.getByText('데이터 행이 없습니다').count(), 0);
+  await page.goto(base + '/#/overview');
+  await page.getByText(/^품목 11개 · 거래처 5곳 · 판매실적 35건$/).waitFor();
   assert.deepEqual(errors, []);
 
   // ---- 바코드 · 거래처 조회 (1단계: 입력 · 품목 카드). 선택 동작은 lookup.view.test.js 에서 운영 화면과 비교, 여기서는 실제 화면 조작

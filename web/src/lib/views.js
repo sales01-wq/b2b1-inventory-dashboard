@@ -4,6 +4,7 @@ import {fmt} from './format';
 import {state, ui, settings} from './store.js';
 import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, nextOrderOf, usableAvailable, getRules, ruleThresholds} from './forecast.js';
 import {custAdjust, custShortSummaryCached, productList, buildSkuStatusData, buildPivotRows} from './sales.js';
+import {detectSheetType, findHeaderRow, SHEET_SIGNATURES, teamFromName, teamFromRows} from './parse.js';
 import {boxInfoFor, baseBarcode, buildExportRows, incomingItemsFor, shortDate} from './lookup.js';
 
 /* renderOverview (1210행) */
@@ -462,4 +463,55 @@ export function exportPanelModel(){
       ? ui.exportPltPacking.map(p=>({index:p.index, items:p.items.map(it=>({pn:it.pn, pct:Math.round(it.frac*100)})), used:Math.round(p.used*100), full:p.used>0.98, weight:fmt(p.weightKg)}))
       : null,
   };
+}
+
+
+/* ---------------- 공유 저장본 검사 · 동기화 안내 (새 기능: 운영 화면에는 없음) ---------------- */
+/** 받은 저장본({탭 이름: 행들})이 앱이 필수로 보는 시트(가용재고 · 판매실적)를 내용과 함께 갖췄는지. 문제 없으면 '' */
+export function snapshotProblem(data){
+  const n = {};
+  Object.values(data||{}).forEach(rows=>{
+    const t = detectSheetType(rows); if(!t) return;
+    const h = findHeaderRow(rows, SHEET_SIGNATURES.find(s=>s.key===t).must);
+    n[t] = (n[t]||0) + Math.max(0, rows.length - h.idx - 1);
+  });
+  const missing = SHEET_SIGNATURES.filter(s=>s.required && !n[s.key]).map(s=>s.label);
+  return missing.length ? `필수 시트 내용이 없거나 인식되지 않음: ${missing.join(', ')}` : '';
+}
+const STALE_HOURS = 36;
+/** 상단에 알릴 동기화 상태: problem(최근 업로드를 반영하지 못함) · stale(데이터가 오래됨) */
+export function syncNotice(meta, now = Date.now()){
+  const m = meta || {};
+  const pr = m.problem || {};
+  const why = (pr.snapshot && pr.snapshot.msg) || (pr.bundle && (pr.bundle.file ? `${pr.bundle.file}: ` : '') + pr.bundle.msg) || '';
+  const at = m.lastUpdate && m.lastUpdate.at;
+  const hours = at ? Math.floor((now - at) / 3600000) : null;
+  return {
+    problem: why ? `최근 업로드를 반영하지 못했습니다 (${why}). 이전 정상 데이터를 보여 주고 있습니다. 파일을 확인해 다시 올려 주세요.` : null,
+    stale: hours !== null && hours >= STALE_HOURS ? `데이터가 ${hours >= 48 ? Math.floor(hours / 24) + '일' : hours + '시간'} 전에 업데이트된 것입니다. 최신 ERP 엑셀을 업로드 폴더에 올렸는지 확인해 주세요.` : null,
+  };
+}
+
+/**
+ * 수동 업로드 적용 전 검사 (새 기능). errors 가 있으면 적용 불가, warnings 는 확인 후 적용.
+ * files: unresolvedFiles ({fileName, rows, key, error}). 계산 · 파싱 규칙은 바꾸지 않고, 잘못된 파일이 정상 데이터를 덮는 것만 막음.
+ */
+export function uploadChecks(files){
+  const errors = [], warnings = [];
+  (files||[]).forEach(f=>{
+    if(f.error || !f.rows || !f.key) return;
+    const sig = SHEET_SIGNATURES.find(s=>s.key===f.key);
+    const h = findHeaderRow(f.rows, sig.must);
+    if(!h){ errors.push(`${f.fileName}: 고른 시트 종류(${sig.label})의 머리글을 찾을 수 없습니다`); return; }
+    const n = f.rows.length - h.idx - 1;
+    if(n < 1){ errors.push(`${f.fileName}: 데이터 행이 없습니다 (머리글만 있음)`); return; }
+    let cur;
+    if(f.key === 'sales'){
+      const nm = teamFromName(f.fileName), rw = teamFromRows(f.rows);
+      if(nm && rw && nm !== rw){ errors.push(`${f.fileName}: 파일 이름은 ${nm} 인데 내용(부서)은 ${rw} 입니다`); return; }
+      cur = ((state.salesByTeam||{})[nm || rw || 'B2B1팀'] || []).length;
+    } else cur = (state[f.key] || []).length;
+    if(cur >= 20 && n < cur * 0.5) warnings.push(`${f.fileName}: 행 수가 현재 ${fmt(cur)} → ${fmt(n)} 로 크게 줄었습니다`);
+  });
+  return {errors, warnings};
 }
