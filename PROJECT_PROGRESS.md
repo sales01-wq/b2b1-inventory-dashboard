@@ -277,6 +277,11 @@ Windows PC collector → `ERP_BUNDLE_*.zip` in the existing Drive upload folder 
 - Real ERP download: `src/adapters/erp.js` runs Playwright (persistent profile, DPAPI credentials) and calls a PC-side `erp-recipe.js` (`login`, `download`) recorded with `playwright codegen`; tested in a real Chromium against a local fake ERP (login → 5 downloads → validation → bundle; one failed download publishes nothing). The ERP's actual screens / selectors are still unknown.
 - Known limits: the 3-line change to `checkForNewFilesInner_` and the real Drive / Apps Script runtime are untested here; file names in `collector/src/files.js` (except `가용재고조회_olive`) are assumptions; the dashboard shows the existing "마지막 업데이트 · 수집기(자동)" time but not collector errors (they are in the PC's `run.log` / `state.json`).
 
+## Project priorities (owner, latest)
+- **Phase 1 (now): the dashboard product.** Design consistency, UX, refining and extending features, better inventory / sales / purchase-order analysis, fixing incomplete interactions and performance, daily-use polish. The Drive → Apps Script → dashboard pipeline is kept as is (the manual-upload hardening below is done; no more infrastructure work for now).
+- **Final goal: direct integration with the K-System Ace ERP** (no manual Excel). The ERP automation work in `collector/` is preserved; troubleshooting (HTTP→HTTPS block, IT approvals) is postponed until Phase 1 is complete.
+- The Phase 1 review and roadmap is in the conversation of 2026-11-12 (summary: P1 order-status and overview usability, P2 item detail view and trend charts, P3 customer analysis, P4 alerts / exports, P5 polish and performance).
+
 ## Manual-upload workflow completed (ERP automation paused)
 
 The ERP browser automation is paused (see the HTTP→HTTPS finding below); all of `collector/` is kept, the scheduled collector and automatic uploads stay disabled. The manual workflow, step by step (`collector/수동-업로드-가이드.md`):
