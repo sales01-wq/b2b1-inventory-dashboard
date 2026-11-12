@@ -23,6 +23,7 @@ import {customerTableModel, customerTotals, isCurrentPeriod, mselItems, periodGa
 import {useScrollRecent} from '../app/useNarrow';
 import {productList, skuMonthLabel, skuStatusCsv} from '../lib/sales.js';
 import * as act from '../lib/actions.js';
+import {ProductLink} from './ProductLink';
 import {fmt} from '../lib/format';
 import {saveCsv} from '../lib/saveCsv';
 
@@ -219,7 +220,7 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
                 <TableRow key={r.품번 + '|' + (r.거래처 || '')} className={m.groupByCust && groupIdx % 2 === 1 ? 'group-alt' : undefined}>
                   {first && (
                     <>
-                      <TableCell rowSpan={span} className="sticky-col"><code>{r.품번}</code></TableCell>
+                      <TableCell rowSpan={span} className="sticky-col"><ProductLink pn={r.품번} /></TableCell>
                       <TableCell rowSpan={span} className="hide-narrow"><BrandBadge brand={r.brand} /></TableCell>
                       <TableCell rowSpan={span} className="name-cell">{r.품명}<span className="show-narrow"><BrandBadge brand={r.brand} /></span></TableCell>
                     </>

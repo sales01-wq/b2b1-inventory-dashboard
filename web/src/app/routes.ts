@@ -5,6 +5,9 @@ import {
   PresentationChartLineIcon,
   QrCodeIcon,
   ArrowUpTrayIcon,
+  ShoppingCartIcon,
+  UserGroupIcon,
+  HeartIcon,
 } from '@heroicons/react/24/outline';
 import {
   ChartPieIcon as ChartPieSolid,
@@ -12,6 +15,9 @@ import {
   PresentationChartLineIcon as PresentationSolid,
   QrCodeIcon as QrCodeSolid,
   ArrowUpTrayIcon as ArrowUpTraySolid,
+  ShoppingCartIcon as CartSolid,
+  UserGroupIcon as UserGroupSolid,
+  HeartIcon as HeartSolid,
 } from '@heroicons/react/24/solid';
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
@@ -20,7 +26,7 @@ type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
  * 기존 index.html 의 탭(data-view)과 1:1 로 대응합니다.
  * id 값은 기존 view id 와 동일하게 유지합니다 (overview / forecast / customer / lookup / data).
  */
-export type ViewId = 'overview' | 'forecast' | 'customer' | 'lookup' | 'data';
+export type ViewId = 'overview' | 'forecast' | 'customer' | 'lookup' | 'data' | 'customers' | 'health' | 'orders';
 
 export interface RouteDef {
   id: ViewId;
@@ -55,6 +61,30 @@ export const ROUTES: RouteDef[] = [
     section: '현황',
     icon: PresentationChartLineIcon,
     selectedIcon: PresentationSolid,
+  },
+  {
+    id: 'customers',
+    label: '거래처 분석',
+    description: '거래처별 마지막 주문 · 주문 간격 · 다음 주문 예상을 판매실적으로 계산합니다.',
+    section: '현황',
+    icon: UserGroupIcon,
+    selectedIcon: UserGroupSolid,
+  },
+  {
+    id: 'health',
+    label: '재고 점검',
+    description: '판매가 없는 재고 · 소진이 오래 걸리는 재고 · 유통기한 임박 LOT 를 점검합니다.',
+    section: '현황',
+    icon: HeartIcon,
+    selectedIcon: HeartSolid,
+  },
+  {
+    id: 'orders',
+    label: '발주 목록',
+    description: '발주할 품목을 담고 수량을 고쳐서 CSV(엑셀)로 내려받습니다.',
+    section: '업무 도구',
+    icon: ShoppingCartIcon,
+    selectedIcon: CartSolid,
   },
   {
     id: 'lookup',

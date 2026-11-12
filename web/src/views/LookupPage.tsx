@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState, type MouseEvent, type ReactNode} from 'react';
+import {ProductLink} from './ProductLink';
 import {Badge} from '@astryxdesign/core/Badge';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
@@ -191,7 +192,7 @@ function ProductCard({row, alternatives, idx, query}: {row: Row; alternatives: R
       <Card padding={3} className="product-card is-collapsed">
         <div className="product-collapsed" onClick={() => act.toggleCollapse(idx)}>
           <VStack gap={0.5}>
-            <HStack gap={2} vAlign="center" wrap="wrap"><code className="pn">{row.품번}</code><Text type="label" weight="semibold">{row.품명}</Text></HStack>
+            <HStack gap={2} vAlign="center" wrap="wrap"><ProductLink pn={row.품번} className="pn" /><Text type="label" weight="semibold">{row.품명}</Text></HStack>
             <Text type="supporting">{selectionSummaryFor(row.품번)}</Text>
           </VStack>
           <Button label="펼치기" size="sm" variant="ghost" icon={<Icon icon="chevronDown" />} onClick={(e: MouseEvent) => { e.stopPropagation(); act.toggleCollapse(idx); }} />

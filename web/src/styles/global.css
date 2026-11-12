@@ -281,3 +281,27 @@ code.pn-lg { font-size: 0.9375rem; font-weight: 600; }
   .plt-mix { grid-column: 1 / -1; }
 }
 .cell-scroll { max-height: 4.5lh; overflow-y: auto; overscroll-behavior: contain; }
+
+/* ---- P1~P5 추가: 상품 상세 · 그래프 · 품번 링크 · 접근성 ---- */
+.pn-link { background: none; border: 0; padding: 0; cursor: pointer; color: inherit; font: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+.pn-link:hover { text-decoration-style: solid; }
+.pn-link:focus-visible, .linkish:focus-visible { outline: 2px solid var(--focus-outline-color); outline-offset: 2px; border-radius: 2px; }
+.linkish { background: none; border: 0; padding: 0; cursor: pointer; color: var(--color-text-primary); font: inherit; text-decoration: underline; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.barchart { margin: 0; }
+.barchart .bar { fill: light-dark(#52525b, #a1a1aa); }
+.barchart rect:hover { fill: light-dark(#18181b, #ededf0); }
+.bar-labels { display: flex; font-size: 12px; color: var(--color-text-secondary); }
+.bar-labels span { flex: 1; text-align: center; }
+.detail-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; }
+.detail-stat { border: 1px solid var(--color-border); border-radius: var(--radius-container); padding: 10px 12px; }
+.detail-val { font-size: 1.25rem; font-weight: 600; margin-top: 2px; }
+.detail-val.small { font-size: 0.875rem; }
+.detail-val.strong { color: light-dark(#b91c1c, #f87171); }
+.overview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+/* 표 오른쪽에 더 있음을 알려 주는 그림자 (휴대폰) */
+@media (max-width: 640px) { .scroll-hint { font-size: 12px; color: var(--color-text-secondary); }
+  .detail-stats { grid-template-columns: repeat(2, 1fr); } }
+.health-line { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--color-border); color: inherit; text-decoration: none; }
+.health-line:hover { background: var(--color-background-muted); }

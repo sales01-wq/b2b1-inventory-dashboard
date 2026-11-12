@@ -19,7 +19,7 @@ import {TextInput} from '@astryxdesign/core/TextInput';
 import {ToggleButton, ToggleButtonGroup} from '@astryxdesign/core/ToggleButton';
 import {Token} from '@astryxdesign/core/Token';
 import {VStack} from '@astryxdesign/core/VStack';
-import {Cog6ToothIcon, StarIcon} from '@heroicons/react/16/solid';
+import {Cog6ToothIcon, ShoppingCartIcon, StarIcon} from '@heroicons/react/16/solid';
 import {PageFrame} from './PageFrame';
 import {HeroAlert} from './HeroAlert';
 import {NoData} from './NoData';
@@ -31,6 +31,8 @@ import {forecastModel, forecastDetail, forecastNextText, patternNextText, rulesM
 import * as act from '../lib/actions.js';
 import {canEditSettings, saveRules, resetRules, addHero, deleteHero} from '../data/settings.js';
 import {fmt} from '../lib/format';
+import {ProductLink} from './ProductLink';
+import {addManyToCart, addToCart, applyView, deleteView, saveView, savedViews} from '../lib/insights.js';
 import {saveCsv} from '../lib/saveCsv';
 
 const ALL = '__all__'; // 토글 그룹은 빈 값을 '선택 없음'으로 다뤄서 '전체'(빈 값)를 대신 표시
@@ -56,6 +58,7 @@ function Forecast() {
       <RulesEditor />
       <Filters m={m} />
       {m.isOverstock && <OverstockScope />}
+      <SavedViews />
       <SummaryBar m={m} />
       {m.list.length === 0 ? (
         <EmptyState isCompact title="조건에 맞는 품목이 없습니다." />
@@ -182,7 +185,11 @@ function SummaryBar({m}: {m: Model}) {
             <b className="text-safe">지금 발주할 품목 없음</b>
           )}
         </Text>
-        <Button label="표 내려받기(CSV)" size="sm" variant="secondary" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(forecastListCsv())} />
+        <HStack gap={2} wrap="wrap">
+          <Button label={`발주 필요 ${fmt(m.needItems)}개 목록에 담기`} size="sm" variant="secondary" isDisabled={m.needItems === 0}
+            onClick={() => addManyToCart(m.list.filter((x: FRow) => x.orderQty > 0 && !['휴면', '단발성', '데이터부족'].includes(x.grade)).map((x: FRow) => x.품번))} />
+          <Button label="표 내려받기(CSV)" size="sm" variant="secondary" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(forecastListCsv())} />
+        </HStack>
       </HStack>
     </Card>
   );
@@ -203,7 +210,7 @@ export function GradeBadge({grade}: {grade: string}) {
 interface FRow {품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; horizon: number; available: number; incoming: number; avgQuarterly: number}
 
 // 열 너비(px): 고정 레이아웃이라 긴 머리글 · 품명이 다른 칸을 밀어내지 않음. 합계가 표의 최소 너비 (좁으면 옆으로 스크롤)
-const W = {pn: 150, brand: 100, name: 160, grade: 84, order: 108, horizon: 130, avail: 96, incoming: 96, avg: 76, month: 64};
+const W = {pn: 150, brand: 100, name: 160, grade: 84, order: 108, horizon: 150, avail: 96, incoming: 96, avg: 76, month: 64};
 const tableMin = (months: number) => W.pn + W.brand + W.name + W.grade + W.order + W.horizon + W.avail + W.incoming + W.avg + W.month * months;
 
 function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
@@ -234,7 +241,8 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
                 <TableCell className="sticky-col">
                   <HStack gap={1} vAlign="center">
                     <IconButton label={open ? '근거 닫기' : '거래처별 근거 보기'} size="sm" variant="ghost" icon={<Icon icon={open ? 'chevronDown' : 'chevronRight'} />} onClick={() => act.toggleForecastDetail(x.품번)} />
-                    <code className="nowrap">{x.품번}</code>
+                    <ProductLink pn={x.품번} className="nowrap" />
+                    {x.orderQty > 0 && <IconButton label={`${x.품번} 발주 목록에 담기`} size="sm" variant="ghost" icon={<ShoppingCartIcon width={16} height={16} aria-hidden />} onClick={() => addToCart(x.품번)} />}
                     {x.hero && <span className="hero-mark" title="히어로 품목: 수량 기준으로 판정" role="img" aria-label="히어로 품목"><StarIcon width={14} height={14} aria-hidden /></span>}
                   </HStack>
                 </TableCell>
@@ -412,5 +420,24 @@ function RulesEditor() {
         </VStack>
       </Collapsible>
     </Card>
+  );
+}
+
+/** 저장된 보기: 지금 필터(상태 · 구분 · 거래처 · 검색)를 이름으로 저장해 두고 한 번에 불러옴. 이 브라우저에만 저장 */
+function SavedViews() {
+  const [name, setName] = useState('');
+  const views: {name: string}[] = savedViews();
+  return (
+    <HStack gap={2} vAlign="center" wrap="wrap">
+      <Text type="supporting">저장된 보기</Text>
+      {views.map(v => (
+        <HStack key={v.name} gap={0.5} vAlign="center">
+          <Button label={v.name} size="sm" variant="secondary" onClick={() => applyView(v.name)} />
+          <IconButton label={`${v.name} 삭제`} size="sm" variant="ghost" icon={<Icon icon="close" />} onClick={() => deleteView(v.name)} />
+        </HStack>
+      ))}
+      <span style={{width: 170}}><TextInput label="보기 이름" isLabelHidden size="sm" placeholder="현재 필터 저장…" value={name} onChange={setName} onKeyDown={(e: KeyboardEvent) => { if (e.key === 'Enter' && name.trim()) { saveView(name); setName(''); } }} /></span>
+      <Button label="저장" size="sm" variant="ghost" isDisabled={!name.trim()} onClick={() => { saveView(name); setName(''); }} />
+    </HStack>
   );
 }

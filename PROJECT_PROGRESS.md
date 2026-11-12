@@ -386,3 +386,12 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 
 ## Update 2026-11-12: Preview project build
 - `web/vercel.json` now builds the normal app (`npm run build` → `dist`) instead of the fixture-only demo build, so real ERP files can be uploaded on the preview. Set `VITE_READ_ONLY=1` (and no other variables) in the separate preview project; no `/api`, Google login or Apps Script. Root Directory `web`, production branch `feat/react-astryx`, Deployment Protection on. Not deployed yet (waiting for owner approval).
+
+## P1~P5 구현 (web/, feat/react-astryx) — 실제 구현 내용
+- **P1** 개요: 월별 판매(최근 12개월) · 재고 점검 요약 · 곧 주문할 거래처 3칸 추가. 화면 모드 밝게(기본)/어둡게/자동(사이드바 하단, 이 브라우저에 저장). 화면 로딩 자리표시(Skeleton) + 화면 오류 안내(ErrorBoundary). 발주 현황 '3개월 예상수요' 열 너비 조정. 표 안 품번은 키보드로도 열 수 있는 버튼.
+- **P2** 상품 상세 패널(우측 Drawer): 개요 · 발주 현황 · 판매 현황 · 거래처 분석 · 재고 점검 · 조회의 품번을 누르면 같은 패널. 가용재고 · 입고예정 · 월평균 판매 · 발주할 수량 · 소진 예상일 · 12개월 판매 막대그래프 · 창고별 재고 · 입고예정 · LOT/유통기한 · 거래처별 주문.
+- **P3** 발주 목록(새 화면): 발주 현황에서 행별/'발주 필요 N개 담기', 상세에서 담기 → 수량 수정 → CSV(UTF-8 BOM, 엑셀에서 열림). 목록은 이 브라우저(localStorage)에 저장. '조회에서 확인'은 바코드 · 거래처 조회에 `품번 수량`을 넣고 조회 실행. (.xlsx 파일 출력은 하지 않음: CSV 로 엑셀 열기 가능)
+- **P4** 거래처 분석(마지막 주문 · 주문 간격 · 다음 주문 예상 · 6개월 수량/금액 · 주요 품목, 주문일 3일 이상일 때만 간격 계산) · 재고 점검(유통기한 90/180/365일 · 6개월 무판매 재고 · 소진 1년 초과 재고).
+- **P5** 전체 검색(Ctrl+K / 사이드바 버튼: 품번 · 품명 · 바코드 → 상세 패널) · 발주 현황 저장된 보기(이름 저장/불러오기/삭제, 이 브라우저) · 6만 줄 판매실적에서 새 계산 합계 1초 이내 테스트.
+- **만들지 않은 것 (데이터 없음):** 재고 추이 · 지난 업로드 대비 변화(재고 이력 저장소 필요), 재고금액/원가 기준 분석(올라오는 파일에 원가 없음), 품목별 공급 리드타임(전체 규칙만 있음).
+- 검증: tsc · vitest 143(142 통과 + 실제파일 비교 1 건너뜀) · build · e2e(upload · preview · features 데스크톱/휴대폰) · collector 57 통과. 헤드리스 Chromium 은 한글 CSV 파일 이름을 'download' 로 보고하지만 실제 Chrome 저장 이름은 영향 없음(기존 CSV 도 같은 방식).

@@ -19,7 +19,10 @@ import {state} from '../lib/store.js';
 import {getRules, ruleThresholds} from '../lib/forecast.js';
 import {forecastNextText, overviewModel, urgentItems} from '../lib/views.js';
 import {openForecastSignal} from '../lib/actions.js';
+import {ProductLink} from './ProductLink';
 import {fmt} from '../lib/format';
+import {BarChart} from './BarChart';
+import {customerAnalysis, inventoryHealth, totalMonthlySales} from '../lib/insights.js';
 
 // 신호등 색: 위험 · 주의 · 여유 (Astryx 상태색)
 const SIGNAL = {위험: 'error', 주의: 'warning', 여유: 'success'} as const;
@@ -69,6 +72,7 @@ function Overview() {
         <Text type="supporting">거래처 {fmt(m.totalCustomers)}곳 · 최근 6개월 총판매 {fmt(m.sold6moTotal)}</Text>
       </VStack>
       <UrgentItems />
+      <Insights />
     </VStack>
   );
 }
@@ -129,7 +133,7 @@ function UrgentItems() {
             <TableBody>
               {shown.map(x => (
                 <TableRow key={x.품번}>
-                  <TableCell className="sticky-col"><code>{x.품번}</code></TableCell>
+                  <TableCell className="sticky-col"><ProductLink pn={x.품번} /></TableCell>
                   <TableCell className="hide-narrow"><BrandBadge brand={x.brand} /></TableCell>
                   <TableCell>{x.품명}<span className="show-narrow"><BrandBadge brand={x.brand} /></span></TableCell>
                   <TableCell><GradeBadge grade={x.grade} /></TableCell>
@@ -144,4 +148,41 @@ function UrgentItems() {
       )}
     </VStack>
   );
+}
+
+/** 실제 판매실적 · 재고 · 유통기한으로 만든 요약 3칸: 월별 판매 · 재고 점검 · 곧 주문할 거래처 */
+function Insights() {
+  const months = totalMonthlySales();
+  const h = inventoryHealth(90);
+  const custs = (customerAnalysis() as {거래처: string; status: string; daysToNext: number | null; qty6: number}[]).filter(c => c.status === '곧 주문' || c.status === '이탈 의심').slice(0, 5);
+  const total = months.reduce((a: number, m: {qty: number}) => a + m.qty, 0);
+  return (
+    <div className="overview-grid">
+      <Card>
+        <VStack gap={2}>
+          <HStack gap={2} hAlign="between" vAlign="end"><Heading level={2}>월별 판매</Heading><Text type="supporting">최근 12개월 {fmt(total)}</Text></HStack>
+          {total > 0 ? <BarChart data={months} label="최근 12개월 월별 판매 수량" /> : <Text type="supporting">최근 12개월 판매 이력이 없습니다.</Text>}
+        </VStack>
+      </Card>
+      <Card>
+        <VStack gap={2}>
+          <Heading level={2}>재고 점검</Heading>
+          <HealthLine href="#/health" label="90일 안에 유통기한이 끝나는 LOT" value={`${fmt(h.expiring.length)}개`} />
+          <HealthLine href="#/health" label="6개월간 판매 없는 재고 품목" value={`${fmt(h.idle.length)}개`} />
+          <HealthLine href="#/health" label="소진까지 1년 넘는 재고 품목" value={`${fmt(h.slow.length)}개`} />
+        </VStack>
+      </Card>
+      <Card>
+        <VStack gap={2}>
+          <HStack gap={2} hAlign="between" vAlign="end"><Heading level={2}>곧 주문할 거래처</Heading><Link href="#/customers" type="supporting">거래처 분석</Link></HStack>
+          {custs.length === 0 ? <Text type="supporting">주문 간격으로 예상되는 거래처가 없습니다.</Text> : custs.map(c => (
+            <HStack key={c.거래처} hAlign="between" gap={2}><Text type="label">{c.거래처}</Text><Text type="supporting">{c.daysToNext! < 0 ? `${-c.daysToNext!}일 지남` : `${c.daysToNext}일 후`}</Text></HStack>
+          ))}
+        </VStack>
+      </Card>
+    </div>
+  );
+}
+function HealthLine({href, label, value}: {href: string; label: string; value: string}) {
+  return <a className="health-line" href={href}><Text type="label">{label}</Text><Text type="label" weight="semibold">{value}</Text></a>;
 }
