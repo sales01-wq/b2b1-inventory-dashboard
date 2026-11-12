@@ -27,7 +27,7 @@ test('정상: 묶음 zip 1개에 파일 5개, 기존 이름 규칙 (날짜만 �
   assert.equal(r.result, 'published');
   assert.deepEqual(e.ls(), [r.bundle]);
   const names = new AdmZip(path.join(e.config.uploadFolder, r.bundle)).getEntries().map(x => x.entryName).sort();
-  assert.deepEqual(names, ['가용재고조회_olive_20261112.xlsx', '유통기한_20261112.xlsx', '일자별판매실적분석_20261112_B2B1팀.xlsx', '일자별판매실적분석_20261112_B2B2팀.xlsx', '제품일정표_20261112.xlsx']);
+  assert.deepEqual(names, ['WMS창고재고관리(EMP)_olive_20261112.xlsx', '가용재고조회_olive_20261112.xlsx', '일자별판매실적분석_20261112_B2B1팀.xlsx', '일자별판매실적분석_20261112_B2B2팀.xlsx', '제품일정표_olive_20261112.xlsx']);
   assert.ok(!names.some(n => n.includes('상품마스터')));
   assert.ok(e.state().lastSuccessAt);
 });
@@ -50,7 +50,7 @@ test('데이터가 바뀌면 새 묶음', async () => {
 
 for (const [name, tweak, msg] of [
   ['파일 하나 없음', rows => { delete rows.sales2; }, /sales2: 파일을 받지 못함/],
-  ['엉뚱한 종류의 시트', rows => { rows.expiry = rows.inventory; }, /expiry: 시트 종류가 inventory/],
+  ['엉뚱한 종류의 시트', rows => { rows.wms = rows.inventory; }, /wms: 시트 종류가 inventory/],
   ['데이터 행 없음', rows => { rows.inventory = rows.inventory.slice(0, 2); }, /inventory: 데이터 행이 없음/],
   ['B2B2 자리에 B1 판매', rows => { rows.sales2 = rows.sales1; }, /sales2: 팀이 B2B1팀/],
 ]) {
@@ -75,7 +75,7 @@ test('행 수 급감(직전 대비 절반 미만)은 올리지 않고, 마지막
 
 test('실패 후 정상으로 돌아오면 다시 올림 (오류 기록 삭제)', async () => {
   const e = env();
-  assert.equal((await e.run(T0, mock({tweak: rows => { delete rows.expiry; }}))).result, 'invalid');
+  assert.equal((await e.run(T0, mock({tweak: rows => { delete rows.wms; }}))).result, 'invalid');
   const r = await e.run(later(30), mock());
   assert.equal(r.result, 'published'); assert.equal(e.state().lastError, undefined);
 });
@@ -118,4 +118,15 @@ test('Apps Script 가 거부한 묶음(FAILED_)이 있으면 보관하고 같은
 
 test('상품마스터는 수집 대상이 아님', () => {
   assert.ok(!FILES.some(d => /상품마스터|productMaster/.test(d.file + d.type)));
+});
+
+test('이름 규칙: 수집기 파일 이름 → 탭 이름(기존 cleanBaseName) → 대시보드가 팀 · 종류를 이름으로 정확히 인식', async () => {
+  const {teamFromName} = await import('../../web/src/lib/parse.js');
+  const clean = n => { let s = n.replace(/\.(xlsx|xls)$/i, ''); s = s.replace(/\s*\(\d+\)\s*$/, ''); s = s.replace(/[_\-\s]?\d{4}[-.]?\d{2}[-.]?\d{2}(?=[_\-\s]|$)/g, ''); return s.replace(/[_\-\s]{2,}/g, '_').replace(/[_\-\s]+$/, '').trim(); };
+  const {fileName} = await import('../src/files.js');
+  assert.deepEqual(FILES.map(d => clean(fileName(d, T0))), ['가용재고조회_olive', 'WMS창고재고관리(EMP)_olive', '일자별판매실적분석_B2B1팀', '일자별판매실적분석_B2B2팀', '제품일정표_olive']);
+  assert.deepEqual(FILES.filter(d => d.team).map(d => teamFromName(clean(fileName(d, T0)))), ['B2B1팀', 'B2B2팀']);
+  // 옛 이름(팀 없음)은 이름으로는 팀을 못 정하고 부서 열로 정함 → 수집기는 항상 '팀' 이 붙은 이름을 씀
+  assert.equal(teamFromName('일자별판매실적분석_B2B1'), null);
+  assert.equal(teamFromName('일자별판매실적분석_B2B1팀'), 'B2B1팀');
 });

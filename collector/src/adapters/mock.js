@@ -8,7 +8,7 @@ export default function mock({tweak} = {}) {
   return {
     async fetchAll(defs, now) {
       const sh = makeSheets(now.getTime());
-      const rows = {inventory: sh.inventory, schedule: sh.schedule, sales1: sh.sales1, sales2: sh.sales2, expiry: sh.expiry};
+      const rows = {inventory: sh.inventory, schedule: sh.schedule, sales1: sh.sales1, sales2: sh.sales2, wms: sh.expiry};
       if (tweak) tweak(rows);
       return new Map(defs.filter(d => rows[d.id]).map(d => [d.id, toXlsx(rows[d.id])]));
     },

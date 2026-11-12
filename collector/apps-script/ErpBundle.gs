@@ -7,8 +7,8 @@
  *
  * 기존 코드 수정은 checkForNewFilesInner_ 안의 3줄뿐입니다 (맨 아래 설명 참고).
  */
-const BUNDLE_ALLOWED_TABS = /^(가용재고조회|제품일정표|일자별판매실적분석|유통기한)/;   // 수집기가 쓸 수 있는 탭
-const BUNDLE_PROTECTED_TABS = ['상품마스터'];                                        // ← 실제 상품마스터 탭 이름으로 확인하세요
+const BUNDLE_ALLOWED_TABS = /^(가용재고조회|WMS창고재고관리|일자별판매실적분석|제품일정표)/;   // 수집기가 쓸 수 있는 탭
+const BUNDLE_PROTECTED_TABS = /^상품마스터/;                                              // 상품마스터(_전체) 탭은 절대 건드리지 않음
 
 function processErpBundles_(sourceFolder, processedFolder) {
   const bundles = [];
@@ -44,7 +44,7 @@ function processBundle_(file) {
       const name = p.getName();
       if (!/\.xlsx$/i.test(name)) throw new Error('엑셀이 아닌 파일: ' + name);
       const target = cleanBaseName(name);   // 기존 규칙 그대로: 날짜 · (1) 제거한 파일 이름 = 탭 이름
-      if (!BUNDLE_ALLOWED_TABS.test(target) || BUNDLE_PROTECTED_TABS.indexOf(target) >= 0) throw new Error('허용되지 않는 탭 이름: ' + target);
+      if (!BUNDLE_ALLOWED_TABS.test(target) || BUNDLE_PROTECTED_TABS.test(target)) throw new Error('허용되지 않는 탭 이름: ' + target);
       if (seen[target]) throw new Error('같은 탭 이름이 둘: ' + target);
       seen[target] = true;
       const tmp = Drive.Files.create({ name: '__temp_import_' + name + '_' + new Date().getTime(), mimeType: MimeType.GOOGLE_SHEETS }, p, { fields: 'id' });

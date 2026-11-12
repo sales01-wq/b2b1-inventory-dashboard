@@ -48,15 +48,15 @@ const snap = w => JSON.stringify([...w.tabs].map(([n, s]) => [n, s.data]));
 
 test('정상: 5개 탭이 기존 탭 이름으로 교체되고 상품마스터는 그대로, 묶음은 처리완료로 이동', async () => {
   const w = world();
-  w.mkSheet('상품마스터', [['상품코드', '아웃무게g'], ['SB001', 100]]);
+  w.mkSheet('상품마스터_전체', [['상품코드', '아웃무게g'], ['SB001', 100]]);
   w.mkSheet('가용재고조회_olive', [['옛 데이터']]);
   w.mkSheet('유통기한_옛이름', [['그대로 남음']]);
-  const master = JSON.stringify(w.tabs.get('상품마스터').data);
+  const master = JSON.stringify(w.tabs.get('상품마스터_전체').data);
   w.addFile(w.source, 'ERP_BUNDLE_20261112-100000_abcd1234.zip', await bundle());
   assert.equal(w.run(), 1);
-  assert.deepEqual([...w.tabs.keys()].sort(), ['가용재고조회_olive', '상품마스터', '유통기한', '유통기한_옛이름', '일자별판매실적분석_B2B1팀', '일자별판매실적분석_B2B2팀', '제품일정표']);
+  assert.deepEqual([...w.tabs.keys()].sort(), ['WMS창고재고관리(EMP)_olive', '가용재고조회_olive', '상품마스터_전체', '유통기한_옛이름', '일자별판매실적분석_B2B1팀', '일자별판매실적분석_B2B2팀', '제품일정표_olive']);
   assert.notEqual(w.tabs.get('가용재고조회_olive').data[0][0], '옛 데이터');
-  assert.equal(JSON.stringify(w.tabs.get('상품마스터').data), master);
+  assert.equal(JSON.stringify(w.tabs.get('상품마스터_전체').data), master);
   assert.deepEqual([w.source.files.length, w.processed.files.length], [0, 1]);
   assert.equal(w.props.UPDATE_BY, '수집기(자동)');
   assert.equal(w.trashed.length, 5); // 임시 변환 시트 전부 정리
@@ -64,9 +64,9 @@ test('정상: 5개 탭이 기존 탭 이름으로 교체되고 상품마스터�
 
 test('묶음 안 파일 하나가 비어 있으면 시트는 하나도 안 바뀌고 FAILED_ 로 표시', async () => {
   const w = world();
-  w.mkSheet('가용재고조회_olive', [['옛 데이터']]); w.mkSheet('상품마스터', [['상품코드']]);
+  w.mkSheet('가용재고조회_olive', [['옛 데이터']]); w.mkSheet('상품마스터_전체', [['상품코드']]);
   const before = snap(w);
-  w.addFile(w.source, 'ERP_BUNDLE_a.zip', await bundle(rows => { rows.expiry = [['유통기한']]; }));
+  w.addFile(w.source, 'ERP_BUNDLE_a.zip', await bundle(rows => { rows.wms = [['유통기한']]; }));
   assert.equal(w.run(), 0);
   assert.equal(snap(w), before);
   assert.equal(w.source.files[0].name, 'FAILED_ERP_BUNDLE_a.zip');
@@ -76,7 +76,7 @@ test('묶음 안 파일 하나가 비어 있으면 시트는 하나도 안 바�
 
 test('교체 중간에 쓰기가 실패해도 기존 시트는 그대로 (임시 탭 정리)', async () => {
   const w = world({failWriteOn: '__new_일자별판매실적분석_B2B2팀'});
-  w.mkSheet('가용재고조회_olive', [['옛 데이터']]); w.mkSheet('제품일정표', [['옛 일정']]); w.mkSheet('상품마스터', [['상품코드']]);
+  w.mkSheet('가용재고조회_olive', [['옛 데이터']]); w.mkSheet('제품일정표_olive', [['옛 일정']]); w.mkSheet('상품마스터_전체', [['상품코드']]);
   const before = snap(w);
   w.addFile(w.source, 'ERP_BUNDLE_a.zip', await bundle());
   assert.equal(w.run(), 0);
@@ -86,11 +86,11 @@ test('교체 중간에 쓰기가 실패해도 기존 시트는 그대로 (임시
 });
 
 test('상품마스터 탭 이름이거나 허용되지 않은 이름의 파일이 묶음에 있으면 거부', async () => {
-  for (const bad of ['상품마스터_20261112.xlsx', '기타자료_20261112.xlsx']) {
-    const w = world(); w.mkSheet('상품마스터', [['상품코드', '옛']]);
+  for (const bad of ['상품마스터_전체_2026-11-12.xlsx', '기타자료_20261112.xlsx']) {
+    const w = world(); w.mkSheet('상품마스터_전체', [['상품코드', '옛']]);
     const before = snap(w);
     const good = await mock().fetchAll(FILES, NOW);
-    const zip = new AdmZip(); zip.addFile(fileName(FILES[0], NOW), good.get('inventory')); zip.addFile(bad, good.get('expiry'));
+    const zip = new AdmZip(); zip.addFile(fileName(FILES[0], NOW), good.get('inventory')); zip.addFile(bad, good.get('wms'));
     w.addFile(w.source, 'ERP_BUNDLE_a.zip', zip.toBuffer());
     assert.equal(w.run(), 0); assert.equal(snap(w), before); assert.match(JSON.parse(w.props.BUNDLE_ERROR).msg, /허용되지 않는 탭 이름/);
   }
