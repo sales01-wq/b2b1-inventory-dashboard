@@ -43,6 +43,11 @@ async function openWithData(browser, opts) {
   return {page, errors};
 }
 
+/** 표 칸의 글자가 잘려 말줄임(…)이 되지 않음 (칸 여백 · 열 너비를 바꿀 때의 회귀 확인) */
+async function checkNoClippedCells(page) {
+  assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('table th, table td')].filter(e => e.offsetParent && e.scrollWidth > e.clientWidth + 1).map(e => e.textContent.trim())), []);
+}
+
 /** 고정 첫 칸: 표 스크롤 영역 왼쪽 끝에 붙어 있고(스크롤 후에도), 스크롤 전에는 옆 칸과 겹치지 않음 */
 async function checkStickyColumns(page, scrollBy) {
   const problems = await page.evaluate(by => {
@@ -83,6 +88,7 @@ try {
   // 발주 필요 (위험+주의) 목록 = 발주 현황 '발주 필요 (위험+주의)' 칩과 같은 품목 · 순서
   assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB004', 'SB001']);
   await checkStickyColumns(page);
+  await checkNoClippedCells(page);
   await shot(page, 'overview');
   // 브랜드: 아무것도 안 고르면 '모든 브랜드'가 눌린 상태, 브랜드를 고르면 풀리고, 다시 누르면 전체로
   const pressed = name => page.getByRole('button', {name, exact: true, pressed: true}).count();
@@ -122,6 +128,7 @@ try {
   assert.equal(await page.getByRole('columnheader', {name: /집계 중/}).count(), 1); // 이번 분기
   assert.ok((await page.locator('tbody td.num').allInnerTexts()).includes('-'));
   await checkStickyColumns(page);
+  await checkNoClippedCells(page);
   await shot(page, 'sales-customer');
 
   // ---- 판매 현황 · 품목별: '세럼' 입력 후 Enter → 선택 + 합계 행 + CSV
@@ -167,6 +174,7 @@ try {
   assert.ok(csv.startsWith('﻿선택 품번: SB001\r\n거래처,'), csv.slice(0, 40));
   assert.match(csv, /\r\n합계,.*"6,400"$/);
   await checkStickyColumns(page);
+  await checkNoClippedCells(page);
   await shot(page, 'sales-sku');
 
   // ---- 발주 현황: 기본 '발주 필요' → SB004(위험) · SB001(주의), 발주 필요 1개 품목 / 900개

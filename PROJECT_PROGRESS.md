@@ -1,7 +1,7 @@
 # Project progress: React 19 + Astryx migration
 
 Handoff notes so a new Claude Code session can continue without the earlier conversation.
-Last updated: 2026-11-11 (month-shift regression tests, 발주 현황 gap review, preview mode), branch `feat/react-astryx`.
+Last updated: 2026-11-12 (af314d4 look refined and approved for Overview and Sales; next: review Order Status and Upload), branch `feat/react-astryx`.
 
 **Next step needs owner approval:** the owner reviews the improved Overview and Sales (screenshots, Impeccable audit 25 → 28/40, then the owner's follow-up fixes below). Do not restyle other screens or start the lookup screen until they approve.
 
@@ -36,6 +36,27 @@ Vercel API. Korean UI, left sidebar, clean and responsive for daily use.
    Calculations shown on screen come from model functions in `web/src/lib/views.js`, not from code inside components.
 4. **Screens draw only.** Any calculation found inside an old `render*` function goes into `views.js` (copied the
    same way) and gets a comparison test against what the production page actually draws.
+
+## Current visual baseline: af314d4 + detail refinements (owner decision)
+
+The owner rejected Art direction v2, the "A 노선 / B 예보" concept mockups, and further radical concepts as over-designed. Decision: return to the clean light look of commit `af314d4` and refine details only. Only the styling files were restored from af314d4 (`theme.css`, `global.css`, `OverviewPage.tsx`, `App.tsx`, `HeroAlert.tsx`); every functional change, test and fix is kept. Kept from later work: the bundled Pretendard variable font (no CDN) and the fixed 거래처별 column widths (`CW`).
+
+Refinements (Overview and Sales first; shared frame, sidebar and table styles also reach the other screens):
+- Type: page title 22px, supporting text 13px (was 12), controls 14px, table header 12.5px, table body 13.5px, badges 12px, quarter/year notes 12px; nothing smaller than 12px. 품번 uses the body font's tabular figures instead of an OS-dependent monospace. `tnum` on everywhere.
+- Header controls all 32px (team, brands, refresh); they were 28 / 32 / 28.
+- Tables: header 32px (two-line headers aligned to the bottom), rows 34px (dense, not 36), 12px cell padding with 16px at the table edge (first sticky cell only on sticky tables, so the second line of a grouped row is not indented), clearer row hover, totals 600 weight.
+- Sticky first column: the divider shows only while the table is scrolled sideways (CSS scroll timeline; browsers without it show no divider). Its header cell keeps the header background.
+- Sidebar: items 32px / 14px, current item keeps Astryx's neutral grey with 600 weight. No team subtitle, no upload status in the sidebar (owner).
+- Overview: four signal tiles with bars kept; tighter tile padding (14/16). Hero alarm keeps the original subtle box (the Astryx Banner's coloured header was too loud).
+- Focus ring dark grey instead of black; secondary text #63636c (6.0:1).
+- Removed unused CSS (`hero-list`, `text-muted`).
+- Final adjustments (owner-approved direction):
+  - 거래처 / 품번 picker buttons (`.field-trigger`) look like the search field next to them: white, 1px border, the same dark-border + inner-ring focus; the open state looks focused. Replaces the floating 2px ring.
+  - 품목별 search: one row that grows with pasted lines (`field-sizing: content`, max 6 lines; browsers without it keep one scrolling row), 560px wide, shorter placeholder. Multi-line paste, Enter and Shift+Enter unchanged.
+  - Phone tables: sticky column keeps a 1px edge + soft shadow (always on phones; on desktop the edge appears only when scrolled), a swipe hint line in the legend, and the 품목별 거래처 column is 8rem on phones (200px on desktop).
+  - Phone hero alarm: same 13px text, tighter padding and gaps.
+  - 품목별 month cells use 6px side padding: with the new 12px default, '26.10월' was clipped to '26.1…' on desktop and phone. `checkNoClippedCells()` in the e2e test now fails on any clipped table cell on Overview, 거래처별 and 품목별 (verified to fail without the fix).
+- Approved by the owner. Not done (owner): the depletion timeline in expandable order details (later); Order Status and Upload refinements wait for a review round.
 
 ## Art direction v2 (current; owner asked for a real recomposition, not colour tweaks)
 

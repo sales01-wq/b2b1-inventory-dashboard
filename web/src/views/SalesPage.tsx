@@ -47,6 +47,7 @@ const CUR_TITLE = '아직 끝나지 않은 기간이라 판매가 더 늘어날 
 function PeriodLegend({gaps, current, unit}: {gaps: boolean; current: boolean; unit: string}) {
   return (
     <div className="legend">
+      <Text type="supporting" className="show-narrow">표를 좌우로 밀면 다른 기간이 보입니다</Text>
       <Text type="supporting">- 판매 기록 없음 · 0 판매 기록은 있으나 합계 0</Text>
       {gaps && <Text type="supporting"><span className="legend-gap" aria-hidden /> 데이터에 판매가 전혀 없는 기간</Text>}
       {current && <Text type="supporting"><span className="legend-partial" aria-hidden /> 집계 중: 아직 끝나지 않은 이번 {unit}</Text>}
@@ -64,7 +65,7 @@ export function SalesPage() {
       {!state.loaded ? (
         <NoData />
       ) : (
-        <VStack gap={4}>
+        <VStack gap={5}>
           <TabList role="tablist" size="sm" hasDivider value={subview} onChange={v => { subview = v as typeof subview; rerender(n => n + 1); }}>
             <Tab value="customer" label="거래처별" panelId="sales-panel" />
             <Tab value="skustatus" label="품목별" panelId="sales-panel" />
@@ -158,6 +159,7 @@ function MselPicker({which}: {which: 'cust' | 'pn'}) {
         size="sm"
         variant="secondary"
         endContent={<Icon icon="chevronDown" />}
+        className="field-trigger"
       />
     </Popover>
   );
@@ -185,7 +187,7 @@ function CustomerTable({m}: {m: ReturnType<typeof customerTableModel>}) {
     <VStack gap={2}>
       {/* 좁은 화면에서는 칸을 찌그러뜨리지 않고 옆으로 스크롤 (휴대폰은 최근 분기 쪽에서 시작) */}
       <div ref={scrollRef}>
-      <Card padding={0} className="flush">
+      <Card padding={0}>
         {/* 열 너비 고정 (품명은 남는 너비): 자동 배치는 브랜드 · 품번을 말줄임으로 찌그러뜨림 */}
         <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: CW.pn + CW.brand + CW.name + CW.avail + (m.groupByCust ? CW.cust : 0) + m.quarterCols.length * CW.q + gaps.filter(Boolean).length * 56 + CW.total}}>
           <TableHeader>
@@ -284,8 +286,8 @@ function SkuView() {
         <TextArea
           label="품번 / 품명 검색"
           isLabelHidden
-          rows={2}
-          placeholder="품번 / 품명 검색 — 여러 개는 줄바꿈 · 쉼표로 구분해서 붙여넣기"
+          rows={1}
+          placeholder="품번 / 품명 검색 (여러 개는 줄바꿈 · 쉼표로 구분)"
           value={ui.skuStatusSearch}
           onChange={v => { act.setSkuSearch(v); setOpen(true); }}
         />
@@ -343,8 +345,8 @@ function SkuTable() {
             <Button label="CSV 다운로드" variant="secondary" size="sm" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(skuStatusCsv())} />
           </HStack>
           <div ref={scrollRef}>
-          <Card padding={0} className="flush">
-            <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 200 + s.months.length * 64 + gaps.filter(Boolean).length * 56 + 92}}>
+          <Card padding={0}>
+            <Table className="sticky-first fixed-cols sku-table" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 200 + s.months.length * 64 + gaps.filter(Boolean).length * 56 + 92}}>
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell className="sticky-col" style={{width: 200}}>거래처</TableHeaderCell>

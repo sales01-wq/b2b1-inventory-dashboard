@@ -29,49 +29,60 @@ body {
   gap: 0.375rem;
 }
 
-.hero-list {
-  margin: 0;
-  padding-inline-start: 1.25rem;
-  line-height: 1.7;
-}
-
 /* 판매 현황 표 · 다중 선택 */
 .num { text-align: end; white-space: nowrap; }
 .muted { color: var(--color-text-secondary); }
-.strong { font-weight: 700; }
+.strong { font-weight: 600; }
 .group-alt > td { background: color-mix(in srgb, var(--color-background-muted) 55%, var(--color-background-surface)); } /* 마우스를 올린 행보다 옅게 */
 /* 분기 머리글: 연도는 그 해 첫 분기 위에 작게, 연도가 바뀌는 열 왼쪽에 선 */
-.q-year { display: block; min-height: 1lh; font-size: 0.6875rem; color: var(--color-text-secondary); }
+.q-year { display: block; min-height: 1lh; font-size: 0.75rem; color: var(--color-text-secondary); }
 .ystart { box-shadow: inset 1px 0 0 var(--color-border-emphasized); }
 /* 합계 행: 위에 진한 선 */
 /* 데이터에 판매가 전혀 없는 기간: 좁은 빗금 열 */
 .gap-col { width: 3.5rem; min-width: 3.5rem; background-image: repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-border-emphasized) 70%, transparent) 5px 6px); }
-th.gap-col { font-size: 0.6875rem; white-space: normal; color: var(--color-text-secondary); text-align: center; }
+th.gap-col { font-size: 0.75rem; white-space: normal; color: var(--color-text-secondary); text-align: center; }
 /* 아직 끝나지 않은 이번 달(분기): 옅은 바탕 + 머리글 아래 '집계 중' */
 .partial { background-color: color-mix(in srgb, var(--color-background-muted) 60%, transparent); }
-.q-note { display: block; font-size: 0.6875rem; font-weight: 400; color: var(--color-text-secondary); }
+.q-note { display: block; font-size: 0.75rem; font-weight: 400; color: var(--color-text-secondary); }
 .legend { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; }
 .legend-gap, .legend-partial { display: inline-block; width: 0.875rem; height: 0.75rem; vertical-align: -0.0625rem; border: 1px solid var(--color-border); border-radius: 2px; }
 .legend-gap { background-image: repeating-linear-gradient(135deg, transparent 0 3px, var(--color-border-emphasized) 3px 4px); }
 .legend-partial { background-color: var(--color-background-muted); }
-tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var(--color-background-surface); }
+tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var(--color-background-surface); font-weight: 600; }
 /* 첫 칸 고정: 표의 스크롤 영역을 기준으로 붙도록 감싸는 영역을 실제 스크롤 영역으로 만듦 (기본값 clip 이면 페이지 여백 기준으로 16px 밀림) */
 .astryx-table-scroll-wrapper:has(> div > table.sticky-first) { overflow-x: auto; container-type: inline-size; }
 /* 펼친 상세는 표가 옆으로 스크롤돼도 보이는 폭 안에 고정 (100cqw = 표 스크롤 영역의 보이는 폭) */
 .detail-sticky { position: sticky; inset-inline-start: 1rem; width: calc(100cqw - 2rem); }
-.sticky-first .sticky-col { position: sticky; inset-inline-start: 0; z-index: 1; background-color: var(--color-background-surface); box-shadow: inset -1px 0 0 var(--app-hairline); }
+.sticky-first .sticky-col { position: sticky; inset-inline-start: 0; z-index: 1; background-color: var(--color-background-surface); --sticky-edge: inset -1px 0 0 var(--color-border-emphasized); }
+/* 휴대폰: 표가 늘 화면보다 넓으므로 고정 칸 오른쪽에 옅은 그림자 (밑으로 지나가는 칸이 있다는 표시) */
+@media (max-width: 767px) {
+  .sticky-first .sticky-col { --sticky-edge: inset -1px 0 0 var(--color-border-emphasized), 8px 0 10px -6px rgb(16 16 24 / 28%); box-shadow: var(--sticky-edge); }
+  .sku-table th.sticky-col { width: 8rem !important; } /* 품목별: 거래처 칸을 줄여 기간이 더 보이게 (데스크톱은 200px) */
+}
+/* 고정 칸 경계: 표가 옆으로 스크롤됐을 때만 (스크롤 타임라인을 지원하지 않는 브라우저는 데스크톱 선 없음 · 휴대폰 그림자 항상) */
+@supports (animation-timeline: scroll()) {
+  .sticky-first .sticky-col { animation: sticky-edge linear both; animation-timeline: scroll(nearest inline); animation-range: 0 1px; }
+  @keyframes sticky-edge { from { box-shadow: none; } to { box-shadow: var(--sticky-edge); } }
+}
+.sticky-first th.sticky-col { background-color: var(--color-background-muted); } /* 머리글 칸은 머리글 바탕 그대로 */
 .sticky-first .group-alt > .sticky-col { background-color: color-mix(in srgb, var(--color-background-muted) 55%, var(--color-background-surface)); }
 .msel-list { max-height: 320px; overflow-y: auto; display: grid; gap: 0.25rem; }
 .grow-field { flex: 1 1 220px; max-width: 360px; }
-.sku-search { display: grid; gap: 0.375rem; max-width: 720px; position: relative; }
-.sku-search textarea { resize: none; }
+.sku-search { display: grid; gap: 0.375rem; max-width: 560px; position: relative; }
+/* 한 줄로 시작해서 붙여넣은 줄 수만큼 늘어남 (최대 6줄) */
+.sku-search textarea { resize: none; field-sizing: content; min-height: 1lh; max-height: 6lh; }
+/* 품목별 표: 월 열(64px)이 많아 칸 좌우 여백을 6px 로 (양 끝 칸은 공통 16px 유지) — '26.10월' 이 잘리지 않게 */
+.sku-table .astryx-table-row > :not(:first-child):not(:last-child) { padding-inline: 0.375rem; }
+/* 다중 선택 버튼(거래처 · 품번): 옆 검색칸과 같은 흰 바탕 · 1px 테두리 · 포커스 모양 */
+.field-trigger { background: var(--color-background-surface); box-shadow: inset 0 0 0 1px var(--color-border-emphasized); }
+.field-trigger:hover { background: var(--color-background-muted); }
+.field-trigger:focus-visible, .field-trigger[aria-expanded='true'] { outline: none; box-shadow: inset 0 0 0 1px var(--color-text-primary), inset 0 0 0 3px var(--color-border-emphasized); }
 /* 검색 결과: 입력칸 아래에 떠서 표를 밀어내지 않음 */
 .sku-search .sku-matches { position: absolute; inset-inline: 0; inset-block-start: calc(100% + 0.25rem); z-index: 5; box-shadow: var(--shadow-high); }
 
 /* 발주 현황 */
 .text-danger { color: var(--color-text-error, var(--color-error)); }
 .text-safe { color: var(--color-text-success, var(--color-success)); }
-.text-muted { color: var(--color-text-secondary); }
 .inline-num { display: inline-block; vertical-align: middle; margin-inline: 0.25rem; }
 .rule { border: none; border-top: 1px solid var(--color-border); margin-block: 0.75rem; width: 100%; }
 .nowrap { white-space: nowrap; }
@@ -81,41 +92,18 @@ tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var
 
 /* ---------- 공통 틀 ---------- */
 .toolbar-divider { width: 1px; height: 1.25rem; background: var(--color-border); }
-.brand-mark { display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: 0.5rem; background: var(--app-accent); color: #fff; }
+.brand-mark { display: inline-grid; place-items: center; width: 1.75rem; height: 1.75rem; border-radius: var(--radius-element); background: var(--color-text-primary); color: var(--color-background-surface); }
 
-/* ---------- 구역: 제목 아래 진한 선 한 줄(이 앱의 표시), 그 아래 내용 ---------- */
-.section { display: grid; gap: var(--space-4); align-content: start; min-width: 0; }
-.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; padding-block-end: var(--space-2); border-block-end: 1px solid var(--color-text-primary); }
-/* 표를 구역 안에 테두리 없이 (머리글의 위아래 선이 경계) */
-.flush.astryx-card { border: 0; border-radius: 0; background: transparent; }
-
-/* ---------- 개요: 넓은 작업 열 + 좁은 요약 열 ---------- */
-.ov-grid { display: grid; grid-template-columns: minmax(0, 1fr) 19rem; gap: var(--space-10); align-items: start; padding-block: var(--space-2) var(--space-10); }
-.ov-main, .ov-side { display: grid; gap: var(--space-8); min-width: 0; align-content: start; }
-@media (max-width: 1099px) { .ov-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-8); } }
-
-/* 가장 중요한 숫자 (발주 필요 품목 수) */
-.headline { display: flex; align-items: flex-end; gap: var(--space-3); }
-.headline-figure { font-size: 2.75rem; line-height: 0.9; font-weight: 650; letter-spacing: -0.045em; font-variant-numeric: tabular-nums; }
-.headline-text { display: grid; gap: 0.125rem; padding-block-end: 0.125rem; }
-
-/* 재고 신호등: 신호마다 한 줄, 줄 전체가 링크 */
-.ledger { display: grid; }
-.ledger-row {
-  display: grid; grid-template-columns: 1fr auto 1rem; grid-template-areas: 'label value chev' 'detail detail detail';
-  align-items: center; column-gap: var(--space-2); row-gap: var(--space-2);
-  padding: var(--space-3) 0;
-  border-block-end: 1px solid var(--color-border); border-radius: var(--radius-element);
-  color: inherit; text-decoration: none; transition: background-color 120ms ease-out;
-}
-.ledger-row:hover { background: linear-gradient(var(--color-background-muted), var(--color-background-muted)) no-repeat -0.5rem 0 / calc(100% + 1rem) 100%; }
-.ledger-row:focus-visible { outline: 2px solid var(--app-accent); outline-offset: -2px; }
-.ledger-label { grid-area: label; display: flex; align-items: center; gap: 0.375rem; }
-.ledger-value { grid-area: value; font-size: var(--text-display-3-size); line-height: 1; font-weight: 640; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-.ledger-chevron { grid-area: chev; color: var(--color-text-secondary); opacity: 0.45; transition: opacity 120ms ease-out, transform 120ms ease-out; }
-.ledger-row:hover .ledger-chevron, .ledger-row:focus-visible .ledger-chevron { opacity: 1; transform: translateX(2px); }
-.ledger-detail { grid-area: detail; display: flex; flex-wrap: wrap; justify-content: space-between; column-gap: var(--space-3); row-gap: 0.375rem; }
-.ledger-detail > .astryx-progress-bar { flex-basis: 100%; }
+/* ---------- 숫자 칸 묶음 (개요): 칸 사이 1px 선, 좁으면 줄바꿈 ---------- */
+.stat-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 1px; background: var(--color-border); border-radius: inherit; overflow: hidden; }
+.stat { background: var(--color-background-surface); padding: 0.875rem 1rem; }
+.stat .astryx-text { font-variant-numeric: tabular-nums; }
+/* 누를 수 있는 칸 (개요 → 발주 현황) */
+.stat-link { display: block; color: inherit; text-decoration: none; transition: background-color 120ms ease-out; }
+.stat-link:hover { background: color-mix(in srgb, var(--color-background-muted) 60%, var(--color-background-surface)); }
+.stat-link:focus-visible { outline: 2px solid var(--color-border-focus, var(--color-text-primary)); outline-offset: -2px; }
+.stat-chevron { color: var(--color-text-secondary); opacity: 0.5; transition: opacity 120ms ease-out, transform 120ms ease-out; }
+.stat-link:hover .stat-chevron, .stat-link:focus-visible .stat-chevron { opacity: 1; transform: translateX(2px); }
 
 /* ---------- 휴대폰 ---------- */
 .show-narrow { display: none; }
@@ -123,16 +111,21 @@ tfoot td { border-top: 1px solid var(--color-border-emphasized); background: var
 @media (max-width: 767px) {
   .hide-narrow { display: none; }
   .show-narrow { display: block; margin-block-start: 0.125rem; }
+  .stat-strip { grid-template-columns: 1fr 1fr; }
+  .stat { padding: 0.75rem 0.875rem; }
 }
 
 /* ---------- 경고 상자 (히어로 알람) ---------- */
 .alert { display: grid; gap: 0.5rem; padding: 0.75rem 1rem; border: 1px solid; border-radius: var(--radius-container); }
 .alert-error { border-color: color-mix(in srgb, var(--color-text-error) 28%, transparent); background: color-mix(in srgb, var(--color-text-error) 5%, var(--color-background-surface)); }
 .alert-list { margin: 0; padding-inline-start: 1.5rem; list-style: none; display: grid; gap: 0.125rem; } /* 아이콘(16px) + 간격(8px) 만큼 들여서 제목 글자와 맞춤 */
-.alert code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 0.75rem; }
+.alert code { font-family: var(--font-family-body); font-size: inherit; font-weight: 500; letter-spacing: 0.01em; }
+/* 휴대폰: 글자 크기는 그대로, 여백 · 간격만 줄여 알람 높이를 낮춤 */
+@media (max-width: 767px) { .alert { gap: 0.25rem; padding: 0.625rem 0.75rem; } .alert-list { padding-inline-start: 1.5rem; } }
+
 
 /* ---------- 브랜드 표시 · 글자 굵기 ---------- */
-.brand-label { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--color-text-secondary); white-space: nowrap; }
+.brand-label { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: var(--color-text-secondary); white-space: nowrap; }
 .brand-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex: none; }
 .medium { font-weight: 500; }
 /* 열 너비를 정한 표(table-layout: fixed): Astryx 머리글 칸의 max-width: 0 (말줄임용) 이 지정한 너비를 무시하게 만들어서 해제 */

@@ -17,7 +17,7 @@ import {useStore} from './useStore';
 import {StatusBanners} from './StatusBanners';
 import {DEFAULT_WEBAPP_URL} from './defaults';
 import {DEMO, startDemo} from './demo';
-import {emit, subscribe, ui} from '../lib/store.js';
+import {emit, subscribe} from '../lib/store.js';
 import {shared, initSharedMode, logout} from '../data/shared.js';
 import {settingsLoadLocal} from '../data/settings.js';
 import {OverviewPage} from '../views/OverviewPage';
@@ -67,7 +67,7 @@ export function App() {
   const sideNav = (
     <SideNav
       collapsible
-      header={<SideNavHeading heading="재고 관리" subheading={`${ui.team} · B2B 대시보드`} icon={<span className="brand-mark"><CubeIcon width={16} height={16} aria-hidden /></span>} />}
+      header={<SideNavHeading heading="재고 관리" subheading="B2B 대시보드" icon={<span className="brand-mark"><CubeIcon width={16} height={16} aria-hidden /></span>} />}
       footer={<UserChip />}>
       {SECTIONS.map(section => (
         <SideNavSection key={section} title={section}>
