@@ -24,7 +24,7 @@ import {state, ui} from '../lib/store.js';
 import {brandOf} from '../lib/forecast.js';
 import {buildExportRows, productNeedDiff, selectionSummaryFor} from '../lib/lookup.js';
 import {boxCompactRows, boxModel, expiryRows, incomingChips, warehouseRows} from '../lib/views.js';
-import {setBoxDim} from '../data/settings.js';
+import {BoxDims, BoxNum, EXPORT_ANCHOR, ExportPanel, type Editable} from './ExportPanel';
 import * as act from '../lib/actions.js';
 import {fmt} from '../lib/format';
 
@@ -34,8 +34,6 @@ type Item = {status: 'resolved' | 'notfound' | 'truncated'; barcode?: string; na
 type WhRow = {창고: string; 가용재고: number; 현재고: number; 입고예정: number; 출고예정: number; picked: boolean};
 type Lot = {lot: string; date: string; avail: number; picked: boolean};
 type Chip = {m: string; d: string; q: number; picked: boolean};
-
-export const EXPORT_ANCHOR = 'lookup-export';
 
 export function LookupPage() {
   useStore();
@@ -48,7 +46,7 @@ export function LookupPage() {
           <VStack gap={5}>
             <SearchForm />
             <Results />
-            <ExportAnchor />
+            <ExportPanel />
           </VStack>
         ) : (
           <NoData />
@@ -157,22 +155,6 @@ function SelectedJump() {
   );
 }
 
-/* 2단계 전까지 다운로드 목록 자리 (선택 항목 보기의 이동 위치) */
-function ExportAnchor() {
-  const n = buildExportRows().length;
-  if (n === 0) return null;
-  return (
-    <section id={EXPORT_ANCHOR} className="scroll-anchor">
-      <Card padding={4}>
-        <VStack gap={1}>
-          <Heading level={2}>다운로드 목록 ({fmt(n)})</Heading>
-          <Text type="supporting">다운로드 목록 표 · PLT 계산 · 엑셀 다운로드는 2단계에서 옮깁니다.</Text>
-        </VStack>
-      </Card>
-    </section>
-  );
-}
-
 function ResultItem({item, idx}: {item: Item; idx: number}) {
   const isName = item.nameQuery !== undefined;
   const query = isName ? item.nameQuery : item.barcode;
@@ -212,7 +194,7 @@ function ProductCard({row, alternatives, idx, query}: {row: Row; alternatives: R
             <HStack gap={2} vAlign="center" wrap="wrap"><code className="pn">{row.품번}</code><Text type="label" weight="semibold">{row.품명}</Text></HStack>
             <Text type="supporting">{selectionSummaryFor(row.품번)}</Text>
           </VStack>
-          <Button label="펼치기" size="sm" variant="ghost" icon={<Icon icon="chevronDown" />} onClick={() => act.toggleCollapse(idx)} />
+          <Button label="펼치기" size="sm" variant="ghost" icon={<Icon icon="chevronDown" />} onClick={(e: MouseEvent) => { e.stopPropagation(); act.toggleCollapse(idx); }} />
         </div>
       </Card>
     );
@@ -400,15 +382,6 @@ const Empty = ({children}: {children: ReactNode}) => <div className="empty-box">
 
 /* ---------------- 박스 · 중량 (기존 productMasterHtml). 파일에 없는 값만 입력, 입력값은 저장(기존 setBoxDim) ---------------- */
 type Fixed = {fixed: string};
-type Editable = {field: string; value: number | null; placeholder?: string};
-function BoxNum({pn, f, label}: {pn: string; f: Editable; label: string}) {
-  const [v, setV] = useState<number | null>(f.value);
-  return (
-    <span className="box-num">
-      <NumberInput label={label} isLabelHidden size="sm" placeholder={f.placeholder || label} value={v} onChange={n => { setV(n); setBoxDim(pn, f.field, n === null ? '' : String(n)); }} />
-    </span>
-  );
-}
 function BoxEditor({pn}: {pn: string}) {
   const m = boxModel(pn) as {rows: {label: string; dims: Fixed | {fields: Editable[]}; weight: Fixed | Editable; count: Fixed | Editable | null}[]; plt: {kind: string; cells: [string, string][]} | null};
   const cell = (c: Fixed | Editable | null, label: string, ph: string) => (c === null ? '-' : 'fixed' in c ? c.fixed : <BoxNum pn={pn} f={{...c, placeholder: ph}} label={label} />);
@@ -424,13 +397,7 @@ function BoxEditor({pn}: {pn: string}) {
             {m.rows.map(r => (
               <TableRow key={r.label}>
                 <TableCell>{r.label}</TableCell>
-                <TableCell>
-                  {'fixed' in r.dims ? r.dims.fixed : (
-                    <HStack gap={1} vAlign="center">
-                      {r.dims.fields.map((f, k) => <span key={f.field} className="dim-part">{k > 0 && <span aria-hidden>×</span>}<BoxNum pn={pn} f={f} label={`${r.label} ${f.placeholder}(mm)`} /></span>)}
-                    </HStack>
-                  )}
-                </TableCell>
+                <TableCell><BoxDims pn={pn} dims={r.dims} label={r.label} /></TableCell>
                 <TableCell className="num">{cell(r.weight, `${r.label} 무게(g)`, '무게(g)')}</TableCell>
                 <TableCell className="num">{cell(r.count, `${r.label} 입수`, '입수')}</TableCell>
               </TableRow>

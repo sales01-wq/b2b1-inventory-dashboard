@@ -3,7 +3,7 @@
 import {state, ui, emit} from './store.js';
 import {salesForTeam, computeDerived, brandPasses} from './forecast.js';
 import {addPnTokens, addForecastPnTokens, inSignal} from './views.js';
-import {doLookupBatch, addToExport, toggleIncoming, toggleExpiry, applyAutoSelectForItem} from './lookup.js';
+import {doLookupBatch, addToExport, toggleIncoming, toggleExpiry, applyAutoSelectForItem, removeFromExport, removeIncoming, removeExpiry} from './lookup.js';
 import {num} from './parse.js';
 
 /* teamToggle 클릭 (3113행) */
@@ -129,3 +129,23 @@ export function setNeededQty(pn, value){
   if(v>0) ui.neededQty.set(pn, v); else ui.neededQty.delete(pn);
   emit();
 }
+
+/* ---------------- 다운로드 목록 (exportPanel 이벤트, 3473행) ---------------- */
+export function removeExportRow(del){ if(del.kind==='expiry') removeExpiry(del.key); else removeFromExport(del.key); emit(); }
+export function removeIncomingItem(key){ removeIncoming(key); emit(); }
+export function removeExpiryItem(key){ removeExpiry(key); emit(); }
+/* 우선순위: 빈 값 · 0 이면 1 */
+export function setPriority(key, value){
+  const v = num(value) || 1;
+  const entry = ui.exportList.find(x=>x.key===key);
+  if(entry) entry.우선순위 = v;
+  emit();
+}
+/* 전체 지우기: 담은 창고 · 입고예정 · LOT 과 PLT 계산 결과 (필요 수량 · 박스 입력값은 그대로, 기존과 같음) */
+export function clearExport(){
+  ui.exportList=[]; ui.incomingList=[]; ui.expiryList=[];
+  ui.exportPltByProduct=new Map(); ui.exportPltDetail=new Map(); ui.exportPltMixedTotal=null; ui.exportPltPacking=[];
+  ui.exportPltNumbersByProduct=new Map(); ui.exportPltRepWeightByProduct=new Map(); ui.showPltPackingDetail=false;
+  emit();
+}
+export function setExportColWidth(key, w){ ui.exportColWidths[key] = Math.max(40, Math.round(w)); emit(); }

@@ -16,6 +16,8 @@ const files = {가용재고: sh.inventory, 제품일정표: sh.schedule, 판매�
 const shot = async (page, name) => { if (process.env.SHOT_DIR) await page.screenshot({path: `${process.env.SHOT_DIR}/${name}.png`, fullPage: true}); }; // 선택: 화면 캡처
 const fmtKo = n => new Intl.NumberFormat('ko-KR').format(n);
 const text = async loc => (await loc.innerText()).replace(/\s+/g, ' ').trim();
+/** 입력칸 값이 v 가 될 때까지 기다림 (다른 칸에서 바꾼 값이 다음 화면 갱신 때 반영되는 경우) */
+const waitValue = async (loc, v) => { for (let i = 0; i < 60 && (await loc.inputValue()) !== v; i++) await new Promise(r => setTimeout(r, 50)); assert.equal(await loc.inputValue(), v); };
 const readDownload = d => new Promise(res => { let t = ''; d.createReadStream().then(st => st.on('data', c => (t += c)).on('end', () => res(t))); });
 
 /** 새 화면을 열고 테스트용 시트를 올려 적용 (개요로 이동할 때까지) */
@@ -78,10 +80,16 @@ async function checkStickyColumns(page, scrollBy) {
       const check = when => {
         const wl = wrap.getBoundingClientRect().left;
         for (const s of t.querySelectorAll('.sticky-col')) {
+          const cs = getComputedStyle(s);
+          if (cs.position !== 'sticky') continue; // 휴대폰에서 고정을 푼 칸 (다운로드 목록은 품번만 고정)
           const r = s.getBoundingClientRect();
+          const off = parseFloat(cs.left) || 0; // 여러 칸 고정: 앞 칸 너비만큼 오른쪽
           let next = s.nextElementSibling;
           while (next && !next.getClientRects().length) next = next.nextElementSibling; // 좁은 화면에서 숨긴 칸은 건너뜀
-          if (Math.abs(r.left - wl) > 1) out.push(`${when}: '${s.textContent.slice(0, 8)}' 이 왼쪽 끝(${Math.round(wl)})이 아니라 ${Math.round(r.left)}`);
+          // 앞에 고정 안 된 칸이 있으면(휴대폰 다운로드 목록의 삭제 칸) 처음엔 제자리, 스크롤하면 왼쪽 끝에 붙음
+          const prev = s.previousElementSibling;
+          if (when === '처음' && prev && getComputedStyle(prev).position !== 'sticky') continue;
+          if (Math.abs(r.left - wl - off) > 1) out.push(`${when}: '${s.textContent.slice(0, 8)}' 이 왼쪽 끝(${Math.round(wl)})이 아니라 ${Math.round(r.left)}`);
           if (when === '처음' && next && r.right > next.getBoundingClientRect().left + 0.5) out.push(`처음: '${s.textContent.slice(0, 8)}' 이 옆 칸과 겹침`);
         }
       };
@@ -322,6 +330,7 @@ try {
   await sb1.getByRole('button', {name: '선택완료'}).click();
   assert.equal(await text(page.locator('.product-card.is-collapsed').first()), 'SB001 성분 에디터 세럼 창고 3개 · 유통기한 1개 펼치기'); // EMP · B2B2 + 추천(B2B1팀 창고) · 추천 LOT
   await page.locator('.product-card.is-collapsed').getByRole('button', {name: '펼치기'}).click();
+  assert.equal(await page.locator('.product-card.is-collapsed').count(), 0); // 단추 한 번 = 한 번만 펼침
   // 박스 정보: 파일에 값이 없는 칸만 입력, 접었다 펴도 입력값 유지
   const sb5 = card('SB005');
   await sb5.getByText('아웃박스 · 인박스 · 중량 정보').click();
@@ -332,10 +341,65 @@ try {
   assert.equal(await card('SB006').getByLabel('아웃박스 W(mm)').count(), 0); // SB006 은 파일에 규격이 있어 고정 표시
   await checkNoClippedCells(page);
   await shot(page, 'lookup');
+  // ---- 다운로드 목록 (2단계): 행 수 · 고정 3칸 · 우선순위대로 할당 · 목록에서 입력 · 빼기 · 열 너비 · 끌어 스크롤
+  const xl = page.locator('#lookup-export');
+  const xrows = xl.locator('tbody tr');
+  const n = await xrows.count();
+  assert.equal(await text(xl.locator('h2')), `다운로드 목록 (${n})`);
+  await page.getByRole('button', {name: `선택 항목 보기 (${n})`}).waitFor();
+  assert.equal(await xl.locator('thead tr').last().locator('th').count(), 33);
+  await checkStickyColumns(page, 900);
+  const xrow = (pn, wh) => xrows.filter({has: page.locator('td.sticky-pn', {hasText: new RegExp('^' + pn + '$')})}).filter({hasText: wh});
+  const allocOf = async (pn, wh) => text(xrow(pn, wh).locator('td').nth(8));
+  // SB001 필요 1,000: 우선순위 EMP(1, 300) → B2B2(2, 800) → B2B1(3, 추천)
+  assert.deepEqual([await allocOf('SB001', 'EMP 물류'), await allocOf('SB001', 'B2B2팀 창고'), await allocOf('SB001', 'B2B1팀 창고')], ['300', '700', '0']);
+  const prio = xrow('SB001', 'B2B1팀 창고').getByLabel('SB001 B2B1팀 창고 우선순위');
+  await prio.fill('1'); await prio.press('Tab');
+  assert.deepEqual([await allocOf('SB001', 'EMP 물류'), await allocOf('SB001', 'B2B1팀 창고'), await allocOf('SB001', 'B2B2팀 창고')], ['300', '700', '0']);
+  // 목록의 필요수량 = 카드의 필요 수량 (같은 값)
+  const xneed = xrow('SB001', 'EMP 물류').getByLabel('SB001 필요수량');
+  await xneed.fill('2500'); await xneed.press('Tab');
+  await waitValue(sb1.getByLabel('필요 수량'), '2500');
+  assert.equal(await text(sb1.locator('.need-diff b')), '-200개');
+  assert.equal(await text(xrow('SB001', 'EMP 물류').locator('td').nth(10)), '-200개');
+  // 목록에서 넣은 박스 값이 카드에도 보임
+  const mt3box = xrow('MT003', '재고없음').getByLabel('아웃박스 입수');
+  await mt3box.fill('24'); await mt3box.press('Tab');
+  await card('MT003').getByText('아웃박스 · 인박스 · 중량 정보').click();
+  await waitValue(card('MT003').getByLabel('아웃박스 입수'), '24');
+  // 행 삭제 → 카드의 창고 체크도 풀림
+  await xrow('SB001', 'B2B2팀 창고').getByRole('button', {name: '삭제'}).click();
+  assert.equal(await sb1.locator('.pick-row', {hasText: 'B2B2팀 창고'}).getByRole('checkbox').isChecked(), false);
+  // 열 너비: 품명 손잡이를 끌면 넓어지고 표는 움직이지 않음, 키보드 → 로 10px
+  const nameTh = xl.locator('thead th.sticky-name');
+  const w0 = (await nameTh.boundingBox()).width;
+  const hb = await xl.getByRole('separator', {name: '품명 열 너비'}).boundingBox();
+  const wrap = () => page.evaluate(() => document.querySelector('.export-table').closest('.astryx-table-scroll-wrapper').scrollLeft);
+  const sl0 = await wrap();
+  await page.mouse.move(hb.x + 4, hb.y + hb.height / 2); await page.mouse.down(); await page.mouse.move(hb.x + 64, hb.y + hb.height / 2, {steps: 5}); await page.mouse.up();
+  assert.ok(Math.abs((await nameTh.boundingBox()).width - (w0 + 60)) <= 1);
+  assert.equal(await wrap(), sl0);
+  await xl.getByRole('separator', {name: '품명 열 너비'}).focus(); await page.keyboard.press('ArrowRight');
+  assert.ok(Math.abs((await nameTh.boundingBox()).width - (w0 + 70)) <= 1);
+  await checkStickyColumns(page, 900); // 넓힌 품명 칸 뒤로도 고정 위치가 맞음
+  // 표의 빈 곳을 끌면 옆으로 스크롤, 그 끌기는 단추 · 입력에 영향 없음
+  await page.evaluate(() => { document.querySelector('.export-table').closest('.astryx-table-scroll-wrapper').scrollLeft = 0; });
+  await xrow('SB001', 'EMP 물류').scrollIntoViewIfNeeded();
+  const vc = await xrow('SB001', 'EMP 물류').locator('td').nth(4).boundingBox();
+  await page.mouse.move(vc.x + vc.width / 2, vc.y + vc.height / 2); await page.mouse.down(); await page.mouse.move(vc.x - 200, vc.y + vc.height / 2, {steps: 8}); await page.mouse.up();
+  assert.ok(await wrap() >= 150);
+  assert.equal(await xrows.count(), n - 1);
+  await checkNoClippedCells(page);
+  await shot(page, 'lookup-export');
+
   // 바코드 지우기: 결과도 비움 (품명 입력은 그대로)
   await page.getByRole('button', {name: '바코드 지우기'}).click();
   assert.equal(await page.locator('.product-card').count(), 0);
   assert.equal(await page.getByLabel('품명 검색 (부분 일치)').inputValue(), '세트');
+  // 결과를 지워도 다운로드 목록은 남고, '전체 지우기' 로 비움
+  assert.equal(await xrows.count(), n - 1);
+  await xl.getByRole('button', {name: '전체 지우기'}).click();
+  assert.equal(await page.locator('#lookup-export').count(), 0);
   assert.deepEqual(errors, []);
 
   // ---- 휴대폰: 넓은 표는 표 안에서만 옆으로 스크롤, 첫 칸은 고정
@@ -394,6 +458,17 @@ try {
   // 그냥 누르면 담김
   await wrow.locator('td').nth(1).click();
   assert.equal(await wrow.getByRole('checkbox').isChecked(), true);
+  // 휴대폰 다운로드 목록: 품번 한 칸만 고정, 끝 열까지 스크롤해서 볼 수 있음
+  await phone.page.locator('#lookup-export').scrollIntoViewIfNeeded();
+  await checkStickyColumns(phone.page, 300);
+  assert.equal(await phone.page.evaluate(() => getComputedStyle(document.querySelector('.export-table th.sticky-name')).position), 'static');
+  assert.ok(await phone.page.evaluate(() => {
+    const w = document.querySelector('.export-table').closest('.astryx-table-scroll-wrapper');
+    w.scrollLeft = w.scrollWidth;
+    const last = document.querySelector('.export-table thead tr:last-child th:last-child').getBoundingClientRect();
+    return last.right <= w.getBoundingClientRect().right + 1 && last.left >= 0;
+  }));
+  await checkNoClippedCells(phone.page);
   await shot(phone.page, 'lookup-mobile');
   assert.deepEqual(phone.errors, []);
   console.log('e2e 업로드 · 개요 · 판매 현황 · 발주 현황 · 조회 · 휴대폰 배치: 통과');

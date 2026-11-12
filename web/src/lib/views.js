@@ -4,7 +4,7 @@ import {fmt} from './format';
 import {state, ui, settings} from './store.js';
 import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, nextOrderOf, usableAvailable, getRules, ruleThresholds} from './forecast.js';
 import {custAdjust, custShortSummaryCached, productList, buildSkuStatusData, buildPivotRows} from './sales.js';
-import {boxInfoFor} from './lookup.js';
+import {boxInfoFor, baseBarcode, buildExportRows, incomingItemsFor, shortDate} from './lookup.js';
 
 /* renderOverview (1210행) */
 export function overviewModel(){
@@ -372,4 +372,94 @@ export function boxCompactRows(pn){
     {label:'인박스', dim:dims(box.인W,box.인D,box.인H), weight:box.인무게g},
     {label:'제품', dim:dims(box.제품W,box.제품D,box.제품H), weight:box.제품무게g},
   ].map(r=>({label:r.label, dim:r.dim, weight: r.dim ? (r.weight?fmt(r.weight):'-') : null}));
+}
+
+/* ---------------- 다운로드 목록 (renderExportPanel 2680행) ---------------- */
+/* 열 순서 · 기본 너비 (EXPORT_COL_DEFAULTS 2143행). 'maxBoxes' 는 혼적 O 일 때 없음 */
+export const EXPORT_COLS = [
+  ['del',''],['pn','품번'],['name','품명'],['erpBarcode','ERP 바코드'],['barcode','바코드'],
+  ['warehouse','창고'],['priority','우선순위'],['avail','가용재고'],['alloc','할당수량'],['needed','필요수량'],['diff','부족/여유'],['vendor','거래처(제조사)'],
+  ['incDate','입고예정 일자'],['incQty','입고예정 수량'],
+  ['lot','LOT'],['expiry','유통기한'],['expiryQty','유통기한 가용재고'],
+  ['outDims','아웃박스 규격(mm)'],['outWeight','아웃박스 무게(g)'],['outCount','아웃박스 입수'],['inDims','인박스 규격(mm)'],['inWeight','인박스 무게(g)'],['inCount','인박스 입수'],['prodDims','제품 규격(mm)'],['prodWeight','제품 무게(g)'],
+  ['boxesNeeded','예상 총 박스수'],['remainder','잔량(마지막 박스)'],['totalWeight','예상 총 박스중량(kg)'],['actualBoxes','PLT당 박스수'],['maxBoxes','PLT 최대 적재 가능 박스수'],['pltNumber','PLT 번호'],['pltWeight','PLT 예상중량(kg)'],['pltDims','PLT 예상 W×D×H(cm)'],
+];
+export const EXPORT_COL_DEFAULTS = {
+  del:76, pn:90, name:190, erpBarcode:150, barcode:130, warehouse:150, priority:80, avail:90, alloc:90,
+  needed:90, diff:90, vendor:130, incDate:110, incQty:100, lot:110, expiry:100, expiryQty:120,
+  // port: 규격 칸은 W · D · H 입력칸 3개가 들어가게 130 → 200 (기존은 입력칸이 칸 밖으로 넘침)
+  outDims:200, outWeight:100, outCount:80, inDims:200, inWeight:100, inCount:80,
+  prodDims:200, prodWeight:100, boxesNeeded:100, remainder:130, totalWeight:130,
+  actualBoxes:100, maxBoxes:150, pltNumber:90, pltWeight:120, pltDims:150,
+};
+export function exportColWidth(key){ return ui.exportColWidths[key] || EXPORT_COL_DEFAULTS[key] || 120; }
+
+export function exportPanelModel(){
+  const rows = buildExportRows();
+  const mixed = ui.pltMixMode==='O';
+  const pltTotal = mixed && ui.exportPltMixedTotal!==null
+    ? ui.exportPltMixedTotal
+    : Array.from(new Set(rows.map(r=>r.품번))).reduce((s,pn)=> s + (ui.exportPltByProduct.get(pn)||0), 0);
+  let summary = null;
+  if(pltTotal>0){
+    const boxWeightTotal = Array.from(ui.exportPltDetail.values()).reduce((s,d)=>s+d.totalWeightKg,0);
+    const tareKg = ui.exportPltTareKg || 20;
+    const pltTareTotal = pltTotal * tareKg;
+    summary = {
+      pltLabel: mixed ? '혼적 기준 총 예상 PLT' : '품목별 개별 계산 기준 총 예상 PLT',
+      pltTotal, boxWeightTotal, tareKg, pltTareTotal, grandTotal: boxWeightTotal + pltTareTotal, baseHeightCm: ui.exportPltBaseHeightCm||0,
+    };
+  }
+  const box = pn => boxModel(pn).rows; // 아웃 · 인 · 제품 (편집 가능 여부 포함)
+  const out = rows.map(x=>{
+    const isRealWh = !x.isSynthetic && x.창고 && x.창고!=='재고없음';
+    const needed = x._needed||0, diff = x._diff;
+    const detail = ui.exportPltDetail.get(x.품번);
+    let pltNumber = '-', pltWeight = '-', pltDims = '-';
+    if(mixed){
+      const nums = ui.exportPltNumbersByProduct.get(x.품번);
+      if(nums && nums.length>0) pltNumber = nums.map(n=>'PLT '+n).join(', ');
+      const weights = ui.exportPltRepWeightByProduct.get(x.품번);
+      if(weights && weights.length>0) pltWeight = weights.map(w=>fmt(w)+' kg').join(', ');
+      const dimsArr = ui.exportPltRepDimsByProduct.get(x.품번);
+      if(dimsArr && dimsArr.length>0) pltDims = dimsArr.map(d=>`${fmt(d.L)}×${fmt(d.W)}×${fmt(d.H)}`).join(', ');
+    } else if(ui.exportPltByProduct.has(x.품번)){
+      pltNumber = fmt(ui.exportPltByProduct.get(x.품번)) + ' PLT';
+      pltWeight = detail && detail.weightPerPltKg ? fmt(detail.weightPerPltKg)+' kg' : '-';
+      pltDims = detail ? `${fmt(detail.palletL)}×${fmt(detail.palletW)}×${fmt(detail.actualHeightCm)}` : '-';
+    }
+    const b = box(x.품번);
+    return {
+      key: x.key,
+      // 삭제: LOT 으로 늘어난 행 · LOT 만 고른 품목은 그 LOT 을, 창고 행은 창고를 뺌. 입고예정만 고른 품목은 입고예정 칸의 × 로
+      del: (x._isExpiryClone || (x.isSynthetic && x._expiry)) ? {kind:'expiry', key:x._expiry.key} : (!x.isSynthetic ? {kind:'export', key:x.key} : null),
+      pn: x.품번, name: x.품명, erpBarcode: x.바코드, barcode: baseBarcode(x.바코드), warehouse: x.창고,
+      priority: isRealWh ? {key:x.key, value:x.우선순위||1} : null,
+      avail: x.가용재고==='-' ? '-' : fmt(x.가용재고),
+      alloc: isRealWh ? fmt(x._allocated||0) : '-',
+      diff: (needed>0 && diff!==undefined) ? {text:`${diff<0?'':'+'}${fmt(diff)}개`, short: diff<0} : null,
+      vendor: x.거래처||'-',
+      inc: incomingItemsFor(x.품번).map(i=>({key:i.key, date: i.날짜?shortDate(i.날짜):'날짜 미정'})),
+      incQty: incomingItemsFor(x.품번).map(i=>fmt(i.수량)).join(', ') || '-',
+      lot: x._expiry ? {text:x._expiry.LOT, key:x._expiry.key} : null,
+      expiry: x._expiry ? x._expiry.유통기한 : '-',
+      expiryQty: x._expiry ? fmt(x._expiry.가용재고수량) : '-',
+      outDims: b[0].dims, outWeight: b[0].weight, outCount: b[0].count,
+      inDims: b[1].dims, inWeight: b[1].weight, inCount: b[1].count,
+      prodDims: b[2].dims, prodWeight: b[2].weight,
+      boxesNeeded: detail ? fmt(detail.boxesNeeded) : '-',
+      remainder: detail ? (detail.remainderUnits>0 ? {text:`${fmt(detail.remainderUnits)}개 / ${fmt(detail.perBox)}개`, warn:true} : {text:'딱 맞음', muted:true}) : {text:'-'},
+      totalWeight: detail && detail.totalWeightKg ? fmt(detail.totalWeightKg)+' kg' : '-',
+      actualBoxes: detail ? fmt(detail.actualBoxesPerPallet) : '-',
+      maxBoxes: detail ? fmt(detail.boxesPerPallet) : '-',
+      pltNumber, pltWeight, pltDims,
+    };
+  });
+  return {
+    rows: out, mixed, summary,
+    cols: EXPORT_COLS.filter(([k])=>!(mixed && k==='maxBoxes')),
+    packing: mixed && ui.exportPltPacking && ui.exportPltPacking.length>0
+      ? ui.exportPltPacking.map(p=>({index:p.index, items:p.items.map(it=>({pn:it.pn, pct:Math.round(it.frac*100)})), used:Math.round(p.used*100), full:p.used>0.98, weight:fmt(p.weightKg)}))
+      : null,
+  };
 }

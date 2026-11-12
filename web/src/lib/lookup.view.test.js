@@ -51,9 +51,25 @@ const STEPS = [
   ['active', 1],
   ['active', 2],
   ['collapse', 0],
+  // 다운로드 목록: 우선순위(빈 값 · 0 → 1) 로 할당 순서 변경, 목록의 필요수량 · 박스 입력, 행 · 입고예정 · LOT 빼기
+  ['prio', 'SB001||EMP 물류', '1'],
+  ['prio', 'SB001||B2B1팀 창고', '3'],
+  ['prio', 'SB006||EMP 물류', '0'],
+  ['xneed', 'SB001', '1,700'],
+  ['xbox', 'MT003', '아웃W', '400'],
+  ['xbox', 'MT003', '아웃입수', '12'],
+  ['xbox', 'MT003', '아웃W', '0'],
+  ['xrm', 'SB001||EMP 물류'],
+  ['xrmInc', 0],
+  ['xrmExp', 0],
+  ['wh', 'SB001', 'EMP 물류'], // 뺀 창고를 다시 담으면 우선순위 = 그 품번의 행 수 + 1
+  ['lotOn', 'SB001', 'L-LONG'],
+  ['lotOn', 'SB001', 'L-LONG2'], // LOT 2개 → 행이 늘어남
+  ['xrmExpRow', 1], // 늘어난 행의 '삭제' = 그 LOT 빼기
   ['search', '8800000000097', '', 'B유통'], // 거래처 우선 매칭
   ['search', 'mt002', '', ''], // 품번(대소문자 무시)
   ['search', '', '', ''], // 둘 다 비었으면 그대로
+  ['xclear'], // 전체 지우기: 담은 것 · PLT 결과만 (필요 수량 · 박스 입력값은 그대로)
   ['clear'],
 ];
 
@@ -72,6 +88,7 @@ function runOracle(o) {
       first('#lookupForm').dispatchEvent(new w.Event('submit', {bubbles: true, cancelable: true}));
     }
     if (s[0] === 'wh') first(`[data-action="add-to-export"][data-pn="${q(s[1])}"][data-warehouse="${q(s[2])}"]`).click();
+    if (s[0] === 'lotOn' && !a.ui.expiryList.some(x => x.품번 === s[1] && x.LOT === s[2])) first(`[data-action="toggle-expiry"][data-pn="${q(s[1])}"][data-lot="${q(s[2])}"]`).click();
     if (s[0] === 'lot') first(`[data-action="toggle-expiry"][data-pn="${q(s[1])}"][data-lot="${q(s[2])}"]`).click();
     if (s[0] === 'inc') d.querySelectorAll(`[data-action="toggle-incoming"][data-pn="${q(s[1])}"]`)[s[2]].click();
     if (s[0] === 'need') { const el = first(`[data-action="set-needed-qty"][data-pn="${q(s[1])}"]`); el.value = s[2].replace(/,/g, ''); fire(el, 'change'); }
@@ -82,6 +99,15 @@ function runOracle(o) {
     if (s[0] === 'active') first(`[data-action="toggle-product"][data-batch-idx="${s[1]}"]`).click();
     if (s[0] === 'master') first(`[data-action="toggle-master-info"][data-pn="${q(s[1])}"]`).click();
     if (s[0] === 'clear') first('[data-action="clear-lookup-barcode"]').click();
+    const xp = '#exportPanel ';
+    if (s[0] === 'prio') { const el = first(`${xp}[data-action="set-priority"][data-key="${q(s[1])}"]`); el.value = s[2]; fire(el, 'change'); }
+    if (s[0] === 'xneed') { const el = first(`${xp}[data-action="set-needed-qty"][data-pn="${q(s[1])}"]`); el.value = s[2].replace(/,/g, ''); fire(el, 'change'); }
+    if (s[0] === 'xbox') { const el = first(`${xp}[data-action="set-box-dim"][data-pn="${q(s[1])}"][data-field="${q(s[2])}"]`); el.value = s[3]; fire(el, 'change'); w.renderLookupBatch(); } // 기존은 입력만 저장하고 다른 동작 때 다시 그림
+    if (s[0] === 'xrm') first(`${xp}[data-action="remove-export"][data-key="${q(s[1])}"]`).click();
+    if (s[0] === 'xrmInc') d.querySelectorAll(`${xp}[data-action="remove-incoming"]`)[s[1]].click();
+    if (s[0] === 'xrmExp') d.querySelectorAll(`${xp}td[data-col="lot"] [data-action="remove-expiry"]`)[s[1]].click();
+    if (s[0] === 'xrmExpRow') d.querySelectorAll(`${xp}td[data-col="del"] [data-action="remove-expiry"]`)[s[1] - 1].click();
+    if (s[0] === 'xclear') first(`${xp}[data-action="clear-export"]`).click();
 
     // 그려진 결과 읽기 (조회 결과 순서대로)
     const blocks = [...d.querySelectorAll('#lookupResults > .lookup-layout, #lookupResults > .panel, #lookupResults > .banner')].map(b => {
@@ -114,7 +140,18 @@ function runOracle(o) {
       };
     });
     const bar = d.querySelector('#lookupResults > div:first-child');
+    // 다운로드 목록: 열 이름(data-col) → 칸 내용. 입력칸은 값, 삭제 단추는 (동작, 대상), ×(빼기) 표시는 뺌
+    const exportRows = [...d.querySelectorAll('#exportPanel tbody tr')].map(tr => Object.fromEntries([...tr.cells].map(c => {
+      const k = c.dataset.col;
+      if (k === 'del') { const b = c.querySelector('button'); return [k, b ? [b.dataset.action, b.dataset.key] : null]; }
+      const ins = [...c.querySelectorAll('input')];
+      if (ins.length) return [k, ins.map(i => i.value)];
+      const cc = c.cloneNode(true); cc.querySelectorAll('[data-action^="remove"]').forEach(x => x.remove());
+      return [k, txt(cc)];
+    })));
+    const exportCols = [...d.querySelectorAll('#exportPanel thead th')].map(th => th.dataset.col);
     out.push({
+      exportRows, exportCols, exportTitle: d.querySelector('#exportPanel .section-title') ? txt(d.querySelector('#exportPanel .section-title')) : null,
       step: s.join('|'), blocks,
       allBtn: d.querySelector('[data-action="auto-select-recommended-all"]') ? txt(d.querySelector('[data-action="auto-select-recommended-all"]')) : null,
       altToggle: bar && bar.querySelector('#autoSelectAltToggle') ? true : false,
@@ -129,6 +166,7 @@ async function runPort() {
   const p = await loadPort();
   const a = p.api;
   const act = await import('./actions.js'); // loadPort 와 같은 모듈 묶음
+  const {setBoxDim} = await import('../data/settings.js');
   load(a);
   const rowOf = pn => {
     for (const it of a.ui.lookupItems) {
@@ -153,6 +191,7 @@ async function runPort() {
   for (const s of STEPS) {
     if (s[0] === 'search') { act.setLookupText('lookupBarcodeText', s[1]); act.setLookupText('lookupNameText', s[2]); act.setLookupText('lookupCustomerText', s[3]); act.lookupSearch(); }
     if (s[0] === 'wh') { const r = rowOf(s[1]); const w = a.warehouseRows(s[1]).rows.find(x => x.창고 === s[2]); act.pickWarehouse(r, w.창고, w.가용재고); }
+    if (s[0] === 'lotOn' && !a.ui.expiryList.some(x => x.품번 === s[1] && x.LOT === s[2])) act.pickExpiry(rowOf(s[1]), a.expiryRows(s[1]).rows.find(l => l.lot === s[2]));
     if (s[0] === 'lot') act.pickExpiry(rowOf(s[1]), a.expiryRows(s[1]).rows.find(l => l.lot === s[2]));
     if (s[0] === 'inc') { const r = rowOf(s[1]); act.pickIncoming(r, a.incomingChips(r)[s[2]]); }
     if (s[0] === 'need') act.setNeededQty(s[1], s[2]);
@@ -163,6 +202,15 @@ async function runPort() {
     if (s[0] === 'active') act.toggleActiveProduct(s[1]);
     if (s[0] === 'master') act.toggleMasterInfo(s[1]);
     if (s[0] === 'clear') act.clearLookupBarcode();
+    if (s[0] === 'prio') act.setPriority(s[1], s[2]);
+    if (s[0] === 'xneed') act.setNeededQty(s[1], s[2]);
+    if (s[0] === 'xbox') setBoxDim(s[1], s[2], s[3]);
+    const xm = () => a.exportPanelModel();
+    if (s[0] === 'xrm') act.removeExportRow(xm().rows.find(r => r.del && r.del.key === s[1]).del);
+    if (s[0] === 'xrmInc') act.removeIncomingItem(xm().rows.flatMap(r => r.inc.map(i => i.key))[s[1]]);
+    if (s[0] === 'xrmExp') act.removeExpiryItem(xm().rows.filter(r => r.lot).map(r => r.lot.key)[s[1]]);
+    if (s[0] === 'xrmExpRow') act.removeExportRow(xm().rows.filter(r => r.del && r.del.kind === 'expiry')[s[1] - 1].del);
+    if (s[0] === 'xclear') act.clearExport();
 
     const blocks = [];
     a.ui.lookupItems.forEach((it, i) => {
@@ -190,7 +238,22 @@ async function runPort() {
       });
     });
     const resolved = a.ui.lookupItems.filter(x => x.status === 'resolved').length;
+    const em = a.exportPanelModel();
+    const val = c => (c === null ? '-' : 'fixed' in c ? c.fixed : [c.value === null ? '' : String(c.value)]);
+    const dims = c => ('fixed' in c ? c.fixed : c.fields.map(f => (f.value === null ? '' : String(f.value))));
+    const exportRows = em.rows.map(r => Object.fromEntries(em.cols.map(([k]) => {
+      const v = {
+        del: r.del ? [r.del.kind === 'expiry' ? 'remove-expiry' : 'remove-export', r.del.key] : null,
+        priority: r.priority ? [String(r.priority.value)] : '-', needed: [String(a.ui.neededQty.get(r.pn) || '')],
+        diff: r.diff ? r.diff.text : '-', incDate: r.inc.length ? r.inc.map(i => i.date).join(', ') : '-', lot: r.lot ? r.lot.text : '-',
+        outDims: dims(r.outDims), inDims: dims(r.inDims), prodDims: dims(r.prodDims),
+        outWeight: val(r.outWeight), outCount: val(r.outCount), inWeight: val(r.inWeight), inCount: val(r.inCount), prodWeight: val(r.prodWeight),
+        remainder: r.remainder.text,
+      };
+      return [k, k in v ? v[k] : r[k]];
+    })));
     out.push({
+      exportRows, exportCols: em.rows.length ? em.cols.map(([k]) => k) : [], exportTitle: em.rows.length ? `다운로드 목록 (${fmt(em.rows.length)})` : null,
       step: s.join('|'), blocks,
       allBtn: resolved > 1 ? `✨ 전체 추천 선택 (${fmt(resolved)}개 품목)` : null,
       altToggle: resolved > 0,
@@ -212,6 +275,13 @@ describe('바코드 · 거래처 조회 = 운영 조회 화면을 직접 누른 
     expect(exp.some(x => x.blocks.some(b => b.master))).toBe(true);
     expect(exp.some(x => x.blocks.some(b => b.collapsed))).toBe(true);
     expect(exp.at(-1).blocks).toEqual([]);
+    // 다운로드 목록도 여러 상태를 거침: 행 여러 개, LOT 로 늘어난 행, 우선순위 바뀐 행, 박스 입력칸, 혼적 X 의 33열
+    expect(Math.max(...exp.map(x => x.exportRows.length))).toBeGreaterThan(6);
+    expect(exp.some(x => x.exportRows.some(r => r.del && r.del[0] === 'remove-expiry'))).toBe(true);
+    expect(exp.some(x => x.exportRows.some(r => Array.isArray(r.priority) && r.priority[0] === '3'))).toBe(true);
+    expect(exp.some(x => x.exportRows.some(r => Array.isArray(r.outCount) && r.outCount[0] === '12'))).toBe(true);
+    expect(exp.find(x => x.exportCols.length).exportCols.length).toBe(33);
+    expect(exp.at(-2).exportRows).toEqual([]); // 전체 지우기
     for (let i = 0; i < STEPS.length; i++) expect(act[i], STEPS[i].join('|')).toEqual(exp[i]);
   });
 });
