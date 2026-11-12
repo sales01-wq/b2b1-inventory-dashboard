@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createRequire} from 'node:module';
 import {loadConfig} from './run.js';
+import {attachTrace, readPolicies} from './nettrace.js';
 
 const config = loadConfig();
 const safe = u => { try { const x = new URL(u); return x.origin + x.pathname; } catch { return String(u).slice(0, 80); } };
@@ -25,21 +26,32 @@ async function tryOpen(label, dir) {
     ctx = await pw.chromium.launchPersistentContext(dir, {headless: process.env.NETCHECK_HEADLESS === '1', ...(config.browserChannel ? {channel: config.browserChannel} : {})});
     const page = ctx.pages()[0] || await ctx.newPage();
     page.on('requestfailed', r => failed.push(`${r.resourceType()} ${safe(r.url())} → ${r.failure()?.errorText}`));
-    let nav;
+    const trace = await attachTrace(ctx, page).catch(() => null);
+    let nav; let ua = '';
     try { const r = await page.goto(config.erpUrl, {waitUntil: 'domcontentloaded', timeout: 30000}); nav = `성공 (HTTP ${r?.status()})`; } catch (e) { nav = '실패 - ' + first(e); }
     await page.waitForTimeout(2000);
     console.log(`\n[${label}] 접속: ${nav}\n  최종 주소: ${safe(page.url())}  제목: ${await page.title().catch(() => '')}`);
     console.log('  막힌 요청  :', failed.length ? '\n    ' + failed.slice(0, 8).join('\n    ') : '없음');
+    if (trace) console.log('  이동 경로  :\n    ' + (trace.lines().join('\n    ') || '(기록 없음)'));
+    ua = await page.evaluate(() => navigator.userAgent).catch(() => '');
     if (label.startsWith('A')) {
+      const pol = await readPolicies(page);
+      console.log('  브라우저 정책(접속 관련, 값이 있는 것만):', pol.length ? '\n    ' + pol.join('\n    ') : '없음 또는 읽지 못함');
       await page.goto('chrome://version').catch(() => {});
       const t = await page.evaluate(() => document.body.innerText).catch(() => '');
       for (const k of ['Google Chrome', 'Command Line', 'Profile Path']) { const m = t.split('\n').find(l => l.startsWith(k)); if (m) console.log('  ' + m.slice(0, 400).replace(/\s+/g, ' ')); }
     }
+    return ua;
   } catch (e) { console.log(`\n[${label}] 브라우저 실행 실패 - ${first(e)}`); }
   finally { await ctx?.close().catch(() => {}); }
 }
-await tryOpen('A 수집기 전용 프로필', path.join(config.workDir, 'browser-profile'));
+const uaA = await tryOpen('A 수집기 전용 프로필', path.join(config.workDir, 'browser-profile'));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'netcheck-'));
 await tryOpen('B 새 임시 프로필', tmp);
 fs.rmSync(tmp, {recursive: true, force: true});
+// 서버가 브라우저 요청(Chrome 의 UA · Upgrade-Insecure-Requests)에만 https 로 넘기는지: 같은 헤더로 읽기 전용 GET (자동으로 따라가지 않음)
+if (uaA) {
+  try { const r = await fetch(config.erpUrl, {redirect: 'manual', headers: {'User-Agent': uaA, 'Upgrade-Insecure-Requests': '1', Accept: 'text/html,application/xhtml+xml'}, signal: AbortSignal.timeout(15000)}); console.log('\n서버 응답(Chrome 과 같은 헤더):', 'HTTP', r.status, r.headers.get('location') ? '→ Location ' + safe(r.headers.get('location')) : '(Location 없음)'); }
+  catch (e) { console.log('\n서버 응답(Chrome 과 같은 헤더): 실패 -', first(e.cause || e)); }
+}
 console.log('\nA 와 B 가 모두 같은 오류면 프로필이 아니라 브라우저 실행 방식 · 회사 정책 · 보안 프로그램 쪽입니다.');
