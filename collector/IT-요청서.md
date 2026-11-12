@@ -10,6 +10,7 @@
 - **자동화로 띄운 Chrome**이 이 주소를 열 때 Chrome이 스스로 `https://<ERP 호스트>/` 로 바꿉니다 (내부 307 리다이렉트, `non-authoritative-reason: HttpsUpgrades`). 그 https 요청이 `net::ERR_BLOCKED_BY_CLIENT` 로 차단되어 로그인 화면에 도달하지 못합니다.
 - 일반 Chrome에서는 같은 주소가 정상적으로 열립니다.
 - 접속 관련 Chrome 정책(`HttpsOnlyMode`, `HttpsUpgradesEnabled`)은 명시적으로 설정돼 있지 않다고 확인됐습니다.
+- 일반 Chrome의 해당 사이트 정보에는 "이 사이트는 보안 연결(HTTPS)을 사용하지 않습니다" / "이 사이트의 보안 경고가 꺼져 있습니다" 가 표시됩니다. 사용자 프로필 안의 사이트별 예외로 보이며, 자동화용 전용 프로필에는 이 예외가 없어 차이가 생기는 것으로 추정됩니다.
 - 회사 보안 설정을 끄거나 우회하지 않고, IT가 승인하는 방식으로만 해결하려고 합니다.
 
 ## 요청 (우선순위 순)
