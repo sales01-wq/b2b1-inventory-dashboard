@@ -239,6 +239,19 @@ Brief: modern, compact, professional B2B SaaS in the style of Linear and Vercel,
 
 `npm run typecheck` and `npm run build` are clean. Planted-bug checks: 38 real bugs so far (incl. 6 one-month shift bugs: parser ×2, month key ±1, quarter label, display cell; the display one is caught by e2e's cell-by-cell check against the raw sheet), all caught (some only after adding test steps). One planted change was equivalent to the original and could not be caught, by design.
 
+## Final verification (after Lookup phase 3)
+
+All run on the branch with test data only:
+- `npm test` 122 / 122 (comparison tests against production `index.html` for parsing, calculations, all screens' rendered values, upload, shared login mode, order-status and lookup interactions), `npm run typecheck`, `npm run build`, `npm run e2e`, `npm run e2e:preview`.
+- e2e covers all five screens on desktop and iPhone 13: CSV upload → overview → sales (both tabs, CSV) → order status (filters, rules, hero items, CSV) → lookup (cards, download list, PLT, CSV) → team switch; and now the Google Sheets (Apps Script web app) path against a fake web app: a failing URL shows "새로고침 실패: 웹앱 호출에 실패했습니다 (상태 500)…", a working one applies the same data as the CSV upload.
+- Shared login mode (Google sign-in + `/api/*`) is covered by `shared.test.js` against a fake Google library and fake API, compared with production.
+
+**Not verifiable here (needs real files, credentials or a live environment):**
+- Excel (.xlsx) upload: it uses SheetJS from `cdn.sheetjs.com` like production, and that host is blocked in this environment; only CSV was tested. Check with a real ERP .xlsx on a preview.
+- Real Google sign-in (Google Identity Services with the real client ID and company domain) and the real Vercel API with production data.
+- The real Apps Script web app and its data.
+- Results on real ERP exports (fixtures are synthetic).
+
 ## Remaining work (in this order, one screen at a time, report after each)
 
 The old code to port lives in root `index.html`. Line numbers refer to commit `d369ec2`.

@@ -504,7 +504,38 @@ try {
   await checkNoClippedCells(phone.page);
   await shot(phone.page, 'lookup-mobile');
   assert.deepEqual(phone.errors, []);
-  console.log('e2e 업로드 · 개요 · 판매 현황 · 발주 현황 · 조회 · 휴대폰 배치: 통과');
+
+  // ---- 구글시트(Apps Script 웹앱) 연결: 가짜 웹앱 주소로 성공 · 실패. 실제 운영 웹앱 주소로는 요청하지 않음 (아래 route 가 막음)
+  const gs = await browser.newPage();
+  const gsErrors = [], gsCalls = [];
+  gs.on('pageerror', e => gsErrors.push(e.message));
+  await gs.route('**/*', r => {
+    const u = new URL(r.request().url());
+    if (u.host === 'webapp.example.test') {
+      gsCalls.push(u.pathname + u.search);
+      if (u.searchParams.get('action') === 'progress') return r.fulfill({json: {status: 'running', done: 3, total: 6, current: '판매실적'}});
+      if (u.pathname === '/fail') return r.fulfill({status: 500, body: 'x'});
+      return r.fulfill({json: {가용재고: sh.inventory, 제품일정표: sh.schedule, 판매실적: sh.sales1, 판매실적_B2B2팀: sh.sales2, 유통기한: sh.expiry, 상품마스터: sh.productMaster}});
+    }
+    if (u.href.includes('papaparse.min.js')) return r.fulfill({path: require.resolve('papaparse/papaparse.min.js'), contentType: 'text/javascript'});
+    return u.href.startsWith(base) ? r.continue() : r.abort();
+  });
+  await gs.goto(base + '/#/data');
+  const gsUrl = gs.getByLabel('Apps Script 웹앱 URL');
+  await gsUrl.fill('https://webapp.example.test/fail');
+  await gs.getByRole('button', {name: '지금 가져오기'}).click();
+  await gs.getByText(/^새로고침 실패: 웹앱 호출에 실패했습니다 \(상태 500\)/).waitFor();
+  await gsUrl.fill('https://webapp.example.test/exec');
+  await gs.getByRole('button', {name: '지금 가져오기'}).click();
+  await gs.getByText(/^업데이트 완료 — 새로 반영: 가용재고조회, 제품일정표, 일자별판매실적분석, 유통기한, 상품마스터/).waitFor();
+  assert.ok(gsCalls.includes('/exec') && gsCalls.includes('/fail'));
+  // CSV 로 올렸을 때와 같은 결과 (개요 첫 줄 숫자)
+  await gs.goto(base + '/#/overview');
+  await gs.getByText(/^품목 11개 · 거래처 4곳 · 판매실적 30건$/).waitFor();
+  assert.deepEqual(gsErrors, []);
+  await gs.close();
+
+  console.log('e2e 업로드 · 개요 · 판매 현황 · 발주 현황 · 조회 · 휴대폰 배치 · 구글시트 연결: 통과');
 } finally {
   await browser.close();
   await server.close();
