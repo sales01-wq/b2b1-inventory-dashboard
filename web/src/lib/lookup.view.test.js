@@ -1,6 +1,6 @@
 // 바코드 · 거래처 조회 화면 비교 테스트: 운영 index.html 의 조회 화면을 jsdom 에서 실제로 누르고 입력한 결과(그려진 표 · 칩 · 문구와
 // 선택 목록)와, 새 화면이 쓰는 actions.js 의 조회 동작 + views.js 의 표 데이터로 만든 결과가 단계마다 같은지 확인합니다.
-import {describe, expect, it} from 'vitest';
+import {afterAll, describe, expect, it, vi} from 'vitest';
 import {makeSheets} from './__fixtures__/sheets.js';
 import {NOW, loadOracle, loadPort, canon} from './__fixtures__/harness.js';
 
@@ -69,6 +69,17 @@ const STEPS = [
   ['search', '8800000000097', '', 'B유통'], // 거래처 우선 매칭
   ['search', 'mt002', '', ''], // 품번(대소문자 무시)
   ['search', '', '', ''], // 둘 다 비었으면 그대로
+  // PLT 계산 (3단계): 품목별 → 혼적(+상세) → 빈 칸 · 0 은 기본값. 계산 후 표의 PLT 칸 · 결과 · 혼적 구성 · CSV 비교
+  ['xneed', 'SB006', '300'],
+  ['plt', {L: '110', W: '110', H: '150', baseHeight: '15', tare: '20', mixMode: 'X'}],
+  ['csv'],
+  ['plt', {L: '120', W: '100', H: '1600', baseHeight: '', tare: '25', mixMode: 'O'}],
+  ['pltDetail'],
+  ['csv'],
+  ['xbox', 'MT003', '아웃W', '300'], // 계산 뒤 박스 값을 바꿔도 다시 계산하기 전까지 결과는 그대로
+  ['pltDetail'],
+  ['plt', {L: '', W: '0', H: '', baseHeight: '', tare: '', mixMode: 'X'}],
+  ['csv'],
   ['xclear'], // 전체 지우기: 담은 것 · PLT 결과만 (필요 수량 · 박스 입력값은 그대로)
   ['clear'],
 ];
@@ -108,6 +119,10 @@ function runOracle(o) {
     if (s[0] === 'xrmExp') d.querySelectorAll(`${xp}td[data-col="lot"] [data-action="remove-expiry"]`)[s[1]].click();
     if (s[0] === 'xrmExpRow') d.querySelectorAll(`${xp}td[data-col="del"] [data-action="remove-expiry"]`)[s[1] - 1].click();
     if (s[0] === 'xclear') first(`${xp}[data-action="clear-export"]`).click();
+    if (s[0] === 'plt') o.calcExportPlt(s[1]); // 입력칸에 값을 넣고 PLT 계산 (단추와 같은 함수)
+    if (s[0] === 'pltDetail') first(`${xp}[data-action="toggle-plt-detail"]`).click();
+    let csvOut = null;
+    if (s[0] === 'csv') csvOut = o.csv('downloadExportCsv');
 
     // 그려진 결과 읽기 (조회 결과 순서대로)
     const blocks = [...d.querySelectorAll('#lookupResults > .lookup-layout, #lookupResults > .panel, #lookupResults > .banner')].map(b => {
@@ -150,7 +165,13 @@ function runOracle(o) {
       return [k, txt(cc)];
     })));
     const exportCols = [...d.querySelectorAll('#exportPanel thead th')].map(th => th.dataset.col);
+    const banner = d.querySelector('#exportPanel .banner.info');
+    const summary = banner ? {stats: [...banner.querySelectorAll(':scope > div:first-child > div')].map(x => [...x.children].map(txt)), note: txt(banner.querySelector(':scope > div:last-child'))} : null;
+    const words = el => { const tw = d.createTreeWalker(el, 4), o2 = []; for (let n = tw.nextNode(); n; n = tw.nextNode()) if (n.textContent.trim()) o2.push(n.textContent.trim()); return o2.join(' '); };
+    const packing = [...d.querySelectorAll('#exportPanel div[style*="min-width:190px"]')].map(words);
+    const detailBtn = d.querySelector('[data-action="toggle-plt-detail"]') ? txt(d.querySelector('[data-action="toggle-plt-detail"]')).replace(/ [▲▾]$/, '') : null;
     out.push({
+      summary, packing, detailBtn, csv: csvOut,
       exportRows, exportCols, exportTitle: d.querySelector('#exportPanel .section-title') ? txt(d.querySelector('#exportPanel .section-title')) : null,
       step: s.join('|'), blocks,
       allBtn: d.querySelector('[data-action="auto-select-recommended-all"]') ? txt(d.querySelector('[data-action="auto-select-recommended-all"]')) : null,
@@ -163,6 +184,7 @@ function runOracle(o) {
 
 // ---------- 새 화면 (actions.js 동작 + views.js 데이터, 화면 글자는 LookupPage 와 같은 규칙) ----------
 async function runPort() {
+  vi.useFakeTimers({toFake: ['Date']}); vi.setSystemTime(NOW); // CSV 파일명의 날짜 · 유통기한 2년 기준을 운영 쪽과 같은 날로
   const p = await loadPort();
   const a = p.api;
   const act = await import('./actions.js'); // loadPort 와 같은 모듈 묶음
@@ -211,6 +233,9 @@ async function runPort() {
     if (s[0] === 'xrmExp') act.removeExpiryItem(xm().rows.filter(r => r.lot).map(r => r.lot.key)[s[1]]);
     if (s[0] === 'xrmExpRow') act.removeExportRow(xm().rows.filter(r => r.del && r.del.kind === 'expiry')[s[1] - 1].del);
     if (s[0] === 'xclear') act.clearExport();
+    if (s[0] === 'plt') { for (const [k, v] of Object.entries(s[1])) a.ui.pltForm[k] = k === 'mixMode' ? v : v === '' ? null : Number(v); act.runPlt(); }
+    if (s[0] === 'pltDetail') act.togglePltDetail();
+    const csvOut = s[0] === 'csv' ? a.exportCsv() : null;
 
     const blocks = [];
     a.ui.lookupItems.forEach((it, i) => {
@@ -252,7 +277,15 @@ async function runPort() {
       };
       return [k, k in v ? v[k] : r[k]];
     })));
+    const sm = em.summary;
     out.push({
+      summary: sm ? {
+        stats: [[sm.pltLabel, fmt(sm.pltTotal) + ' PLT'], ['박스 중량 합계', fmt(sm.boxWeightTotal) + ' kg'], [`빈 PLT 무게 합계 (${fmt(sm.pltTotal)}개×${fmt(sm.tareKg)}kg)`, fmt(sm.pltTareTotal) + ' kg'], ['총 예상 중량', fmt(sm.grandTotal) + ' kg']],
+        note: `(필요수량 입력된 품목은 필요수량 기준, 없으면 선택한 가용재고 합계 기준) (최대높이에서 밑판 두께 ${fmt(sm.baseHeightCm)}cm를 뺀 값으로 적재층수 계산)`,
+      } : null,
+      packing: em.mixed && em.packing && a.ui.showPltPackingDetail ? em.packing.map(p => `PLT ${p.index} ${p.items.map(it => `${it.pn} ${it.pct}%`).join(' ')} 사용률 ${p.used}% 예상 중량 ${p.weight} kg`) : [],
+      detailBtn: em.mixed && em.packing ? (a.ui.showPltPackingDetail ? 'PLT 상세 숨기기' : 'PLT 상세보기') : null,
+      csv: csvOut,
       exportRows, exportCols: em.rows.length ? em.cols.map(([k]) => k) : [], exportTitle: em.rows.length ? `다운로드 목록 (${fmt(em.rows.length)})` : null,
       step: s.join('|'), blocks,
       allBtn: resolved > 1 ? `✨ 전체 추천 선택 (${fmt(resolved)}개 품목)` : null,
@@ -264,6 +297,7 @@ async function runPort() {
 }
 
 describe('바코드 · 거래처 조회 = 운영 조회 화면을 직접 누른 결과', () => {
+  afterAll(() => vi.useRealTimers());
   it('단계마다 그려진 표 · 칩 · 문구와 선택 목록이 같음', async () => {
     const o = loadOracle();
     const exp = runOracle(o);
@@ -282,6 +316,12 @@ describe('바코드 · 거래처 조회 = 운영 조회 화면을 직접 누른 
     expect(exp.some(x => x.exportRows.some(r => Array.isArray(r.outCount) && r.outCount[0] === '12'))).toBe(true);
     expect(exp.find(x => x.exportCols.length).exportCols.length).toBe(33);
     expect(exp.at(-2).exportRows).toEqual([]); // 전체 지우기
+    // PLT: 품목별 · 혼적 결과, 혼적 구성, CSV 3번이 실제로 나옴
+    expect(exp.filter(x => x.summary).map(x => x.summary.stats[0][0])).toContain('품목별 개별 계산 기준 총 예상 PLT');
+    expect(exp.filter(x => x.summary).map(x => x.summary.stats[0][0])).toContain('혼적 기준 총 예상 PLT');
+    expect(Math.max(...exp.map(x => x.packing.length))).toBeGreaterThan(1);
+    expect(exp.filter(x => x.csv && x.csv.csv.includes('PLT')).length).toBe(3);
+    expect(exp.some(x => x.exportRows.some(r => r.pltNumber && r.pltNumber.startsWith('PLT ')))).toBe(true);
     for (let i = 0; i < STEPS.length; i++) expect(act[i], STEPS[i].join('|')).toEqual(exp[i]);
-  });
+  }, 30000); // 운영 화면을 60단계 직접 누르므로 기본 5초보다 김
 });

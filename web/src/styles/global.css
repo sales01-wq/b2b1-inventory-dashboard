@@ -263,3 +263,21 @@ code.pn-lg { font-size: 0.9375rem; font-weight: 600; }
 }
 .export-table .astryx-table-row > .sticky-del { padding-inline: 0.5rem 0.25rem; }
 .export-table .sticky-del .astryx-button { min-width: 0; padding-inline: 0.5rem; }
+/* PLT 계산 입력 · 결과 · 혼적 구성 */
+.plt-settings { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.75rem 1rem; padding: 0.875rem 1rem; border-block-end: 1px solid var(--color-border); }
+.plt-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; }
+.plt-field { width: 6.5rem; }
+.plt-mix { display: grid; gap: 0.375rem; }
+.plt-summary { display: grid; gap: 0.5rem; padding: 0.875rem 1rem; border-block-end: 1px solid var(--color-border); }
+.plt-summary .stat-strip { border: 1px solid var(--color-border); border-radius: var(--radius-container); }
+.plt-stat { display: grid; gap: 0.25rem; }
+.plt-stat-value { font-size: 1.25rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.packing { display: grid; gap: 0.5rem; padding: 1rem; border-block-start: 1px solid var(--color-border); }
+.packing-table { min-width: 28rem; }
+@media (max-width: 767px) {
+  .plt-settings, .plt-summary { padding: 0.75rem 0.875rem; }
+  .plt-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .plt-field { width: auto; min-width: 0; }
+  .plt-mix { grid-column: 1 / -1; }
+}
+.cell-scroll { max-height: 4.5lh; overflow-y: auto; overscroll-behavior: contain; }

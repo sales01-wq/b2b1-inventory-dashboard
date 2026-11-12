@@ -392,6 +392,34 @@ try {
   await checkNoClippedCells(page);
   await shot(page, 'lookup-export');
 
+  // ---- PLT 계산 · 엑셀 다운로드 (3단계): 품목별 → 혼적 O. 숫자는 lookup.view.test.js 에서 운영과 비교, 여기서는 화면 조작 · 파일
+  const heads = () => xl.locator('thead tr').last().locator('th').count();
+  await xl.getByRole('button', {name: 'PLT 계산'}).click();
+  assert.match(await text(xl.locator('.plt-summary .stat').first()), /^품목별 개별 계산 기준 총 예상 PLT [\d,.]+ PLT$/);
+  assert.match(await text(xrow('SB001', 'EMP 물류').locator('td').nth(25)), /^[\d,]+$/); // 예상 총 박스수
+  assert.equal(await heads(), 33);
+  // 혼적 O 와 입력값은 'PLT 계산' 을 눌러야 반영 (기존과 같음), 입력값은 계산 후에도 그대로
+  await xl.getByLabel('PLT 가로(cm)').fill('120'); await xl.getByLabel('PLT 가로(cm)').press('Tab');
+  await xl.getByRole('radio', {name: '혼적 O'}).click();
+  assert.equal(await heads(), 33);
+  await xl.getByRole('button', {name: 'PLT 계산'}).click();
+  assert.equal(await heads(), 32); // 'PLT 최대 적재 가능 박스수' 는 품목별일 때만
+  assert.match(await text(xl.locator('.plt-summary .stat').first()), /^혼적 기준 총 예상 PLT [\d,]+ PLT$/);
+  assert.equal(await xl.getByLabel('PLT 가로(cm)').inputValue(), '120');
+  await xl.getByRole('button', {name: 'PLT 상세보기'}).click();
+  const packN = await xl.locator('.packing tbody tr').count();
+  assert.equal(await text(xl.locator('.plt-summary .stat').first()), `혼적 기준 총 예상 PLT ${packN} PLT`); // 혼적 PLT 수 = 구성 표의 PLT 수
+  await xl.getByRole('button', {name: 'PLT 상세 숨기기'}).click();
+  assert.equal(await xl.locator('.packing').count(), 0);
+  // 엑셀 다운로드: 파일 이름 · 머리글 · 행 수 (+ 합계 · 혼적 구성)
+  const [xdl] = await Promise.all([page.waitForEvent('download'), xl.getByRole('button', {name: '엑셀 다운로드'}).click()]);
+  assert.match(await page.evaluate(() => window.__lastDownloadName), /^재고선택목록_\d{4}-\d{2}-\d{2}\.csv$/);
+  const xcsv = (await readDownload(xdl)).replace(/^\uFEFF/, '').split('\r\n');
+  assert.ok(xcsv[0].startsWith('품번,품명,ERP 바코드,바코드,창고,우선순위,가용재고,할당수량,필요수량,부족/여유'));
+  assert.ok(xcsv[1 + (await xrows.count())].startsWith('합계(혼적 기준)'));
+  assert.equal(xcsv.filter(l => /^PLT \d+,/.test(l)).length, packN);
+  await checkNoClippedCells(page);
+
   // 바코드 지우기: 결과도 비움 (품명 입력은 그대로)
   await page.getByRole('button', {name: '바코드 지우기'}).click();
   assert.equal(await page.locator('.product-card').count(), 0);
@@ -458,8 +486,13 @@ try {
   // 그냥 누르면 담김
   await wrow.locator('td').nth(1).click();
   assert.equal(await wrow.getByRole('checkbox').isChecked(), true);
-  // 휴대폰 다운로드 목록: 품번 한 칸만 고정, 끝 열까지 스크롤해서 볼 수 있음
+  // 휴대폰 다운로드 목록: 품번 한 칸만 고정, 끝 열까지 스크롤해서 볼 수 있음, PLT 입력 · 단추는 화면 안
+  await phone.page.getByRole('button', {name: /^전체 추천 선택/}).click();
+  await phone.page.getByRole('button', {name: 'PLT 계산'}).click();
   await phone.page.locator('#lookup-export').scrollIntoViewIfNeeded();
+  assert.deepEqual(await phone.page.evaluate(() => [...document.querySelectorAll('#lookup-export button, #lookup-export input')]
+    .filter(b => b.checkVisibility() && !b.closest('.export-table') && b.getBoundingClientRect().width > 2) // 1px 로 숨긴 선택 단추(radio)는 제외
+    .filter(b => { const r = b.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).map(b => b.textContent || b.getAttribute('aria-label'))), []);
   await checkStickyColumns(phone.page, 300);
   assert.equal(await phone.page.evaluate(() => getComputedStyle(document.querySelector('.export-table th.sticky-name')).position), 'static');
   assert.ok(await phone.page.evaluate(() => {

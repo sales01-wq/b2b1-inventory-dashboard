@@ -3,7 +3,7 @@
 import {state, ui, emit} from './store.js';
 import {salesForTeam, computeDerived, brandPasses} from './forecast.js';
 import {addPnTokens, addForecastPnTokens, inSignal} from './views.js';
-import {doLookupBatch, addToExport, toggleIncoming, toggleExpiry, applyAutoSelectForItem, removeFromExport, removeIncoming, removeExpiry} from './lookup.js';
+import {doLookupBatch, addToExport, toggleIncoming, toggleExpiry, applyAutoSelectForItem, removeFromExport, removeIncoming, removeExpiry, calcExportPlt} from './lookup.js';
 import {num} from './parse.js';
 
 /* teamToggle 클릭 (3113행) */
@@ -149,3 +149,15 @@ export function clearExport(){
   emit();
 }
 export function setExportColWidth(key, w){ ui.exportColWidths[key] = Math.max(40, Math.round(w)); emit(); }
+
+/* ---------------- PLT 계산 · 혼적 상세 (calc-export-plt · toggle-plt-detail) ---------------- */
+// port: 기존은 다시 그릴 때마다 입력칸이 기본값(110 · 110 · 150 · 15 · 20)으로 돌아갔음 → 입력한 값을 이 화면 동안 유지
+ui.pltForm = {L:110, W:110, H:150, baseHeight:15, tare:20, mixMode:'X'};
+export function setPltForm(field, v){ ui.pltForm[field] = v; emit(); }
+/** PLT 계산: 입력칸 값(빈 칸은 기본값)과 혼적 선택으로 계산. 혼적 선택은 이 단추를 눌러야 반영 (기존과 같음) */
+export function runPlt(){
+  const f = ui.pltForm, s = v => (v===null||v===undefined ? '' : String(v));
+  calcExportPlt({L:s(f.L), W:s(f.W), H:s(f.H), baseHeight:s(f.baseHeight), tare:s(f.tare), mixMode:f.mixMode});
+  emit();
+}
+export function togglePltDetail(){ ui.showPltPackingDetail = !ui.showPltPackingDetail; emit(); }

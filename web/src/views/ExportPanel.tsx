@@ -6,7 +6,12 @@ import {HStack} from '@astryxdesign/core/HStack';
 import {IconButton} from '@astryxdesign/core/IconButton';
 import {NumberInput} from '@astryxdesign/core/NumberInput';
 import {Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow} from '@astryxdesign/core/Table';
-import {XMarkIcon} from '@heroicons/react/16/solid';
+import {Icon} from '@astryxdesign/core/Icon';
+import {SegmentedControl, SegmentedControlItem} from '@astryxdesign/core/SegmentedControl';
+import {Text} from '@astryxdesign/core/Text';
+import {ChevronDownIcon, ChevronUpIcon, XMarkIcon} from '@heroicons/react/16/solid';
+import {exportCsv} from '../lib/lookup.js';
+import {saveCsv} from '../lib/saveCsv';
 import {ui, emit} from '../lib/store.js';
 import {exportColWidth, exportPanelModel} from '../lib/views.js';
 import {setBoxDim} from '../data/settings.js';
@@ -27,7 +32,8 @@ type Row = {
   boxesNeeded: string; remainder: {text: string; warn?: boolean; muted?: boolean}; totalWeight: string; actualBoxes: string; maxBoxes: string;
   pltNumber: string; pltWeight: string; pltDims: string;
 };
-export type ExportModel = {rows: Row[]; mixed: boolean; cols: [string, string][]; summary: null | Record<string, number | string>; packing: null | {index: number; items: {pn: string; pct: number}[]; used: number; full: boolean; weight: string}[]};
+type Summary = {pltLabel: string; pltTotal: number; boxWeightTotal: number; tareKg: number; pltTareTotal: number; grandTotal: number; baseHeightCm: number};
+export type ExportModel = {rows: Row[]; mixed: boolean; cols: [string, string][]; summary: null | Summary; packing: null | {index: number; items: {pn: string; pct: number}[]; used: number; full: boolean; weight: string}[]};
 
 // 숫자 칸 (오른쪽 정렬)
 const NUM = new Set(['priority', 'avail', 'alloc', 'needed', 'diff', 'incQty', 'expiryQty', 'outWeight', 'outCount', 'inWeight', 'inCount', 'prodWeight', 'boxesNeeded', 'remainder', 'totalWeight', 'actualBoxes', 'maxBoxes', 'pltWeight']);
@@ -71,9 +77,13 @@ export function ExportPanel() {
           <Heading level={2}>다운로드 목록 ({fmt(m.rows.length)})</Heading>
           <HStack gap={2} vAlign="center" wrap="wrap">
             <Button label="전체 지우기" size="sm" variant="ghost" onClick={act.clearExport} />
+            <Button label="엑셀 다운로드" size="sm" variant="primary" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(exportCsv())} />
           </HStack>
         </div>
+        <PltSettings m={m} />
+        {m.summary && <PltSummary s={m.summary} mixed={m.mixed} />}
         <ExportTable m={m} />
+        {m.mixed && m.packing && ui.showPltPackingDetail && <PackingDetail packing={m.packing} />}
       </Card>
     </section>
   );
@@ -141,7 +151,10 @@ function cell(r: Row, k: string): ReactNode {
     case 'inCount': return boxCell(r.pn, r.inCount, '인박스 입수', '입수');
     case 'prodWeight': return boxCell(r.pn, r.prodWeight, '제품 무게(g)', '무게(g)');
     case 'remainder': return r.remainder.text === '-' ? dash : <span className={r.remainder.warn ? 'text-warn' : r.remainder.muted ? 'muted' : undefined}>{r.remainder.text}</span>;
-    case 'pltWeight': return r.pltWeight === '-' ? dash : <b>{r.pltWeight}</b>;
+    // 혼적에서 PLT 가 많으면 목록이 길어서 칸 안에서 스크롤 (내용은 그대로)
+    case 'pltNumber': return r.pltNumber === '-' ? dash : <div className="cell-scroll">{r.pltNumber}</div>;
+    case 'pltDims': return r.pltDims === '-' ? dash : <div className="cell-scroll">{r.pltDims}</div>;
+    case 'pltWeight': return r.pltWeight === '-' ? dash : <div className="cell-scroll"><b>{r.pltWeight}</b></div>;
     default: {
       const v = (r as unknown as Record<string, string>)[k];
       return v === '-' ? dash : v;
@@ -186,5 +199,75 @@ function ResizeHandle({col, label}: {col: string; label: string}) {
         if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); act.setExportColWidth(col, exportColWidth(col) + (e.key === 'ArrowRight' ? 10 : -10)); }
       }}
     />
+  );
+}
+
+/* ---------------- PLT 계산 입력 (기존 다운로드 목록 머리의 입력칸 · 혼적 X/O · PLT 계산 · PLT 상세보기) ---------------- */
+const PLT_FIELDS: [string, string, string][] = [['L', 'PLT 가로', 'cm'], ['W', 'PLT 세로', 'cm'], ['H', '최대높이', 'cm'], ['baseHeight', '밑판 두께', 'cm'], ['tare', '빈 PLT 무게', 'kg']];
+function PltSettings({m}: {m: ExportModel}) {
+  const f = ui.pltForm as Record<string, number | null | string>;
+  return (
+    <div className="plt-settings">
+      <div className="plt-fields">
+        {PLT_FIELDS.map(([k, label, unit]) => (
+          <span key={k} className="plt-field">
+            <NumberInput label={`${label}(${unit})`} size="sm" min={0} value={f[k] as number | null} onChange={v => act.setPltForm(k, v)} />
+          </span>
+        ))}
+        <span className="plt-mix">
+          <Text type="label">혼적</Text>
+          <SegmentedControl label="혼적" size="sm" value={f.mixMode as string} onChange={v => act.setPltForm('mixMode', v)}>
+            <SegmentedControlItem value="X" label="혼적 X (품목별)" />
+            <SegmentedControlItem value="O" label="혼적 O" />
+          </SegmentedControl>
+        </span>
+      </div>
+      <HStack gap={2} vAlign="center" wrap="wrap">
+        <Button label="PLT 계산" size="sm" variant="secondary" onClick={act.runPlt} />
+        {m.mixed && m.packing && <Button label={ui.showPltPackingDetail ? 'PLT 상세 숨기기' : 'PLT 상세보기'} size="sm" variant="ghost" icon={ui.showPltPackingDetail ? <ChevronUpIcon width={14} height={14} aria-hidden /> : <ChevronDownIcon width={14} height={14} aria-hidden />} onClick={act.togglePltDetail} />}
+      </HStack>
+    </div>
+  );
+}
+
+function PltSummary({s, mixed}: {s: Summary; mixed: boolean}) {
+  const stat = (label: string, value: string) => (
+    <div className="stat plt-stat"><Text type="supporting">{label}</Text><span className="plt-stat-value">{value}</span></div>
+  );
+  return (
+    <div className="plt-summary" aria-label={mixed ? '혼적 기준 PLT 계산 결과' : '품목별 PLT 계산 결과'}>
+      <div className="stat-strip">
+        {stat(s.pltLabel, fmt(s.pltTotal) + ' PLT')}
+        {stat('박스 중량 합계', fmt(s.boxWeightTotal) + ' kg')}
+        {stat(`빈 PLT 무게 합계 (${fmt(s.pltTotal)}개×${fmt(s.tareKg)}kg)`, fmt(s.pltTareTotal) + ' kg')}
+        {stat('총 예상 중량', fmt(s.grandTotal) + ' kg')}
+      </div>
+      <Text type="supporting">필요수량 입력된 품목은 필요수량 기준, 없으면 선택한 가용재고 합계 기준 · 최대높이에서 밑판 두께 {fmt(s.baseHeightCm)}cm를 뺀 값으로 적재층수 계산</Text>
+    </div>
+  );
+}
+
+/* 혼적 PLT 구성 (기존 renderPltPackingHtml 의 카드 → 같은 내용의 표) */
+function PackingDetail({packing}: {packing: NonNullable<ExportModel['packing']>}) {
+  return (
+    <div className="packing">
+      <Heading level={3}>혼적 PLT 구성 — PLT별로 어떤 품목이 얼마나 들어가는지</Heading>
+      <Text type="supporting">파레트 하나에 여러 품목이 같이 실릴 때, 실제로 어떤 조합인지와 그 파레트의 진짜 예상 중량입니다.</Text>
+      <div className="pick-scroll">
+        <Table className="mini-table packing-table" density="compact" dividers="rows">
+          <TableHeader><TableRow><TableHeaderCell>PLT</TableHeaderCell><TableHeaderCell>포함 품목 (비중)</TableHeaderCell><TableHeaderCell className="num">사용률</TableHeaderCell><TableHeaderCell className="num">예상 중량</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>
+            {packing.map(p => (
+              <TableRow key={p.index}>
+                <TableCell>PLT {p.index}</TableCell>
+                <TableCell><span className="chip-list">{p.items.map((it, i) => <span key={i}><code>{it.pn}</code> <span className="muted">{it.pct}%</span></span>)}</span></TableCell>
+                <TableCell className={'num' + (p.full ? ' text-danger' : '')}>{p.used}%</TableCell>
+                <TableCell className="num"><b>{p.weight} kg</b></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
   );
 }
