@@ -13,12 +13,60 @@ const btn = (ctx, name, opts) => ctx.getByRole('button', {name, ...opts});
 const frameOf = (page, s) => page.frameLocator(`[id="${s.frame}"]`);
 const settle = (page, config) => page.waitForTimeout(config.settleMs ?? 4000); // 조회 결과가 그려질 때까지 (검사 단계가 빈 결과도 막음)
 
-export async function login(page, _cred, config) {
-  if (!config.erpUrl) throw new Error('config.json 에 erpUrl 이 없습니다');
+const CAPTCHA = /captcha|캡차|자동\s*입력\s*방지|보안\s*문자/i;
+const MFA = /otp|인증\s*번호|인증\s*코드|2\s*단계|추가\s*인증|문자\s*인증|본인\s*확인/i;
+const loggedIn = (page, ms) => btn(page, '프로그램조회').waitFor({timeout: ms}).then(() => true, () => false);
+/** 화면이 'in'(로그인됨) · 'form'(로그인 입력칸) · 'captcha' · 'mfa'(추가 인증) · 'unknown'(시간 초과) 중 무엇이 될 때까지 기다림 */
+async function screenState(page, ms, afterSubmit) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (await btn(page, '프로그램조회').isVisible().catch(() => false)) return 'in';
+    const html = await page.content().catch(() => '');
+    if (CAPTCHA.test(html)) return 'captcha';
+    if (afterSubmit && MFA.test(html)) return 'mfa';
+    if (await page.locator('input[type=password]:visible').count().catch(() => 0)) return 'form';
+    await page.waitForTimeout(250);
+  }
+  return 'unknown';
+}
+
+/** 세션이 살아 있는지 (주소를 새로 열어 확인). 화면 상태가 사라지므로 판매실적 준비 기록도 지움 */
+export async function isLoggedIn(page, config) {
+  salesReady.delete(page);
   await page.goto(config.erpUrl);
-  await btn(page, '즐겨찾기 레이어 닫기').click({timeout: 5000}).catch(() => {}); // 레이어가 없으면 그대로 진행
-  try { await btn(page, '프로그램조회').waitFor({timeout: 20000}); }
-  catch { throw new Error('ERP 로그인이 필요합니다 (이 PC 브라우저 프로필에 로그인 세션이 없음). 로그인 화면 녹화(rec-login)를 보내 주시면 자동 로그인을 추가합니다'); }
+  return loggedIn(page, 8000);
+}
+
+/**
+ * 로그인 상태 확보. 세션이 살아 있으면 그대로, 아니면 이 PC 암호화 저장소의 계정으로 자동 로그인.
+ * CAPTCHA · 추가 인증(OTP 등) · 알 수 없는 로그인 화면이면 우회하지 않고 안전하게 중단. 연속 실패 시 계정 잠금 방지로 중단(auth).
+ */
+export async function login(page, cred, config, auth) {
+  if (!config.erpUrl) throw new Error('config.json 에 erpUrl 이 없습니다');
+  salesReady.delete(page);
+  await page.goto(config.erpUrl);
+  await btn(page, '즐겨찾기 레이어 닫기').click({timeout: 3000}).catch(() => {}); // 레이어가 없으면 그대로 진행
+  const st = await screenState(page, 15000, false);
+  if (st === 'in') { auth?.success(); return; }
+  // 로그인 화면: 자동으로 처리해도 되는 모양인지 먼저 확인 (제출 전)
+  if (st === 'captcha') throw new Error('로그인 화면에 CAPTCHA(자동입력 방지)가 있어 자동 로그인할 수 없습니다 — 우회하지 않고 중단 (수동 로그인 필요)');
+  if (st !== 'form') throw new Error('ERP 로그인 화면을 알아볼 수 없어 자동 로그인하지 않습니다 (로그인 상태도 입력칸도 보이지 않음). 수동 로그인 후 확인해 주세요');
+  const pw = page.locator('input[type=password]:visible');
+  if (await pw.count() !== 1) throw new Error('ERP 로그인 화면을 알아볼 수 없어 자동 로그인하지 않습니다 (비밀번호 입력칸이 1개가 아님). 수동 로그인 후 확인해 주세요');
+  const user = config.login?.userSelector
+    ? page.locator(config.login.userSelector)
+    : page.locator('input:visible:not([type=password],[type=hidden],[type=checkbox],[type=radio],[type=submit],[type=button],[type=image])');
+  if (await user.count() !== 1) throw new Error(`로그인 입력칸이 ${await user.count()}개라 어느 칸이 아이디인지 알 수 없어 자동 로그인하지 않습니다 (config.json 의 login.userSelector 지정 필요)`);
+
+  auth?.beforeAttempt();
+  await user.fill(cred.user);
+  await pw.fill(cred.password);
+  await pw.press('Enter');
+  const after = await screenState(page, 30000, true);
+  if (after === 'in') { auth?.success(); return; }
+  if (after === 'captcha') throw new Error('로그인 후 CAPTCHA 가 나타났습니다 — 자동 로그인을 중단합니다');
+  if (after === 'mfa') throw new Error('로그인 후 추가 인증(OTP 등) 화면이 나타났습니다 — 무인 로그인이 불가능하므로 중단합니다');
+  throw new Error('ERP 로그인에 실패했습니다 (아이디 · 비밀번호 확인 필요)');
 }
 
 async function openScreen(page, s) {

@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {authGuard, AuthStop} from '../auth.js';
 
 /** 이 Windows 사용자 + 이 PC 에서만 복호화되는 계정 읽기 */
 export function loadCredential(workDir) {
@@ -30,15 +31,28 @@ export default function erp(config, deps = {}) {
       // 자격증명은 로그인이 실제로 필요할 때만 읽음 (세션이 살아 있으면 암호화 저장소를 열지 않음)
       let c; const load = () => (c ||= deps.credential || loadCredential(config.workDir));
       const cred = {get user() { return load().user; }, get password() { return load().password; }};
+      const auth = authGuard(config.workDir);
+      // 오류 문구 · 로그에 계정 정보가 섞여 나가지 않게 가림
+      const scrub = e => { let m = String(e?.message ?? e); for (const v of c ? [c.user, c.password] : []) if (v && v.length >= 3) m = m.split(v).join('***'); const n = new (e instanceof AuthStop ? AuthStop : Error)(m); n.stack = ''; return n; };
       const ctx = await playwright.chromium.launchPersistentContext(path.join(config.workDir, 'browser-profile'), {headless: config.headless !== false, acceptDownloads: true, ...(config.browserChannel ? {channel: config.browserChannel} : {})});
       try {
         const page = ctx.pages()[0] || await ctx.newPage();
         page.setDefaultTimeout(config.timeoutMs || 90000);
-        await recipe.login(page, cred, config);
+        await recipe.login(page, cred, config, auth);
         const out = new Map();
-        for (const d of defs) out.set(d.id, await toBuffer(await recipe.download(page, d, now, config)));
+        for (const d of defs) {
+          const get = async () => toBuffer(await recipe.download(page, d, now, config));
+          try { out.set(d.id, await get()); }
+          catch (e) {
+            // 도중에 세션이 끊긴 경우만: 다시 로그인해서 이 파일을 한 번 더. 세션 문제가 아니면 원래 오류 그대로
+            if (e instanceof AuthStop || !recipe.isLoggedIn || await recipe.isLoggedIn(page, config)) throw e;
+            await recipe.login(page, cred, config, auth);
+            out.set(d.id, await get());
+          }
+        }
         return out;
-      } finally { await ctx.close(); }
+      } catch (e) { throw scrub(e); }
+      finally { await ctx.close(); }
     },
   };
 }

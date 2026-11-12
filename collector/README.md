@@ -12,7 +12,7 @@ ERP 엑셀 5개(가용재고조회_olive · WMS창고재고관리(EMP)_olive(유
 1. Node.js 20 이상 설치. 이 저장소를 받고 `collector` 폴더에서 `npm install`.
 2. `config.example.json` 을 `config.json` 으로 복사하고 `uploadFolder` 에 Drive 업로드 폴더 경로를 입력 (config.json 은 git 에 올라가지 않음).
 3. **먼저 시험 환경에서**: 운영 Apps Script 대신 복사본(스크립트 · 시트 · 폴더)에 `apps-script/ErpBundle.gs` 를 추가하고 `uploadFolder` 를 복사본 폴더로 지정.
-4. ERP 연결: `config.json` 에 `erpUrl`(ERP 주소)과 `"browserChannel": "chrome"` 을 넣습니다. 로그인은 이 PC 브라우저 프로필(`%LOCALAPPDATA%\erp-collector\browser-profile`)의 세션을 씁니다.
+4. ERP 연결: `config.json` 에 `erpUrl`(ERP 주소)과 `"browserChannel": "chrome"` 을 넣습니다. 로그인은 이 PC 브라우저 프로필(`%LOCALAPPDATA%\erp-collector\browser-profile`)의 세션을 쓰고, **세션이 끊기면 자동으로 다시 로그인**합니다(아래).
    화면 동작은 `src/recipe.js` (녹화본을 옮긴 것, 주소 · 자격증명 없음). 한 파일씩 시험: `npm run try -- inventory --show` (받은 파일은 `workDir\try` 에 저장하고 검사만 하며, 업로드 폴더에는 아무것도 쓰지 않음).
    id: `inventory` `wms` `sales1` `sales2` `schedule`.
 5. `powershell -File scripts\install-task.ps1` — 로그인 때 즉시 + 30분마다 실행 등록.
@@ -20,3 +20,10 @@ ERP 엑셀 5개(가용재고조회_olive · WMS창고재고관리(EMP)_olive(유
 
 ## Apps Script 변경 (ErpBundle.gs 맨 아래 설명 참고)
 새 파일 추가 + `checkForNewFilesInner_` 3줄. `BUNDLE_PROTECTED_TABS` 를 실제 상품마스터 탭 이름으로 확인하세요.
+
+## 자동 재로그인 (무인 실행)
+- 계정은 `scripts\set-credentials.ps1` 로 **이 PC · 이 Windows 사용자만** 풀 수 있게 암호화해 저장합니다 (코드 · Git · 로그에 없음). 세션이 살아 있으면 열지도 않습니다.
+- ERP 계정은 **읽기 전용 전용 계정**을 쓰고, **ERP 관리자 · 회사 보안 승인**을 받은 뒤 사용하세요. 이 PC의 ERP 주소가 `http://` 이면 계정과 세션이 사내망에서 암호화되지 않고 오갑니다 (HTTPS · VPN 여부 IT 확인 권장).
+- 안전하게 멈추는 경우 (우회하지 않음): 로그인 화면에 CAPTCHA, 로그인 뒤 추가 인증(OTP 등), 알 수 없는 로그인 화면 · 입력칸이 모호함(`config.json` 의 `login.userSelector` 로 아이디 칸 지정 가능), 비밀번호가 틀려 **연속 2회 실패**(계정 잠금 방지).
+- 연속 실패로 멈추면 비밀번호 · ERP 상태를 확인한 뒤 `npm run reset-login` 으로 다시 켭니다.
+- 마지막 성공 데이터는 어떤 경우에도 유지되며, 멈춘 이유는 `%LOCALAPPDATA%\erp-collector\state.json` 의 `lastError` 와 `run.log` 에 남습니다 (계정 정보는 가려서 기록).
