@@ -64,9 +64,49 @@ test('묶음 안 파일의 내용 종류가 이름과 맞지 않으면 시트를
   await w.addBundle('ERP_BUNDLE_a.zip', Buffer.from(zipSync(entries)));
   assert.equal(w.run(), 0);
   assert.equal(JSON.stringify([...w.tabs].map(([n, s]) => [n, s.data])), before);
-  assert.match(JSON.parse(w.props.BUNDLE_ERROR).msg, /시트 종류가 맞지 않음.*WMS창고재고관리.*inventory, 기대 expiry/);
-  assert.match(w.problems().bundle.msg, /시트 종류가 맞지 않음/);
-  // 올바른 묶음이 처리되면 묶음 문제도 해제
+  assert.match(JSON.parse(w.props.BUNDLE_ERROR).msg, /ERP_BUNDLE_a\.zip: 시트 종류가 이름과 맞지 않음: WMS창고재고관리\(EMP\)_olive 은\(는\) expiry.*inventory/);
+  assert.match(w.problems().bundle.msg, /시트 종류가 이름과 맞지 않음/);
+  // 잘못된 묶음을 폴더에서 치우고 올바른 묶음을 올리면 반영되고 묶음 문제도 해제 (잘못된 파일이 남아 있으면 전체가 막힘)
+  w.source.files.splice(0, 1);
   await w.addBundle('ERP_BUNDLE_b.zip', Buffer.from(zipSync(Object.fromEntries(FILES.map(d => [fileName(d, NOW), new Uint8Array(bufs.get(d.id))])))));
   assert.equal(w.run(), 1); assert.equal(w.problems(), null);
+});
+
+test('패치 전에 만든 저장본(통계 없음)이어도 저장본 파일에서 통계를 읽어 급감 · 마스터 누락을 막음', () => {
+  const w = filled(); w.snapshot();
+  const info = JSON.parse(w.props.SNAPSHOT_INFO); delete info.stats; w.props.SNAPSHOT_INFO = JSON.stringify(info); // 옛 저장본 흉내
+  const keep = w.props.SNAPSHOT_FILE_ID;
+  w.tabs.delete('상품마스터_전체');
+  assert.equal(w.snapshot(), false); assert.match(w.problems().snapshot.msg, /상품마스터가 저장본에서 빠짐/);
+  assert.equal(w.props.SNAPSHOT_FILE_ID, keep);
+});
+
+test('읽기 전용 점검(DryRun.gs): 시트 · 저장본 · 속성을 바꾸지 않고 결과만 로그로 남김', async () => {
+  const w = filled({'제품일정표_옛이름': sh.schedule});
+  const state = () => JSON.stringify([[...w.tabs].map(([n, s]) => [n, s.data]), w.props, w.processed.files.length, w.trashed.length]);
+  const before = state();
+  w.call('dryRunReport');
+  const report = w.logs.join('\n');
+  assert.match(report, /상품마스터_전체 — 행 \d+, 종류 productMaster\s+\[상품마스터/);
+  assert.match(report, /같은 종류\(schedule\) 탭이 2개: .*제품일정표_olive.*제품일정표_옛이름/);
+  w.logs.length = 0; w.call('dryRunSnapshot');
+  assert.match(w.logs.join('\n'), /저장본 검사 통과/);
+  w.tabs.get('가용재고조회_olive').data = sh.inventory.slice(0, 2); w.logs.length = 0; w.call('dryRunSnapshot');
+  assert.match(w.logs.join('\n'), /저장본을 만들면 거부됩니다: 필수 시트 내용이 없거나/);
+  w.tabs.get('가용재고조회_olive').data = sh.inventory;
+  const afterSheets = state(); assert.equal(afterSheets, before); // 지금까지 아무것도 안 바뀜
+  // 묶음 점검: 좋은 zip → 통과, 틀린 zip → 거부 (대상 시트는 그대로, 임시 시트는 정리)
+  const bufs = await mock().fetchAll(FILES, NOW);
+  const good = await w.addBundle('ERP_BUNDLE_good.zip', Buffer.from(zipSync(Object.fromEntries(FILES.map(d => [fileName(d, NOW), new Uint8Array(bufs.get(d.id))])))));
+  const baseline = JSON.stringify([...w.tabs].map(([n, s]) => [n, s.data])), nTrashed = w.trashed.length;
+  w.logs.length = 0; w.call('dryRunBundle', good.getId());
+  assert.match(w.logs.join('\n'), /묶음 검사 통과: 5개 탭.*\n?/); assert.match(w.logs.join('\n'), /WMS창고재고관리\(EMP\)_olive ← 종류 expiry.*기존 탭을 교체/);
+  const bad = await w.addBundle('ERP_BUNDLE_bad.zip', Buffer.from(zipSync(Object.fromEntries(FILES.map(d => [fileName(d, NOW), new Uint8Array(bufs.get(d.id === 'wms' ? 'inventory' : d.id))])))));
+  w.logs.length = 0; w.call('dryRunBundle', bad.getId());
+  assert.match(w.logs.join('\n'), /묶음이 거부됩니다: .*시트 종류가 이름과 맞지 않음/);
+  // 폴더 점검(dryRunBatch): 폴더의 파일 2개(zip 둘)를 읽어 보고, 아무것도 옮기거나 바꾸지 않음
+  w.logs.length = 0; w.call('dryRunBatch'); assert.match(w.logs.join('\n'), /이 묶음은 거부됩니다/);
+  assert.equal(w.processed.files.length, 0);
+  assert.equal(JSON.stringify([...w.tabs].map(([n, s]) => [n, s.data])), baseline);
+  assert.ok(w.trashed.length > nTrashed); assert.equal(w.source.files.length, 2); // 파일은 옮기지 않음
 });

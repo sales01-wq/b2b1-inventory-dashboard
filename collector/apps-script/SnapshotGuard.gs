@@ -4,8 +4,8 @@
  * 기존 buildSnapshot_ 은 시트를 읽은 그대로 저장본으로 만들어서, 잘못된 업로드(빈 탭, 엉뚱한 내용, 마스터 누락)가 곧바로 모두에게 보입니다.
  * buildSnapshotChecked_ 는 같은 방식으로 만들되, 먼저 검사하고 통과할 때만 저장본을 바꿉니다. 실패하면 이전 저장본이 그대로 남고 문제가 기록됩니다.
  *
- * 기존 코드 수정은 buildSnapshot_() 호출 2곳을 buildSnapshotChecked_() 로 바꾸고(checkForNewFiles, runSnapshotJob),
- * doGet 의 action === 'bundle' 에서 out 을 만든 직후에 한 줄(out.problem = readProblems_();)을 넣는 것뿐입니다.
+ * 기존 buildSnapshot_ 은 buildSnapshotLegacy_ 로 이름만 바꿔 두고, 아래의 새 buildSnapshot_ 이 같은 이름으로 대신 불립니다 (호출하는 곳은 그대로).
+ * 그 밖에 doGet 의 action === 'bundle' 에서 out 을 만든 직후에 한 줄(out.problem = readProblems_();)이 필요합니다 (Batch.gs 맨 아래 설명).
  */
 // web/src/lib/parse.js 의 SHEET_SIGNATURES 와 같은 규칙 (같은 순서로 검사)
 const SNAP_SIGS_ = [
@@ -54,8 +54,18 @@ function validateSnapshotOut_(out, prev) {
   return '';
 }
 
-/** buildSnapshot_ 과 같은 저장본을 만들되, 검사를 통과할 때만 교체. 반환: true(교체함) / false(이전 저장본 유지) */
-function buildSnapshotChecked_() {
+/** 직전 저장본의 통계. 패치 전에 만든 저장본(통계 없음)이면 저장본 파일을 읽어서 계산 (읽기 전용) */
+function prevInfo_() {
+  const info = getSnapshotInfo_();
+  if (info && info.stats) return info;
+  try {
+    const id = PropertiesService.getScriptProperties().getProperty('SNAPSHOT_FILE_ID');
+    if (!id) return info;
+    const data = JSON.parse(Utilities.ungzip(DriveApp.getFileById(id).getBlob()).getDataAsString());
+    return { at: info && info.at, stats: snapshotStats_(data) };
+  } catch (e) { return info; }
+}
+function readSheetsForSnapshot_() {
   const ss = SpreadsheetApp.openById(TARGET_SPREADSHEET_ID);
   const tz = Session.getScriptTimeZone();
   const out = {};
@@ -70,8 +80,15 @@ function buildSnapshotChecked_() {
       });
     });
   });
+  return out;
+}
+
+/** buildSnapshot_ 과 같은 저장본을 만들되, 검사를 통과할 때만 교체. 반환: true(교체함) / false(이전 저장본 유지) */
+function buildSnapshot_() { return buildSnapshotChecked_(); }   // 기존 호출(checkForNewFiles · runSnapshotJob)이 그대로 검사를 거침
+function buildSnapshotChecked_() {
+  const out = readSheetsForSnapshot_();
   const props = PropertiesService.getScriptProperties();
-  const problem = validateSnapshotOut_(out, getSnapshotInfo_());
+  const problem = validateSnapshotOut_(out, prevInfo_());
   if (problem) {
     props.setProperty('SNAPSHOT_PROBLEM', JSON.stringify({ at: new Date().getTime(), msg: problem }));
     Logger.log('저장본을 바꾸지 않음: ' + problem);

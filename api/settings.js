@@ -23,7 +23,8 @@ module.exports = async (req, res) => {
       const del = b.value === null || b.value === undefined;
       const value = del ? '' : JSON.stringify(b.value);
       if (value.length > 4000) return res.status(400).json({ error: 'value too large' });
-      await callGas({ action: del ? 'settings_del' : 'settings_set', kind, key, value, by: u.email });
+      // 설정 이름은 skey 로 보냄: callGas 가 붙이는 key(= GAS_KEY, 인증용)와 이름이 같으면 GAS_KEY 가 설정 이름을 덮어써서 모든 설정이 한 줄에 합쳐지고 비밀 키가 시트에 적힘
+      await callGas({ action: del ? 'settings_del' : 'settings_set', kind, skey: key, value, by: u.email });
       cache = null;
       return res.status(200).json({ ok: true });
     }

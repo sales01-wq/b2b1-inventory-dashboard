@@ -68,7 +68,7 @@ describe.skipIf(!hasCollector)('수동 업로드 → Drive → Apps Script → �
     expect(w.run()).toBe(0);
     expect(JSON.stringify([...w.tabs].map(([n, s]) => [n, s.data]))).toBe(sheetsBefore);
     expect(w.props.SNAPSHOT_FILE_ID).toBe(id1);
-    expect(w.problems().bundle.msg).toMatch(/시트 종류가 맞지 않음/);
+    expect(w.problems().bundle.msg).toMatch(/시트 종류가 이름과 맞지 않음/);
     expect(await dashboard(w.snapshotJson())).toEqual(direct); // 대시보드는 여전히 마지막 정상 데이터
   }, 120000);
 });
