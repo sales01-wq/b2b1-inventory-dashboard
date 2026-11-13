@@ -1,3 +1,16 @@
 {
-  "functions": { "api/*.js": { "maxDuration": 30 } }
+  "installCommand": "cd web && npm ci",
+  "buildCommand": "cd web && npm run build",
+  "outputDirectory": "web/dist",
+  "build": {
+    "env": {
+      "VITE_READ_ONLY": "0",
+      "VITE_DEMO_DATA": "0"
+    }
+  },
+  "functions": {
+    "api/*.js": {
+      "maxDuration": 30
+    }
+  }
 }
