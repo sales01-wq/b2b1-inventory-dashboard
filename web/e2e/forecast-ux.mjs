@@ -61,12 +61,20 @@ try {
   await page.getByRole('checkbox', {name: /^B유통$/}).check();
   await page.keyboard.press('Escape');
   await page.getByText('거래처 2곳 선택').waitFor();
+  // 선택 거래처 기준 표시 · 분석용 추정치 안내 · 펼친 행 근거 제목, 해제하면 전체 거래처 기준
+  await page.getByText('선택 거래처 기준 (2곳)').waitFor();
+  await page.getByText(/분석용 추정치/).waitFor();
+  await page.getByRole('button', {name: '근거 보기'}).first().click();
+  await page.getByRole('heading', {name: '부족 수량 근거 · 선택 거래처 기준'}).waitFor();
+  await page.getByRole('button', {name: '근거 닫기'}).first().click();
   const orList = await codes(page);
   assert.ok(orList.length > 0 && new Set(orList).size === orList.length, '거래처 OR: 품목은 한 번씩');
   assert.ok(orList.length <= all.length);
   await page.getByRole('button', {name: 'B유통 삭제'}).or(page.locator('[aria-label*="B유통"]').first()).first().click().catch(() => {});
   await page.getByRole('button', {name: '모두 해제'}).first().click();
   await page.getByRole('button', {name: '거래처 전체'}).waitFor();
+  await page.getByText('전체 거래처 기준', {exact: true}).first().waitFor();
+  assert.equal(await page.getByText(/분석용 추정치/).count(), 0);
   assert.deepEqual(await codes(page), all);
 
   // 5) 일괄 선택: 전체 선택 → 막대 → 발주 목록(중복 없음, 기존 수량 유지)

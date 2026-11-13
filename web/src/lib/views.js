@@ -2,7 +2,7 @@
 // 식은 index.html 과 같게 유지합니다. 결과는 views.test.js 가 운영 화면에 그려진 값과 비교합니다.
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
-import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, usableAvailable, getRules} from './forecast.js';
+import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, usableAvailable, getRules, scopeForecastItem} from './forecast.js';
 import {productList, buildSkuStatusData, buildPivotRows} from './sales.js';
 import {detectSheetType, findHeaderRow, SHEET_SIGNATURES, teamFromName, teamFromRows} from './parse.js';
 import {boxInfoFor, baseBarcode, buildExportRows, incomingItemsFor, shortDate} from './lookup.js';
@@ -26,15 +26,18 @@ export function overviewModel(){
 export function forecastModel(){
   const isOverstock = ui.forecastGrade==='과잉재고';
   // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
-  let list = isOverstock
-    ? state.forecast.filter(x=>brandPasses(x.brand) && x.sold6===0)
-    : state.forecast.filter(x=>brandPasses(x.brand) && (ui.forecastShowNoSales || ui.forecastGrade==='참고' || x.sold6>0 || x.orderQty>0));
-
-  // 거래처 필터(여러 개 = OR): 고른 거래처 중 하나라도 최근 12개월 안에 산 적 있는 품목만 남김. 재고 · 목표 · 부족 수량은 품목 기준 그대로 (품목은 한 번만 나오고 거래처끼리 나누거나 더하지 않아 같은 재고를 중복해서 세지 않음)
+  // 거래처 필터(여러 개 = OR): 고른 거래처 중 하나라도 최근 12개월 안에 산 적 있는 품목만 남기고, 그 거래처들의 판매만으로 목표 · 부족 · 상태를 다시 계산 (scopeForecastItem).
+  // 품목은 한 번만 나오고 재고 · 입고예정은 품목당 한 번 그대로라 같은 재고를 거래처마다 중복해서 세지 않음
+  let src = state.forecast.filter(x=>brandPasses(x.brand));
   if(ui.forecastCustomers.size>0){
     const cut = new Date(); cut.setFullYear(cut.getFullYear()-1);
-    list = list.filter(x=>(state.salesRowsByProduct.get(x.품번)||[]).some(r=>ui.forecastCustomers.has(r.거래처) && r.실적일자>=cut));
+    src = src.filter(x=>(state.salesRowsByProduct.get(x.품번)||[]).some(r=>ui.forecastCustomers.has(r.거래처) && r.실적일자>=cut))
+      .map(x=>scopeForecastItem(x, ui.forecastCustomers));
   }
+  // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
+  let list = isOverstock
+    ? src.filter(x=>x.sold6===0)
+    : src.filter(x=>ui.forecastShowNoSales || ui.forecastGrade==='참고' || x.sold6>0 || x.orderQty>0);
 
   if(ui.forecastBrand) list = list.filter(x=>x.brand===ui.forecastBrand);
   const baseAll = state.forecast.filter(x=>brandPasses(x.brand));
@@ -89,7 +92,7 @@ export function forecastModel(){
     });
     return arr;
   };
-  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly, year, yearList};
+  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly, year, yearList, scopeLabel: ui.forecastCustomers.size>0 ? '선택 거래처 기준' : '전체 거래처 기준', scopeCount: ui.forecastCustomers.size};
 }
 
 /* 펼친 행: 목표 재고 근거(월별 합계) · 거래처별 월 판매 · 최근 판매 20건 · 입고예정 · 반품 · 대량 판매 표시 */

@@ -229,7 +229,7 @@ try {
   [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', {name: '표 내려받기(CSV)'}).click()]);
   assert.match(await page.evaluate(() => window.__lastDownloadName), /^발주현황_.*_\d{4}-\d{2}-\d{2}\.csv$/);
   csv = await readDownload(download);
-  assert.ok(csv.startsWith('﻿구분,품번,품명,상태,가용재고,입고예정(유효),목표 재고,부족 수량,확인 필요\r\n'), csv.slice(0, 80));
+  assert.ok(csv.startsWith('﻿구분,품번,품명,상태,가용재고,입고예정(유효),목표 재고,부족 수량,확인 필요,기준\r\n'), csv.slice(0, 80));
   // 과잉재고 · EMP 정상창고만 → 판매 없이 EMP 재고만 있는 SB006
   await page.getByRole('button', {name: '과잉재고'}).click();
   await page.getByRole('radio', {name: 'EMP 정상창고만'}).check();

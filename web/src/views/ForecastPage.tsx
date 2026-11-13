@@ -80,13 +80,17 @@ function Forecast() {
               <>
                 <Collapsible defaultIsOpen={false} trigger={<Text type="supporting" weight="medium">부족 수량 계산 방법</Text>}>
                   <Text type="supporting">
-                    <Text type="supporting" weight="bold">부족 수량 = 목표 재고 − 가용재고 − 입고예정</Text> (0 미만이면 0). 목표 재고는 최근 12개월(이번 달 제외) 중 <Text type="supporting" weight="bold">모든 거래처 합계 월 판매량이 가장 많았던 달</Text>의 판매량입니다.
+                    <Text type="supporting" weight="bold">부족 수량 = 목표 재고 − 가용재고 − 입고예정</Text> (0 미만이면 0). 목표 재고는 최근 12개월(이번 달 제외) 중 <Text type="supporting" weight="bold">모든 거래처 합계 월 판매량이 가장 많았던 달</Text>의 판매량입니다 (거래처를 고르면 그 거래처들의 판매만으로 같은 방식으로 계산).
                     가용재고는 {teamLabel()} 정상창고 기준이며 품목마다 한 번만 셉니다. 입고예정은 날짜가 지나지 않은 것만 더합니다. 반품 · 마이너스 조정은 판매와 따로 보며 목표에 넣지 않습니다.
                     상태는 (가용재고 + 입고예정) ÷ 목표 재고로 정합니다: 부족 수량이 없으면 여유, 목표의 {getRules().riskPct}% 미만은 생산 필요, 그 사이는 생산 추천, 최근 12개월 판매가 없으면 참고.
                     가장 많이 팔린 달이 그다음 달의 2배 이상이면 일회성 대량 판매일 수 있어 '대량 판매 확인'으로 표시합니다 (목표에서 빼지는 않습니다). 행 앞의 화살표로 근거를 볼 수 있습니다.
                   </Text>
                 </Collapsible>
-                <HStack hAlign="between" vAlign="center" wrap="wrap"><YearPicker m={m} /><Text type="supporting">0 판매는 -, 진행중인 달은 이번 달까지의 판매</Text></HStack>
+                <HStack hAlign="between" vAlign="center" wrap="wrap">
+                  <YearPicker m={m} />
+                  <HStack gap={2} vAlign="center"><Badge variant={m.scopeCount > 0 ? 'blue' : 'neutral'} label={m.scopeLabel + (m.scopeCount > 0 ? ` (${fmt(m.scopeCount)}곳)` : '')} /><Text type="supporting">0 판매는 -, 진행중인 달은 이번 달까지</Text></HStack>
+                </HStack>
+                {m.scopeCount > 0 && <Text type="supporting">선택한 거래처의 판매만으로 월별 합계 · 목표 재고 · 부족 수량 · 상태를 다시 계산한 <b>분석용 추정치</b>입니다. 재고와 입고예정은 품목당 한 번만 세며 거래처에 배분한 값이 아니고, 거래처별 부족을 따로 구해 더한 값도 아닙니다.</Text>}
                 <SelectionBar />
                 <ForecastTable m={m} shown={shown} />
                 <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (품번 열은 고정).</Text>
@@ -163,13 +167,13 @@ function OverstockScope() {
 }
 
 /** 생산 필요 요약 + 표 내려받기 */
-function SummaryBar({m}: {m: Model}) {
+function SummaryBar({m}: {m: Model}) { // m.scopeLabel: 거래처 선택 여부에 따라 '선택 거래처 기준' / '전체 거래처 기준'
   return (
     <Card>
       <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap">
         {/* 문장은 보통 굵기, 품목 수 · 총 수량만 굵은 색 글자로 */}
         <Text type="label" className="summary-line">
-          {ui.forecastCustomers.size > 0 && <Text type="supporting">거래처 {fmt(ui.forecastCustomers.size)}곳 기준 · </Text>}
+          <Text type="supporting">{m.scopeLabel} · </Text>
           {m.needItems > 0 ? (
             <>지금 생산 필요 <b className="text-danger">{fmt(m.needItems)}개 품목</b> <Text type="supporting">/ 총</Text> <b className="text-danger">{fmt(m.needQty)}개</b></>
           ) : (
@@ -200,7 +204,7 @@ export function GradeBadge({grade}: {grade: string}) {
 
 interface Spike {month: {y: number; m: number}; qty: number; second: number; customers: {cust: string; qty: number}[]; oneMonth: boolean}
 interface Peak {month: {y: number; m: number}; qty: number; customers: {cust: string; qty: number}[]}
-interface FRow {discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
+interface FRow {scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
 
 // 열 너비(px): 고정 레이아웃. 품번/품명 칸은 넓게(품명은 줄바꿈), 숫자 칸은 촘촘하게. 넓은 화면에서는 앞 4칸이 함께 고정됨
 const W = {pn: 290, grade: 88, avail: 76, short: 88, month: 50};
@@ -365,9 +369,9 @@ function Detail({x}: {x: FRow}) {
     <Grid columns={{minWidth: 300, repeat: 'fit'}} gap={4}>
       <VStack gap={2}>
         <HStack gap={2} vAlign="center" wrap="wrap"><BrandBadge brand={x.brand} /><Button label="발주 목록에 담기" size="sm" variant="secondary" isDisabled={x.orderQty <= 0} onClick={() => addToCart(x.품번)} /></HStack>
-        <Heading level={4}>부족 수량 근거</Heading>
+        <Heading level={4}>부족 수량 근거 · {x.scoped ? '선택 거래처 기준' : '전체 거래처 기준'}</Heading>
         <MiniTable num={[1]} head={['항목', '수량']} rows={[
-          ['목표 재고 (최근 12개월 월 최대 판매)', fmt(x.target)],
+          [x.scoped ? '목표 재고 (선택 거래처의 최근 12개월 월 최대 판매)' : '목표 재고 (최근 12개월 월 최대 판매)', fmt(x.target)],
           ['− 가용재고', fmt(x.available)],
           ['− 입고예정 (유효)', fmt(x.incoming)],
           [<strong>부족 수량</strong>, <strong>{fmt(x.orderQty)}</strong>],
@@ -459,7 +463,7 @@ function CustomerView({go}: {go: () => void}) {
           </TableBody>
         </Table>
       </Card>
-      <Text type="supporting">부족 품목은 그 거래처가 최근 12개월 안에 산 품목 중 부족 수량이 있는 품목 수입니다. 재고는 모든 거래처가 함께 쓰므로 부족 수량은 거래처별로 나누거나 더하지 않고, '품목 보기'에서 품목 기준으로 확인합니다.</Text>
+      <Text type="supporting">부족 품목은 그 거래처가 최근 12개월 안에 산 품목 중 (전체 거래처 기준으로) 부족 수량이 있는 품목 수입니다. 재고는 모든 거래처가 함께 쓰므로 부족 수량은 거래처별로 나누거나 더하지 않고, '품목 보기'에서 품목 기준으로 확인합니다.</Text>
     </VStack>
   );
 }

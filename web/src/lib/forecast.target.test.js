@@ -54,13 +54,6 @@ describe('부족 수량 · 유효 입고예정', () => {
     run([row('A', 'SB001', 10, inMonth(1))]);
     expect(item('SB001').orderQty).toBe(0);
   });
-  it('재고는 품목당 한 번: 거래처가 여럿이어도 부족 수량이 늘지 않음', () => {
-    run([row('A', 'SB005', 200, inMonth(1)), row('B', 'SB005', 200, inMonth(1)), row('C', 'SB005', 200, inMonth(1))]);
-    expect(item('SB005').orderQty).toBe(500); // 600 − 0 − 100
-    a.ui.forecastCustomers = new Set(['A']);
-    expect(a.forecastModel().list.find(x => x.품번 === 'SB005').orderQty).toBe(500); // 거래처 필터로 나눠지지 않음
-    a.ui.forecastCustomers = new Set();
-  });
 });
 
 describe('위험 판정과 부족 수량의 일관성', () => {
@@ -139,15 +132,6 @@ describe('거래처별 보기', () => {
 
 describe('거래처 다중 선택 · 연도별 월 판매 · 일괄 선택 · 목표 기준 월', () => {
   const I = () => import('./insights.js');
-  it('여러 거래처는 OR: 하나라도 산 품목, 품목은 한 번씩만, 부족 수량은 그대로', () => {
-    run([row('A', 'SB002', 100, inMonth(1)), row('B', 'SB004', 100, inMonth(1)), row('C', 'SB005', 100, inMonth(1)), row('B', 'SB002', 50, inMonth(2))]);
-    const all = a.forecastModel().list.map(x => [x.품번, x.orderQty]);
-    a.ui.forecastCustomers = new Set(['A', 'B']);
-    const list = a.forecastModel().list;
-    expect(list.map(x => x.품번).sort()).toEqual(['SB002', 'SB004']); // SB002 는 A·B 둘 다 샀어도 한 줄
-    list.forEach(x => expect(x.orderQty).toBe(all.find(r => r[0] === x.품번)[1]));
-    a.ui.forecastCustomers = new Set();
-  });
   it('월별 판매: 선택 연도의 1~12월, 0 은 0 (화면에서 -), 거래처를 고르면 그 거래처 합계, 반품 제외', () => {
     const y = NOWD.getFullYear();
     run([row('A', 'SB004', 30, new Date(y, 0, 5)), row('B', 'SB004', 20, new Date(y, 0, 9)), row('A', 'SB004', -7, new Date(y, 0, 9)), row('A', 'SB004', 11, new Date(y - 1, 11, 20))]);
@@ -181,5 +165,83 @@ describe('거래처 다중 선택 · 연도별 월 판매 · 일괄 선택 · �
     expect(x.target).toBe(400); expect(x.orderQty).toBe(380);
     expect(m.monthly(x).every(v => v === 0)).toBe(true); // 올해 열은 전부 0
     expect(x.peak.month.y).toBe(y - 1); expect(x.peak.qty).toBe(400); expect(x.peak.customers[0]).toEqual({cust: 'A', qty: 400});
+  });
+});
+
+describe('선택 거래처 기준 재계산 (단일 · 다중 · 전체 · 공유 재고 · 마이너스 재고)', () => {
+  const SALES = () => [row('A', 'SB005', 200, inMonth(1)), row('B', 'SB005', 200, inMonth(1)), row('C', 'SB005', 200, inMonth(1)), row('A', 'SB005', 50, inMonth(2))];
+  const scope = (...c) => { a.ui.forecastCustomers = new Set(c); return a.forecastModel().list.find(x => x.품번 === 'SB005'); };
+  it('전체 = 모든 거래처 합계, 단일 = 그 거래처만, 다중 = 고른 거래처 합계 (월 · 품목별로 모음)', () => {
+    run(SALES());
+    const all = scope(); // 가용 0, 입고예정 100
+    expect([all.target, all.orderQty, all.scoped]).toEqual([600, 500, undefined]);
+    const one = scope('A'); expect([one.target, one.orderQty, one.scoped]).toEqual([200, 100, true]);
+    const two = scope('A', 'B'); expect([two.target, two.orderQty]).toEqual([400, 300]);
+    const three = scope('A', 'B', 'C'); expect([three.target, three.orderQty]).toEqual([600, 500]); // 전부 고르면 전체와 같음
+    a.ui.forecastCustomers = new Set();
+  });
+  it('재고 · 입고예정은 품목당 한 번: 거래처별 부족을 더한 값이 아님', () => {
+    run(SALES());
+    const one = ['A', 'B', 'C'].map(c => scope(c));
+    one.forEach(x => { expect(x.available).toBe(0); expect(x.incoming).toBe(100); }); // 어느 범위에서든 같은 재고
+    const sumSeparate = one.reduce((s, x) => s + x.orderQty, 0); // 100+100+100
+    const two = scope('A', 'B');
+    expect(two.orderQty).toBe(300);
+    expect(two.orderQty).not.toBe(one[0].orderQty + one[1].orderQty); // 200 이 아님 (재고를 두 번 빼지 않음)
+    expect(sumSeparate).toBe(300); expect(scope().orderQty).toBe(500); // 전체는 합과 다름 — 따로 구해 더하지 않는다는 뜻
+    a.ui.forecastCustomers = new Set();
+  });
+  it('월별 열 · 합계 · 상태 · 요약 건수가 선택 범위와 일치', () => {
+    run([...SALES(), row('A', 'SB002', 100, inMonth(1)), row('B', 'SB002', 5, inMonth(1))]); // SB002 가용 20
+    a.ui.forecastGrade = ''; a.ui.forecastShowNoSales = true;
+    const y = NOWD.getFullYear();
+    let m = a.forecastModel(); const x0 = m.list.find(x => x.품번 === 'SB005');
+    a.ui.forecastCustomers = new Set(['A']); m = a.forecastModel();
+    const x1 = m.list.find(x => x.품번 === 'SB005');
+    expect(m.scopeLabel).toBe('선택 거래처 기준'); expect(m.scopeCount).toBe(1);
+    expect(x1.monthTotals.reduce((s, v) => s + v, 0)).toBe(250); // A 의 12개월 합계
+    expect(m.list.some(x => x.품번 === 'SB001' && !(a.state.salesRowsByProduct.get('SB001') || []).some(r => r.거래처 === 'A'))).toBe(false); // A 가 안 산 품목은 빠짐
+    // 상태: SB002 는 A 기준 목표 100 (가용 20 → 위험), B 기준 목표 5 (여유)
+    expect(a.forecastModel().list.find(x => x.품번 === 'SB002').grade).toBe('위험');
+    a.ui.forecastCustomers = new Set(['B']); const b = a.forecastModel();
+    expect(b.list.find(x => x.품번 === 'SB002')).toMatchObject({grade: '안전', orderQty: 0});
+    // 요약 건수 = 표에 보이는 범위의 합
+    a.ui.forecastCustomers = new Set(['A']); const sa = a.forecastModel();
+    const need = sa.list.filter(x => x.orderQty > 0);
+    expect([sa.needItems, sa.needQty]).toEqual([need.length, need.reduce((s, x) => s + x.orderQty, 0)]);
+    a.ui.forecastCustomers = new Set(); a.ui.forecastShowNoSales = false;
+    expect(a.forecastModel().scopeLabel).toBe('전체 거래처 기준');
+    expect(m.monthly(x0).length).toBe(12); expect(y).toBeGreaterThan(2000);
+  });
+  it('마이너스 재고: 목표 − (마이너스 재고) − 입고예정, 예외 없음, 선택 범위에서도 일관', () => {
+    run(SALES());
+    a.state.inventory.push({품번: 'SB005', 품명: 'x', 바코드: '', 창고: 'EMP 물류', LOT: '', 가용재고: -30, 재고수량: -30});
+    a.computeDerived();
+    const all = scope(); expect(all.available).toBe(-30); expect(all.orderQty).toBe(600 + 30 - 100);
+    const one = scope('A'); expect(one.orderQty).toBe(200 + 30 - 100); expect(one.grade).toBe('위험'); // (−30+100)/200 = 35% < 50%
+    expect(() => { a.coverageBands(); a.customerShortRows(); }).not.toThrow();
+    a.ui.forecastCustomers = new Set(); a.state.inventory.pop(); a.computeDerived(); // 추가한 마이너스 재고 줄 제거
+  });
+  it('거래처를 바꿔도 발주 목록의 기존 수량은 그대로, 새로 담을 때는 화면의 부족 수량이 기본값', async () => {
+    const ins = await import('./insights.js'); a.ui.cart.clear();
+    run(SALES());
+    ins.setCartQty('SB005', 77);
+    scope('A'); scope(); scope('B', 'C');
+    expect(a.ui.cart.get('SB005')).toBe(77); // 필터 전환만으로 변하지 않음
+    ins.removeFromCart('SB005');
+    a.ui.forecastCustomers = new Set(['A', 'B']);
+    ins.addManyToCart(['SB005']); expect(a.ui.cart.get('SB005')).toBe(300); // 선택 거래처 기준 부족
+    a.ui.forecastCustomers = new Set(); a.ui.cart.clear();
+  });
+  it('선택 거래처가 최근 12개월 완료 월에 판매 없이 이번 달에만 샀다면 목표 0 → 참고', () => {
+    run([row('A', 'SB005', 100, inMonth(1)), row('Z', 'SB005', 50, inMonth(0, 1))]);
+    const z = scope('Z'); expect([z.target, z.orderQty, z.grade]).toEqual([0, 0, '데이터부족']);
+    a.ui.forecastCustomers = new Set();
+  });
+  it('CSV 에 기준 표시', () => {
+    run(SALES()); a.ui.forecastGrade = ''; scope('A'); a.ui._forecastCsvRows = a.forecastModel().list;
+    expect(a.forecastListCsv().csv).toContain(',선택 거래처 기준');
+    a.ui.forecastCustomers = new Set(); a.ui._forecastCsvRows = a.forecastModel().list;
+    expect(a.forecastListCsv().csv).toContain(',전체 거래처 기준');
   });
 });

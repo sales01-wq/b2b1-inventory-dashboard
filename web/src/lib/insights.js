@@ -1,7 +1,7 @@
 // 새 화면(상품 상세 · 거래처 분석 · 재고 점검 · 발주 목록 · 검색)용 계산. 이미 올라온 데이터(판매실적 · 재고 · 제품일정표 · 유통기한)만 사용합니다.
 // 없는 데이터(재고 이력, 원가 · 재고금액, 품목별 리드타임)는 만들어 내지 않습니다.
 import {state, ui} from './store.js';
-import {brandPasses, brandOf, QUARTER_DAYS} from './forecast.js';
+import {brandPasses, brandOf, QUARTER_DAYS, scopeForecastItem} from './forecast.js';
 import {emit} from './store.js';
 import {num} from './parse.js';
 
@@ -93,9 +93,11 @@ const KEY = 'inv_order_list';
 function loadCart(){ try{ return new Map(JSON.parse(localStorage.getItem(KEY)||'[]')); }catch(_e){ return new Map(); } }
 ui.cart = loadCart(); // 품번 -> 발주 수량
 function saveCart(){ try{ localStorage.setItem(KEY, JSON.stringify(Array.from(ui.cart.entries()))); }catch(_e){} emit(); }
-export function addToCart(pn, qty){ const x = findForecast(pn); ui.cart.set(pn, Math.max(1, Math.round(qty!==undefined ? qty : (x&&x.orderQty)||1))); saveCart(); }
+/** 화면에 보이는 부족 수량(선택 거래처가 있으면 그 기준)으로 기본 수량을 정함 */
+const shownQty = pn => { const x = scopeForecastItem(findForecast(pn), ui.forecastCustomers); return (x&&x.orderQty)||1; };
+export function addToCart(pn, qty){ const x = findForecast(pn); ui.cart.set(pn, Math.max(1, Math.round(qty!==undefined ? qty : shownQty(pn)))); saveCart(); }
 /** 이미 담긴 품목은 수량을 그대로 두고 건너뜀. {added, existing} 반환 */
-export function addManyToCart(pns){ let added=0, existing=0; new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } const x = findForecast(pn); ui.cart.set(pn, Math.max(1, Math.round((x&&x.orderQty)||1))); added++; }); saveCart(); return {added, existing}; }
+export function addManyToCart(pns){ let added=0, existing=0; new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } ui.cart.set(pn, Math.max(1, Math.round(shownQty(pn)))); added++; }); saveCart(); return {added, existing}; }
 export function setCartQty(pn, qty){ const v = Math.round(num(qty)); if(v>0) ui.cart.set(pn, v); else ui.cart.delete(pn); saveCart(); }
 export function removeFromCart(pn){ ui.cart.delete(pn); saveCart(); }
 export function clearCart(){ ui.cart.clear(); saveCart(); }

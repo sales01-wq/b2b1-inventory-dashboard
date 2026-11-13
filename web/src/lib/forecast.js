@@ -107,6 +107,19 @@ export function salesProfile(rows){
   return {months, totals, byCust, target, returns, spike, peak:peakInfo, total12: totals.reduce((a,b)=>a+b,0)};
 }
 
+/** 선택 거래처 기준 재계산 (분석용 추정치): 고른 거래처들의 판매만으로 월별 합계 → 목표 → 부족 · 상태를 다시 계산.
+ *  가용재고 · 입고예정은 품목당 한 번 그대로 (거래처에 배분하지 않고, 거래처별 부족을 따로 구해 더하지도 않음). 선택이 없으면 전체 거래처 기준 항목 그대로 */
+export function scopeForecastItem(x, custs){
+  if(!x || !custs || custs.size===0) return x;
+  const rows = (state.salesRowsByProduct.get(x.품번)||[]).filter(r=>custs.has(r.거래처));
+  const prof = salesProfile(rows);
+  const cut6 = new Date(); cut6.setMonth(cut6.getMonth()-6);
+  const sold6 = rows.reduce((s,r)=> r.실적일자>=cut6 ? s+safeNum(r.수량) : s, 0);
+  const g = x.discontinued ? {grade:'데이터부족', ratio:null} : gradeFor({pn:x.품번, available:x.available, incoming:x.incoming, target:prof.target});
+  return {...x, scoped:true, sold6, target:prof.target, orderQty: x.discontinued ? 0 : Math.max(0, prof.target - x.available - x.incoming),
+    ratio:g.ratio, grade:g.grade, avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust};
+}
+
 /** 유효 입고예정: 날짜가 이미 지난 입고는 이미 재고에 들어왔거나 불확실하므로 제외 (제외한 수량은 따로 보여 줌) */
 export function validIncoming(sched){
   if(!sched) return {valid:0, excluded:0};
@@ -266,10 +279,11 @@ export function groupOf(g){
 }
 
 const csvEsc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+const scopeText = x => x.scoped ? '선택 거래처 기준' : '전체 거래처 기준';
 const flagText = x => x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
 function stockCsv(rows, filename){
-  const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요'].join(',')];
-  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,statusLabel(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x)].map(csvEsc).join(',')));
+  const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요','기준'].join(',')];
+  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,statusLabel(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x),scopeText(x)].map(csvEsc).join(',')));
   return {csv:'\uFEFF'+lines.join('\r\n'), filename};
 }
 // port: 다운로드 대신 {csv, filename} 반환 — 실제 저장은 saveCsv()
