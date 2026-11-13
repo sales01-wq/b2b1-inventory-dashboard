@@ -110,7 +110,7 @@ try {
 
   // ---- 전체 개요: 운영 대시보드가 같은 데이터로 그리는 값 (views.test.js 에서 비교 확인된 숫자)
   const main = await text(page.getByRole('main'));
-  for (const re of [/품목 11개/, /생산 필요 1 .*신호 품목 5개 중 20% 재고가 목표의 50% 미만/, /생산 추천 0 .*신호 품목 5개 중 0% 재고가 목표의 50~100%/, /여유 4 .*신호 품목 5개 중 80% 부족 수량 없음/, /참고 6 최근 12개월 판매 없음 \(신호 계산에서 제외\)/, /거래처 4곳 · 최근 6개월 총판매 7,080/])
+  for (const re of [/품목 11개/, /생산 필요 1 .*신호 품목 5개 중 20% 재고가 목표의 50% 미만/, /생산 추천 0 .*신호 품목 5개 중 0% 재고가 목표의 50~100%/, /여유 4 .*신호 품목 5개 중 80% 부족 수량 없음/, /참고 6 미판매\(6개월 이상\) · 판매 이력 없음 \(신호 계산에서 제외\)/, /거래처 4곳 · 최근 6개월 총판매 7,080/])
     assert.match(main, re);
   // 발주 필요 (위험+주의) 목록 = 발주 현황 '발주 필요 (위험+주의)' 칩과 같은 품목 · 순서
   assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB002']);
@@ -474,7 +474,7 @@ try {
   assert.deepEqual(await phone.page.evaluate(() => [...document.querySelectorAll('[role=main] [aria-label="상태"] button, [role=main] [aria-label="브랜드"] button')]
     .filter(b => b.checkVisibility()) // 닫힌 머리글 '필터' 팝업 안의 브랜드 버튼은 제외
     .filter(b => { const r = b.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).map(b => b.textContent)), []);
-  assert.equal(await phone.page.locator('[aria-label="상태"] button:visible').count(), 7); // 발주 필요 · 위험 · 주의 · 여유 · 참고 · 전체 · 과잉재고
+  assert.equal(await phone.page.locator('[aria-label="상태"] button:visible').count(), 8); // 생산 필요+추천 · 생산 필요 · 생산 추천 · 여유 · 참고 · 미판매 · 전체 · 과잉재고
   await phone.page.getByRole('button', {name: '과잉재고'}).click();
   await phone.page.getByRole('button', {name: '과잉재고', pressed: true}).waitFor();
   await phone.page.getByRole('button', {name: /^생산 필요 \+ 추천/}).click();

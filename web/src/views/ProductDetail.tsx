@@ -39,10 +39,11 @@ export function ProductDetail({go}: {go: (v: 'lookup') => void}) {
                 <Stat label="가용재고" value={fmt(x.available)} />
                 <Stat label="입고예정(3개월)" value={fmt(x.incoming)} />
                 <Stat label="월평균 판매(12개월)" value={fmt(x.avgQuarterly / 3)} />
-                <Stat label="부족 수량" value={x.orderQty > 0 ? fmt(x.orderQty) : '-'} strong={x.orderQty > 0} />
+                <Stat label="부족 수량" value={x.orderQty > 0 ? fmt(x.orderQty) : '-'} strong={x.orderQty > 0 && !x.inactiveReason} />
                 <Stat label="소진 예상" value={d.depletion === null ? '판매 없음' : `${fmt(d.depletion)}일`} />
                 <Stat label="목표 재고" value={fmt(x.target)} />
               </div>
+              {x.inactiveReason && <Text type="supporting"><span className="text-warn">{x.inactiveReason}</span> · 마지막 판매일 {x.lastSale ? x.lastSale.toLocaleDateString('ko-KR') : '없음'} — 생산 필요 · 추천에서 제외 (부족 수량은 참고용)</Text>}
               <HStack gap={2} wrap="wrap">
                 <Button label="발주 목록에 담기" size="sm" onClick={() => addToCart(pn, x.orderQty > 0 ? x.orderQty : 1, SCOPE_ALL)} />
                 <Button label="조회에서 확인" size="sm" variant="secondary" onClick={() => { lookupFor(pn, x.orderQty); lookupSearch(); closeDetail(); go('lookup'); }} />

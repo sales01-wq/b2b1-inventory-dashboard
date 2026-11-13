@@ -37,14 +37,14 @@ export function forecastModel(){
   // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
   let list = isOverstock
     ? src.filter(x=>x.sold6===0)
-    : src.filter(x=>ui.forecastShowNoSales || ui.forecastGrade==='참고' || x.sold6>0 || x.orderQty>0);
+    : src.filter(x=>ui.forecastShowNoSales || ui.forecastGrade==='참고' || ui.forecastGrade==='미판매' || x.sold6>0 || x.orderQty>0);
 
   if(ui.forecastBrand) list = list.filter(x=>x.brand===ui.forecastBrand);
   const baseAll = state.forecast.filter(x=>brandPasses(x.brand));
   const brands = Array.from(new Set(baseAll.map(x=>x.brand))).filter(Boolean);
   const cnt = {위험:0,주의:0,여유:0,참고:0};
   list.forEach(x=>{ cnt[groupOf(x.grade)]++; });
-  const gradeChips = [['조치필요','생산 필요 + 추천',cnt.위험+cnt.주의],['위험','생산 필요',cnt.위험],['주의','생산 추천',cnt.주의],['여유','여유',cnt.여유],['참고','참고',cnt.참고],['','전체',list.length]];
+  const gradeChips = [['조치필요','생산 필요 + 추천',cnt.위험+cnt.주의],['위험','생산 필요',cnt.위험],['주의','생산 추천',cnt.주의],['여유','여유',cnt.여유],['참고','참고',cnt.참고],['미판매','미판매',src.filter(x=>x.inactiveReason).length],['','전체',list.length]];
 
   const needList = list.filter(x=>x.orderQty>0 && !['휴면','단발성','데이터부족'].includes(x.grade));
   const needItems = needList.length, needQty = needList.reduce((a,x)=>a+x.orderQty,0);
@@ -54,6 +54,8 @@ export function forecastModel(){
       const avail = scopedAvailable(x.품번, scope);
       return {...x, available:avail};
     }).filter(x=> x.available>0); // 재고가 있는 것만 과잉재고
+  } else if(ui.forecastGrade==='미판매'){
+    list = list.filter(x=>x.inactiveReason); // 6개월 이상 미판매 · 판매 이력 없음 품목만 따로 보기
   } else if(ui.forecastGrade==='조치필요'){
     list = list.filter(x=>x.grade==='긴급' || x.grade==='위험' || x.grade==='주의');
   } else if(ui.forecastGrade){

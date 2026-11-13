@@ -142,6 +142,21 @@ try {
   assert.equal(await page.getByText(/대량 판매 확인:/).count() >= 0, true);
   await page.locator('tr', {has: page.getByText('SB001', {exact: true})}).getByRole('button', {name: '근거 닫기'}).click();
 
+  // 미판매(6개월 이상) 품목: 별도 필터 · 사유 표시 · 마지막 판매일 · 생산 필요/추천 아님
+  await page.getByRole('button', {name: /^미판매 \d+$/}).click();
+  const inactiveRows = page.locator('tbody tr').filter({has: page.locator('.inactive-note')});
+  assert.ok((await inactiveRows.count()) > 0, '미판매 품목 없음');
+  assert.equal(await page.locator('tbody tr td.fc-s2').filter({hasText: /생산 필요|생산 추천/}).count(), 0, '미판매 품목이 생산 필요/추천으로 보임');
+  assert.match(await inactiveRows.first().locator('.inactive-note').innerText(), /6개월 이상 미판매|12개월 이상 미판매|판매 이력 없음/);
+  await inactiveRows.first().getByRole('button', {name: '근거 보기'}).click();
+  await page.getByText(/마지막 판매일:/).first().waitFor();
+  await page.getByRole('button', {name: '근거 닫기'}).first().click();
+  for (const g of [/^생산 필요 \d+$/, /^생산 추천 \d+$/]) { // 생산 필요 · 추천 필터에는 사유 표시가 있는 품목이 없음
+    await page.getByRole('button', {name: g}).click();
+    assert.equal(await page.locator('.inactive-note').count(), 0, '생산 필요/추천 목록에 미판매 품목');
+  }
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
+
   // 4) 좁은 화면: 가로 스크롤 + 끌기 (체크박스 클릭 · 행 펼치기는 그대로 동작)
   await page.setViewportSize({width: 1000, height: 800});
   const sc = page.locator('.astryx-table-scroll-wrapper').first();

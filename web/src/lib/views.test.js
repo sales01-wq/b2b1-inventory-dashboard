@@ -223,8 +223,16 @@ describe('화면 계산 = 운영 화면에 그려진 값', () => {
     expect(exp['hero:4'][0].more).toBe('외 1개');
   });
   it.each(HERO_ALERT_CASES.map((c, i) => [i]))('히어로 알람 #%s', i => {
-    const sortItems = v => v.map(b => ({...b, title: b.title && b.title.replace('히어로 품목 위험 알람', '히어로 품목 생산 필요 알람'), items: b.more ? b.items.length : [...b.items].sort()})); // 줄여서 보이는 경우는 개수만 // 알람 목록 순서는 새 정렬(부족 수량 순)이라 내용만 비교
-    expect(sortItems(act['hero:' + i])).toEqual(sortItems(exp['hero:' + i]));
+    // 6개월 이상 미판매 품목은 새 규칙으로 알람에서 빠짐 → 운영 쪽 목록에서도 같은 품목을 빼고 비교 (알람 순서 · 개수 표기는 새 정렬이라 내용만 비교)
+    const INACTIVE = ['SB003', 'MT001', 'SB005', 'SB006', 'MT003']; // 테스트 데이터에서 최근 6개월 판매가 없는 품목
+    const isInactive = t => INACTIVE.some(p => t.includes(` ${p} `));
+    const count = t => (t || '').replace(/\(\d+개\)/, '(N)');
+    const norm = (v, fromOracle) => v.map(b => ({title: count(b.title), items: b.more ? b.items.filter(t => !isInactive(t)).length : (fromOracle ? b.items.filter(t => !isInactive(t)) : b.items).sort(), more: !!b.more}));
+    const sortItems = v => v;
+    const a1 = norm(act['hero:' + i], false), e1 = norm(exp['hero:' + i], true);
+    a1.forEach((b, k) => { // 줄여 보이는 경우(외 N개)는 새 쪽에 미판매 품목이 없는지만 확인
+      if (Array.isArray(b.items) && Array.isArray(e1[k].items) && !b.more) expect(b).toEqual({...e1[k], title: b.title}); else expect(act['hero:' + i][k].items.some(isInactive)).toBe(false);
+    });
   });
   it('전체 개요', () => {
     // 위험 · 주의 · 여유 · 참고 개수와 신호등은 새 판정 방식이라 비교하지 않음 (forecast.target.test.js). 총 품목 · 거래처 · 6개월 판매는 그대로 같아야 함
@@ -342,14 +350,11 @@ describe('개요 → 발주 현황 연결 · 거래처별 합계 행', () => {
     }
   });
 
-  it('판매 이력 없는 위험 품목이 있으면 그 품목도 보이게 함', () => {
-    setCase(['B2B1팀', [], {SB006: {minQty: 1e9}}]); // SB006: 판매 없이 재고만 있는 품목 → 히어로 기준으로 위험
-    const noSales = a.urgentItems().filter(x => x.sold6 === 0);
-    expect(noSales.length).toBeGreaterThan(0); // 이 경우를 실제로 확인하는지
-    a.ui.forecastShowNoSales = false;
-    act.openForecastSignal('위험');
-    expect(a.ui.forecastShowNoSales).toBe(true);
-    expect(a.forecastModel().list.map(x => x.품번)).toEqual(expect.arrayContaining(noSales.map(x => x.품번)));
+  it('개요 신호(생산 필요 · 추천)에는 미판매 품목이 없음 (최근 6개월 판매가 있는 품목만)', () => {
+    setCase(['B2B1팀', [], {SB006: {minQty: 1e9}}]); // SB006: 판매 없이 재고만 있는 히어로 → 미판매라 위험 알람 · 신호에서 제외
+    expect(a.urgentItems().some(x => x.품번 === 'SB006')).toBe(false);
+    a.state.forecast.filter(x => x.inactiveReason).forEach(x => expect(['위험', '주의']).not.toContain(x.grade));
+    a.urgentItems().forEach(x => { expect(x.inactiveReason).toBeNull(); expect(x.sold6).toBeGreaterThan(0); });
   });
 
   it('판매 수량이 한 달 밀리지 않음: 달마다 다른 수량, 월초 · 월말, 날짜 형식 3가지', () => {

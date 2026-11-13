@@ -82,7 +82,7 @@ function Forecast() {
                   <Text type="supporting">
                     <Text type="supporting" weight="bold">부족 수량 = 목표 재고 − 가용재고 − 입고예정</Text> (0 미만이면 0). 목표 재고는 최근 12개월(이번 달 제외) 중 <Text type="supporting" weight="bold">모든 거래처 합계 월 판매량이 가장 많았던 달</Text>의 판매량입니다 (거래처를 고르면 그 거래처들의 판매만으로 같은 방식으로 계산).
                     가용재고는 {teamLabel()} 정상창고 기준이며 품목마다 한 번만 셉니다. 입고예정은 날짜가 지나지 않은 것만 더합니다. 반품 · 마이너스 조정은 판매와 따로 보며 목표에 넣지 않습니다.
-                    상태는 (가용재고 + 입고예정) ÷ 목표 재고로 정합니다: 부족 수량이 없으면 여유, 목표의 {getRules().riskPct}% 미만은 생산 필요, 그 사이는 생산 추천, 최근 12개월 판매가 없으면 참고.
+                    최근 6개월(이번 달 포함) 판매가 없으면(마지막 판매일 기준, 선택 거래처 범위 포함) 부족 수량이 있어도 참고로 두고 이유를 표시합니다. 그 외 상태는 (가용재고 + 입고예정) ÷ 목표 재고로 정합니다: 부족 수량이 없으면 여유, 목표의 {getRules().riskPct}% 미만은 생산 필요, 그 사이는 생산 추천, 최근 12개월 판매가 없으면 참고.
                     가장 많이 팔린 달이 그다음 달의 2배 이상이면 일회성 대량 판매일 수 있어 '대량 판매 확인'으로 표시합니다 (목표에서 빼지는 않습니다). 행 앞의 화살표로 근거를 볼 수 있습니다.
                   </Text>
                 </Collapsible>
@@ -204,10 +204,10 @@ export function GradeBadge({grade}: {grade: string}) {
 
 interface Spike {month: {y: number; m: number}; qty: number; second: number; customers: {cust: string; qty: number}[]; oneMonth: boolean}
 interface Peak {month: {y: number; m: number}; qty: number; customers: {cust: string; qty: number}[]}
-interface FRow {scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
+interface FRow {lastSale: Date | null; inactiveReason: string | null; scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
 
 // 열 너비(px): 고정 레이아웃. 품번/품명 칸은 넓게(품명은 줄바꿈), 숫자 칸은 촘촘하게. 넓은 화면에서는 앞 4칸이 함께 고정됨
-const W = {pn: 290, grade: 88, avail: 76, short: 88, month: 50};
+const W = {pn: 278, grade: 100, avail: 76, short: 88, month: 50};
 const tableMin = () => W.pn + W.grade + W.avail + W.short + W.month * 12;
 
 function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
@@ -258,9 +258,9 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
                     </VStack>
                   </HStack>
                 </TableCell>
-                <TableCell className="fc-s fc-s2"><GradeBadge grade={x.grade} /></TableCell>
+                <TableCell className="fc-s fc-s2"><GradeBadge grade={x.grade} />{x.inactiveReason && <span className="inactive-note">{x.inactiveReason}</span>}</TableCell>
                 <TableCell className="num fc-s fc-s3">{fmt(x.available)}</TableCell>
-                <TableCell className={'fc-s fc-s4 ' + (x.orderQty > 0 ? 'num short-qty' : 'num muted')}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}</TableCell>
+                <TableCell className={'fc-s fc-s4 ' + (x.orderQty > 0 && !x.inactiveReason ? 'num short-qty' : 'num muted')}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}</TableCell>
                 {m.months.map((mm: {y: number; m: number}, i: number) => {
                   const isPeak = !!x.peak && x.peak.month.y === mm.y && x.peak.month.m === mm.m;
                   return <TableCell key={i} className={'num dense ' + (isFuture(mm) ? 'muted future' : 'muted') + (isPeak ? ' peak-month' : '')}><span title={isPeak ? '부족 수량의 목표 재고가 된 달' : undefined}>{mv[i] ? fmt(mv[i]) : '-'}</span></TableCell>;
@@ -376,6 +376,7 @@ function Detail({x}: {x: FRow}) {
           ['− 입고예정 (유효)', fmt(x.incoming)],
           [<strong>부족 수량</strong>, <strong>{fmt(x.orderQty)}</strong>],
         ]} />
+        <Text type="supporting">마지막 판매일: <b>{x.lastSale ? x.lastSale.toLocaleDateString('ko-KR') : '없음'}</b>{x.inactiveReason && <> · <span className="text-warn">{x.inactiveReason}</span> — 부족 수량({fmt(x.orderQty)})은 참고용이며 생산 필요 · 추천에서 제외됩니다. 판매가 다시 생기면 자동으로 정상 판정합니다.</>}</Text>
         {x.discontinued && <Text type="supporting">제품일정표에서 단종 품목이라 발주 대상(부족 수량)에서 제외했습니다.</Text>}
         {x.incomingExcluded > 0 && <Text type="supporting">날짜가 지난 입고예정 {fmt(x.incomingExcluded)}개는 이미 입고됐거나 불확실해서 뺐습니다.</Text>}
         {x.returns > 0 && <Text type="supporting">반품 · 마이너스 조정 {fmt(x.returns)}개는 판매와 따로 보며 목표에 넣지 않았습니다.</Text>}

@@ -107,6 +107,16 @@ export function salesProfile(rows){
   return {months, totals, byCust, target, returns, spike, peak:peakInfo, total12: totals.reduce((a,b)=>a+b,0)};
 }
 
+/** 실제 마지막 판매일(이번 달 포함, 반품 · 마이너스 · 날짜 없음/잘못됨 · 숫자 아닌 수량은 판매로 안 침)과 미판매 사유.
+ *  최근 6개월 = 이번 달 + 앞선 5개월 달력 기준. 사유: 판매 이력 없음 / 12개월 이상 미판매 / 6개월 이상 미판매 / 없음(null = 정상 계산) */
+export function lastSaleInfo(rows){
+  let last = null;
+  (rows||[]).forEach(r=>{ const d=r&&r.실적일자, q=Number(r&&r.수량); if(!(d instanceof Date) || isNaN(d) || !(q>0) || !Number.isFinite(q)) return; if(!last || d>last) last = d; });
+  const now = new Date(), c6 = new Date(now.getFullYear(), now.getMonth()-5, 1), c12 = new Date(now.getFullYear(), now.getMonth()-11, 1);
+  const reason = !last ? '판매 이력 없음' : last<c12 ? '12개월 이상 미판매' : last<c6 ? '6개월 이상 미판매' : null;
+  return {last, reason};
+}
+
 /** 선택 거래처 기준 재계산 (분석용 추정치): 고른 거래처들의 판매만으로 월별 합계 → 목표 → 부족 · 상태를 다시 계산.
  *  가용재고 · 입고예정은 품목당 한 번 그대로 (거래처에 배분하지 않고, 거래처별 부족을 따로 구해 더하지도 않음). 선택이 없으면 전체 거래처 기준 항목 그대로 */
 export function scopeForecastItem(x, custs){
@@ -115,8 +125,9 @@ export function scopeForecastItem(x, custs){
   const prof = salesProfile(rows);
   const cut6 = new Date(); cut6.setMonth(cut6.getMonth()-6);
   const sold6 = rows.reduce((s,r)=> r.실적일자>=cut6 ? s+safeNum(r.수량) : s, 0);
-  const g = x.discontinued ? {grade:'데이터부족', ratio:null} : gradeFor({pn:x.품번, available:x.available, incoming:x.incoming, target:prof.target});
-  return {...x, scoped:true, sold6, target:prof.target, orderQty: x.discontinued ? 0 : Math.max(0, prof.target - x.available - x.incoming),
+  const act = lastSaleInfo(rows); // 선택 거래처 범위의 마지막 판매일
+  const g = x.discontinued || act.reason ? {grade:'데이터부족', ratio:null} : gradeFor({pn:x.품번, available:x.available, incoming:x.incoming, target:prof.target});
+  return {...x, scoped:true, lastSale:act.last, inactiveReason:act.reason, sold6, target:prof.target, orderQty: x.discontinued ? 0 : Math.max(0, prof.target - x.available - x.incoming),
     ratio:g.ratio, grade:g.grade, avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust};
 }
 
@@ -246,11 +257,13 @@ export function computeDerived(){
     const inc = validIncoming(sched);
     const target = prof.target, incoming = inc.valid;
     const discontinued = !!(sched && /단종/.test(sched.품목상태||'')) && !(settings.hero[code] && settings.hero[code].minQty>0); // 히어로로 직접 지정한 품목은 예외 // 제품일정표에서 단종 → 발주 대상 아님(참고). 화면에 이유를 표시하고 숨기지 않음
-    const g = discontinued ? {grade:'데이터부족', ratio:null} : gradeFor({pn:code, available, incoming, target});
+    const isHero = !!(settings.hero[code] && settings.hero[code].minQty>0); // 히어로 지정은 미판매여도 유지 (알람 · 상태만 참고로)
+    const act = lastSaleInfo(salesRowsByProduct.get(code)); // 실제 마지막 판매일 · 미판매 사유
+    const g = discontinued || act.reason ? {grade:'데이터부족', ratio:null} : gradeFor({pn:code, available, incoming, target}); // 미판매 품목은 부족 수량이 있어도 참고 (부족 수량 계산은 그대로 보존)
     const orderQty = discontinued ? 0 : Math.max(0, target - available - incoming);
-    forecast.push({품번:code, 품명, 바코드, brand, available, sold6, discontinued, incoming, incomingExcluded:inc.excluded, target, orderQty, ratio:g.ratio, grade:g.grade,
+    forecast.push({품번:code, 품명, 바코드, brand, available, sold6, discontinued, lastSale:act.last, inactiveReason:act.reason, incoming, incomingExcluded:inc.excluded, target, orderQty, ratio:g.ratio, grade:g.grade,
       avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust,
-      hero:!!g.hero, heroMin:g.heroMin||0, heroWarn:g.heroWarn||0, sched});
+      hero:isHero, heroMin:isHero?settings.hero[code].minQty:0, heroWarn:isHero?(settings.hero[code].warnQty||0):0, sched});
   });
   forecast.sort((a,b)=>{
     const order = {'위험':0,'주의':1,'안전':2,'데이터부족':3};
@@ -280,7 +293,7 @@ export function groupOf(g){
 
 const csvEsc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
 const scopeText = x => x.scoped ? '선택 거래처 기준' : '전체 거래처 기준';
-const flagText = x => x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
+const flagText = x => x.inactiveReason ? x.inactiveReason : x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
 function stockCsv(rows, filename){
   const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요','기준'].join(',')];
   rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,statusLabel(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x),scopeText(x)].map(csvEsc).join(',')));

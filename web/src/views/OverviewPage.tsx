@@ -66,7 +66,7 @@ function Overview() {
                 </SignalTile>
               );
             })}
-            <SignalTile grade="참고" label="참고" dot="neutral" value={m.nRef} note="최근 12개월 판매 없음 (신호 계산에서 제외)" />
+            <SignalTile grade="참고" label="참고" dot="neutral" value={m.nRef} note="미판매(6개월 이상) · 판매 이력 없음 (신호 계산에서 제외)" />
           </div>
         </Card>
         <Text type="supporting">거래처 {fmt(m.totalCustomers)}곳 · 최근 6개월 총판매 {fmt(m.sold6moTotal)}</Text>

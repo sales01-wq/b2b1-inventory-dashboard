@@ -111,7 +111,7 @@ describe('화면 용어', () => {
     expect(item('SB002').grade).toBe('위험');
     a.ui._forecastCsvRows = [item('SB002')];
     expect(a.forecastListCsv().csv).toContain(',생산 필요,');
-    expect(a.gradeChips === undefined && a.forecastModel().gradeChips.map(c => c[1])).toEqual(['생산 필요 + 추천', '생산 필요', '생산 추천', '여유', '참고', '전체']);
+    expect(a.gradeChips === undefined && a.forecastModel().gradeChips.map(c => c[1])).toEqual(['생산 필요 + 추천', '생산 필요', '생산 추천', '여유', '참고', '미판매', '전체']);
   });
 });
 
@@ -294,9 +294,90 @@ describe('발주 목록에 담을 때 부족 수량 · 계산 기준 저장', ()
     expect(csv.split('\r\n')[0]).toBe('\uFEFF품번,품명,바코드,구분,가용재고,입고예정,담을 때 부족 수량,계산 기준,발주수량');
     expect(csv).toContain(',300,"선택 거래처 기준: A, B",300');
     localStorage.setItem('inv_order_list', JSON.stringify([['SB001', 40]])); // 예전에 저장된 형식
-    vi.resetModules(); const again = await import('./insights.js'); const st = await import('./store.js');
+    const again = await import('./insights.js?legacy'); const st = await import('./store.js'); // 새로 불러와서 저장소에서 다시 읽음
     expect(st.ui.cart.get('SB001')).toBe(40);
     expect(again.cartRows()[0]).toMatchObject({qty: 40, scope: '', calc: null, edited: false}); // 기준 정보 없음으로 표시
     localStorage.removeItem('inv_order_list');
+  });
+});
+
+describe('미판매(6개월 이상) 품목은 생산 필요 · 추천에서 제외', () => {
+  const y = NOWD.getFullYear(), mo = NOWD.getMonth();
+  const d = (back, day) => new Date(y, mo - back, day);
+  const big = (cust, pn, when) => row(cust, pn, 500, when);
+  const find = pn => a.forecastModel().list.find(x => x.품번 === pn);
+  const all = () => { a.ui.forecastGrade = ''; a.ui.forecastShowNoSales = true; a.ui.forecastCustomers = new Set(); };
+  it('마지막 판매가 6개월 창(이번 달 + 앞 5개월) 밖이면 참고 + 사유, 부족 수량 계산은 그대로', () => {
+    all(); run([big('A', 'SB002', d(7, 10))]); // 가용 20, 목표 500
+    const x = item('SB002');
+    expect(x.grade).toBe('데이터부족'); expect(a.statusLabel(x.grade)).toBe('참고');
+    expect(x.inactiveReason).toBe('6개월 이상 미판매'); expect(x.orderQty).toBe(480); // 참고용으로 보존
+    expect(x.lastSale.getTime()).toBe(d(7, 10).getTime());
+  });
+  it('12개월 이상 / 판매 이력 없음 사유, 반품 · 잘못된 날짜 · 숫자 아닌 수량은 판매로 안 침', () => {
+    all(); run([big('A', 'SB002', d(14, 3))]);
+    expect(item('SB002').inactiveReason).toBe('12개월 이상 미판매');
+    run([]); expect(item('SB002').inactiveReason).toBe('판매 이력 없음');
+    run([big('A', 'SB002', d(8, 5)), row('A', 'SB002', -50, d(0, 1)), {...big('A', 'SB002', d(0, 1)), 실적일자: new Date(NaN)}, {...big('A', 'SB002', d(0, 1)), 수량: NaN}]);
+    expect(item('SB002').inactiveReason).toBe('6개월 이상 미판매'); // 이번 달 반품 · 잘못된 줄은 최근 판매가 아님
+  });
+  it('경계: 6개월 창 첫날은 판매로 침, 그 전날은 미판매. 이번 달 판매는 완료된 달이 없어도 실제 날짜로 인정', () => {
+    all(); run([big('A', 'SB002', d(5, 1))]); expect(item('SB002').inactiveReason).toBeNull();
+    run([big('A', 'SB002', new Date(y, mo - 5, 0))]); expect(item('SB002').inactiveReason).toBe('6개월 이상 미판매'); // 앞달 말일
+    run([big('A', 'SB002', d(0, 1))]); const x = item('SB002');
+    expect(x.inactiveReason).toBeNull(); expect(x.target).toBe(0); // 이번 달만 판매: 미판매 아님, 목표는 완료된 달만이라 0 → 참고(사유 없음)
+  });
+  it('위험 · 주의 건수와 생산 필요 요약에서 제외되고, 판매가 다시 생기면 자동으로 정상 판정', () => {
+    all(); run([big('A', 'SB002', d(8, 10)), big('B', 'SB004', d(1, 10))]); // SB002 미판매(가용 20), SB004 정상 판매(가용 60 → 주의)
+    let m = a.forecastModel();
+    expect(m.list.find(x => x.품번 === 'SB002').grade).toBe('데이터부족');
+    expect(m.gradeChips.find(c => c[0] === '위험')[2] + m.gradeChips.find(c => c[0] === '주의')[2]).toBe(m.list.filter(x => ['위험', '주의'].includes(x.grade)).length);
+    expect(m.list.some(x => x.품번 === 'SB002' && ['위험', '주의'].includes(x.grade))).toBe(false);
+    const need = m.list.filter(x => x.orderQty > 0 && !['데이터부족'].includes(x.grade));
+    expect([m.needItems, m.needQty]).toEqual([need.length, need.reduce((s, x) => s + x.orderQty, 0)]);
+    expect(need.some(x => x.품번 === 'SB002')).toBe(false);
+    expect(a.overviewModel().counts.위험 + a.overviewModel().counts.주의).toBe(a.state.forecast.filter(x => ['위험', '주의'].includes(x.grade)).length);
+    expect(a.urgentItems().some(x => x.품번 === 'SB002')).toBe(false);
+    // 판매 재개 → 정상 계산(생산 필요)
+    run([big('A', 'SB002', d(8, 10)), big('A', 'SB002', d(0, 5))]); // 이번 달에 다시 판매, 목표는 완료된 달(8달 전) 500
+    const back = item('SB002'); expect(back.inactiveReason).toBeNull(); expect(back.grade).toBe('위험'); expect(back.orderQty).toBe(480);
+  });
+  it('거래처 범위별로 같은 규칙: 전체 · 단일 · 다중', () => {
+    all(); run([big('A', 'SB002', d(9, 10)), big('B', 'SB002', d(1, 10))]); // A 는 오래전, B 는 최근
+    const pick = (...c) => { a.ui.forecastCustomers = new Set(c); return find('SB002'); };
+    expect(pick().inactiveReason).toBeNull();                       // 전체: B 가 최근 판매
+    expect(pick('A')).toMatchObject({inactiveReason: '6개월 이상 미판매', grade: '데이터부족', scoped: true});
+    expect(pick('B').inactiveReason).toBeNull();
+    expect(pick('A', 'B').inactiveReason).toBeNull();              // 다중: 하나라도 최근이면 활성
+    expect(pick('A').orderQty).toBeGreaterThan(0);                  // 계산은 그대로(참고용)
+    a.ui.forecastCustomers = new Set();
+  });
+  it('미판매 필터: 미판매 품목만, 참고 칩에도 포함, 위험 · 주의 · 여유에는 없음', () => {
+    all(); run([big('A', 'SB002', d(8, 10)), big('B', 'SB004', d(1, 10)), big('A', 'MC001', d(2, 10))]);
+    a.ui.forecastShowNoSales = false; a.ui.forecastGrade = '미판매';
+    const m = a.forecastModel();
+    expect(m.list.length).toBeGreaterThan(0); m.list.forEach(x => expect(x.inactiveReason).toBeTruthy());
+    expect(m.gradeChips.find(c => c[0] === '미판매')[2]).toBe(m.list.length);
+    a.ui.forecastGrade = '참고'; expect(a.forecastModel().list.some(x => x.품번 === 'SB002')).toBe(true);
+    for (const g of ['위험', '주의', '여유', '조치필요']) { a.ui.forecastGrade = g; expect(a.forecastModel().list.some(x => x.inactiveReason)).toBe(false); }
+    a.ui.forecastGrade = '';
+  });
+  it('어디에서도 미판매 품목이 생산 필요 · 추천으로 나오지 않음 (히어로 포함 · 알람 · 개요 · 요약 · 고객별 보기 · CSV)', () => {
+    all(); run([big('A', 'SB002', d(8, 10)), big('B', 'SB004', d(1, 10))]);
+    a.settings.hero = {SB002: {minQty: 1e9}}; a.computeDerived();
+    const x = item('SB002'); expect(x.hero).toBe(true); expect(x.grade).toBe('데이터부족');
+    expect(a.state.heroAlerts.some(h => h.품번 === 'SB002')).toBe(false);
+    a.state.forecast.forEach(f => { if (f.inactiveReason) expect(['위험', '주의']).not.toContain(f.grade); });
+    expect(a.customerShortRows().find(r => r.cust === 'A').short).toBe(0); // A 의 부족 품목에 미판매 SB002 없음
+    a.ui.forecastGrade = ''; a.ui._forecastCsvRows = a.forecastModel().list;
+    expect(a.forecastListCsv().csv).toMatch(/SB002,.*,참고,.*6개월 이상 미판매/);
+    a.settings.hero = {};
+  });
+  it('발주 목록 수량 · 월별 판매는 그대로', async () => {
+    const ins = await import('./insights.js'); a.ui.cart.clear(); a.ui.cartMeta.clear();
+    all(); run([big('A', 'SB002', d(8, 10))]);
+    ins.addToCart('SB002'); expect(a.ui.cart.get('SB002')).toBe(480); // 참고용 부족 수량으로 담기는 기존 동작 유지
+    const m = a.forecastModel(); expect(m.monthly(find('SB002')).length).toBe(12);
+    a.ui.cart.clear(); a.ui.cartMeta.clear();
   });
 });
