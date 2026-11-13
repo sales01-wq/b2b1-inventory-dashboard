@@ -60,6 +60,7 @@ export function CustomerAnalysisPage() {
               </TableBody>
             </Table>
           </Card>
+          <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (거래처 열은 고정).</Text>
           <Text type="supporting">주문 간격 = (첫 주문일 ~ 마지막 주문일) ÷ (주문일 수 − 1). 다음 주문이 간격 이상 늦어지면 '이탈 의심', 14일 이내면 '곧 주문'. 판매실적 파일에 있는 기간만 반영됩니다.</Text>
         </VStack>
       )}

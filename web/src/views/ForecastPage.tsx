@@ -72,6 +72,7 @@ function Forecast() {
             </Text>
           </Collapsible>
           <ForecastTable m={m} shown={shown} />
+          <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (품번 열은 고정).</Text>
           {m.list.length > shown.length && (
             <HStack hAlign="center">
               <Button label={`더 보기 (${fmt(m.list.length - shown.length)}개 더)`} variant="secondary" onClick={act.forecastMore} />

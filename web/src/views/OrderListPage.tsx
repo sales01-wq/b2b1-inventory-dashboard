@@ -76,6 +76,7 @@ export function OrderListPage() {
               </TableBody>
             </Table>
           </Card>
+          <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (품번 열은 고정).</Text>
           <Text type="supporting">발주 수량을 0 으로 하면 목록에서 빠집니다. 파일은 UTF-8(BOM)이라 엑셀에서 한글이 바로 보입니다.</Text>
         </VStack>
       )}
