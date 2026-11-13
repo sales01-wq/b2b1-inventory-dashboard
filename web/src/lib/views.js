@@ -123,8 +123,9 @@ export function coverageBands(){
   const bands = [['0~25%',0,25],['25~50%',25,50],['50~75%',50,75],['75~100%',75,100],['100% 이상',100,Infinity]].map(([label,lo,hi])=>({label,lo,hi,n:0}));
   let ref = 0;
   state.forecast.filter(x=>brandPasses(x.brand) && !x.hero).forEach(x=>{
-    if(x.ratio===null){ ref++; return; }
-    bands.find(b=>x.ratio>=b.lo && x.ratio<b.hi).n++;
+    if(x.ratio===null || !Number.isFinite(x.ratio)){ ref++; return; }
+    const r = Math.max(0, x.ratio); // 마이너스 재고는 가장 낮은 구간에 넣음
+    bands.find(b=>r>=b.lo && r<b.hi).n++;
   });
   return {bands, ref};
 }

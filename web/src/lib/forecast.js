@@ -41,7 +41,7 @@ export function salesForTeam(){
 
 export function usableAvailable(inv){
   if(!inv) return 0;
-  return inv.rows.filter(r=>isUsableWarehouse(r.창고)).reduce((s,r)=>s+r.가용재고, 0);
+  return inv.rows.filter(r=>isUsableWarehouse(r.창고)).reduce((s,r)=>s+safeNum(r.가용재고), 0);
 }
 
 export const OVERSTOCK_MULTIPLIER = 2;
@@ -49,8 +49,8 @@ export const OVERSTOCK_MULTIPLIER = 2;
 export function scopedAvailable(pn, scope){
   const inv = state.invByProduct.get(pn);
   if(!inv) return 0;
-  if(scope==='b2b1') return inv.rows.filter(r=>teamOwnTokens().some(t=>String(r.창고||'').includes(t))).reduce((s,r)=>s+r.가용재고,0);
-  if(scope==='emp') return inv.rows.filter(r=>String(r.창고||'').includes('EMP')).reduce((s,r)=>s+r.가용재고,0);
+  if(scope==='b2b1') return inv.rows.filter(r=>teamOwnTokens().some(t=>String(r.창고||'').includes(t))).reduce((s,r)=>s+safeNum(r.가용재고),0);
+  if(scope==='emp') return inv.rows.filter(r=>String(r.창고||'').includes('EMP')).reduce((s,r)=>s+safeNum(r.가용재고),0);
   return usableAvailable(inv);
 }
 
@@ -60,6 +60,9 @@ export function salesDetailFor(pn){
 }
 
 export const QUARTER_DAYS = 91.25;
+
+/** 숫자가 아닌 값(빈 칸 · NaN · 문자)은 0 으로 — 운영 데이터 이상값이 합계를 NaN 으로 만들어 화면이 멈추는 것을 막음 */
+export const safeNum = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
 /* ---------------- 부족 수량 · 위험 판정 (목표 재고 방식) ----------------
    목표 재고 = 최근 12개월(이번 달 제외, 달력 기준) 중 '모든 거래처 합계 월 판매량'이 가장 컸던 달의 판매량.
@@ -85,11 +88,13 @@ export function salesProfile(rows){
   let returns = 0;
   (rows||[]).forEach(r=>{
     const i = idx.get(monthKey(r.실적일자)); if(i===undefined) return;
-    if(r.수량<0){ returns += -r.수량; return; } // 반품 · 마이너스 조정: 판매와 분리
-    if(!(r.수량>0)) return;
-    totals[i] += r.수량;
-    if(!byCust.has(r.거래처)) byCust.set(r.거래처, months.map(()=>0));
-    byCust.get(r.거래처)[i] += r.수량;
+    const q = Number(r.수량); if(!Number.isFinite(q)) return; // 숫자가 아닌 수량은 건너뜀
+    if(q<0){ returns += -q; return; } // 반품 · 마이너스 조정: 판매와 분리
+    if(!(q>0)) return;
+    totals[i] += q;
+    const cust = r.거래처 || '(거래처 없음)';
+    if(!byCust.has(cust)) byCust.set(cust, months.map(()=>0));
+    byCust.get(cust)[i] += q;
   });
   const target = Math.max(0, ...totals), peak = totals.indexOf(target);
   const sorted = totals.slice().sort((a,b)=>b-a), second = sorted[1]||0;
@@ -107,7 +112,7 @@ export function validIncoming(sched){
   const today = new Date(); today.setHours(0,0,0,0);
   let valid = 0, excluded = 0;
   [['aug_d','aug_q'],['sep_d','sep_q'],['oct_d','oct_q']].forEach(([d,q])=>{
-    const qty = sched[q]||0; if(!(qty>0)) return;
+    const qty = safeNum(sched[q]); if(!(qty>0)) return;
     const dt = parseDateStr(sched[d]);
     if(dt && dt<today) excluded += qty; else valid += qty;
   });
@@ -143,6 +148,7 @@ export function canonCust(n){
 
 export function computeDerived(){
   state._productListCache = null;
+  state.sales = state.sales.filter(r=>r && r.실적일자 instanceof Date && !isNaN(r.실적일자)); // 날짜가 없거나 잘못된 판매 줄은 계산에서 제외 (파일 읽기 단계에서 이미 걸러지지만 운영 데이터 이상값 대비)
   state.sales.forEach(r=>{ r.거래처 = canonCust(r.거래처); });
   // port: 거래처 드롭다운 갱신(DOM) 제거 — React 화면이 state.customers 에서 바로 그림
   // inventory by product
@@ -150,7 +156,7 @@ export function computeDerived(){
   state.inventory.forEach(r=>{
     if(!invByProduct.has(r.품번)) invByProduct.set(r.품번,{total:0, rows:[]});
     const e = invByProduct.get(r.품번);
-    e.total += r.가용재고; e.rows.push(r);
+    e.total += safeNum(r.가용재고); e.rows.push(r);
   });
 
   // expiry (LOT) by product
@@ -187,9 +193,9 @@ export function computeDerived(){
 
     if(!salesByProduct.has(r.품번)) salesByProduct.set(r.품번,{sum6mo:0, totalAll:0, 품명:r.품명});
     const p = salesByProduct.get(r.품번);
-    p.totalAll += r.수량;
+    p.totalAll += safeNum(r.수량);
     if(!p.품명 && r.품명) p.품명 = r.품명;
-    if(r.실적일자 >= cutoff) p.sum6mo += r.수량;
+    if(r.실적일자 >= cutoff) p.sum6mo += safeNum(r.수량);
 
     if(!salesRowsByProduct.has(r.품번)) salesRowsByProduct.set(r.품번, []);
     salesRowsByProduct.get(r.품번).push(r);
@@ -199,7 +205,7 @@ export function computeDerived(){
     if(!custMap.has(q)) custMap.set(q, new Map());
     const qMap = custMap.get(q);
     if(!qMap.has(r.품번)) qMap.set(r.품번, {품명:r.품명, qty:0});
-    qMap.get(r.품번).qty += r.수량;
+    qMap.get(r.품번).qty += safeNum(r.수량);
   });
   state.salesByProduct = salesByProduct;
   state.salesRowsByProduct = salesRowsByProduct;

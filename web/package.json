@@ -13,6 +13,7 @@
     "e2e": "node e2e/upload.mjs",
     "e2e:features": "npm run build:demo && node e2e/features.mjs",
     "e2e:production": "npm run build && node e2e/production.mjs",
+    "e2e:malformed": "node e2e/malformed.mjs",
     "e2e:preview": "npm run build:demo && node e2e/preview.mjs",
     "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs"
   },

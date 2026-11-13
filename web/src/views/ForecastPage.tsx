@@ -26,6 +26,7 @@ import {HeroAlert} from './HeroAlert';
 import {NoData} from './NoData';
 import {BrandBadge} from './BrandBadge';
 import {useStore} from '../app/useStore';
+import {ErrorBoundary} from '../app/ErrorBoundary';
 import {state, ui} from '../lib/store.js';
 import {getRules, groupOf, STATUS_LABEL, teamLabel, forecastListCsv} from '../lib/forecast.js';
 import {coverageBands, customerShortRows, forecastModel, forecastDetail, rulesModel, warehouseRows} from '../lib/views.js';
@@ -54,21 +55,22 @@ export function ForecastPage() {
 let subview: 'item' | 'customer' = 'item'; // 판매 현황과 같은 방식: 다른 화면에 다녀와도 마지막 보기 유지
 
 function Forecast() {
+  const ver = String(useStore()); // 데이터가 다시 들어오면 부분 오류 상태를 풀고 다시 그림
   const [, rerender] = useState(0);
   const m = forecastModel();
   const shown = m.list.slice(0, ui.forecastPage);
   return (
     <VStack gap={4}>
-      <RulesEditor />
+      <ErrorBoundary resetKey={ver} title="기준 설정을 표시하지 못했습니다."><RulesEditor /></ErrorBoundary>
       <TabList role="tablist" size="sm" hasDivider value={subview} onChange={v => { subview = v as typeof subview; rerender(n => n + 1); }}>
         <Tab value="item" label="품목별" panelId="forecast-panel" />
         <Tab value="customer" label="거래처별" panelId="forecast-panel" />
       </TabList>
       <div id="forecast-panel" role="tabpanel" aria-label={subview === 'item' ? '품목별' : '거래처별'}>
-        {subview === 'customer' ? <CustomerView go={() => { subview = 'item'; rerender(n => n + 1); }} /> : (
+        {subview === 'customer' ? <ErrorBoundary resetKey={ver} title="거래처별 보기를 표시하지 못했습니다."><CustomerView go={() => { subview = 'item'; rerender(n => n + 1); }} /></ErrorBoundary> : (
           <VStack gap={3}>
             <Filters m={m} />
-            <SavedViews />
+            <ErrorBoundary resetKey={ver} title="저장된 보기를 표시하지 못했습니다."><SavedViews /></ErrorBoundary>
             {m.isOverstock && <OverstockScope />}
             <SummaryBar m={m} />
             {m.list.length === 0 ? (
@@ -251,7 +253,7 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
               </TableRow>,
               open && (
                 <TableRow key={x.품번 + '-detail'}>
-                  <TableCell colSpan={cols}><div className="detail-sticky"><Detail x={x} /></div></TableCell>
+                  <TableCell colSpan={cols}><div className="detail-sticky"><ErrorBoundary resetKey={x.품번} title="이 품목의 근거를 표시하지 못했습니다."><Detail x={x} /></ErrorBoundary></div></TableCell>
                 </TableRow>
               ),
             ];

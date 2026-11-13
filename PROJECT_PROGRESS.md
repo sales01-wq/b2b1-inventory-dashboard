@@ -405,3 +405,4 @@ npm run astryx -- component --dense <Name>   # Astryx component docs
 - 운영 index.html 과의 비교 테스트는 발주 현황 계산 부분만 제외(품목 재고 · 판매 합계 · 입고일정 등은 계속 비교), 새 계산은 `forecast.target.test.js` 가 검증.
 - 거래처 분석 · 개요는 과거 판매 기준으로만 표시 (주문 주기 예측 제거).
 - 용어 변경: 발주 현황 → 생산 필요 현황, 위험 → 생산 필요, 주의 → 생산 추천 (여유 · 참고 그대로, 열 이름 '부족 수량'). 화면 글자만 바꿈: 계산용 내부 등급 키('위험'/'주의')와 계산 · 기준값 · 필터 · 탭은 그대로 (`STATUS_LABEL` / `statusLabel`).
+- 생산 필요 현황 오류 수정: 기준 설정의 '현재 품목 분포'(coverageBands)가 마이너스 재고(비율 < 0)에서 예외 → 페이지 전체가 오류 화면. 분포 구간 보정 + 숫자 아닌 재고 · 입고 · 판매 수량 · 잘못된 날짜 줄 방어(safeNum) + 기준 설정 · 거래처별 · 펼친 행 · 저장된 보기를 각각 오류 격리(ErrorBoundary). 계산 규칙 · 화면 디자인은 그대로. 테스트: forecast.robust.test.js, e2e:malformed.
