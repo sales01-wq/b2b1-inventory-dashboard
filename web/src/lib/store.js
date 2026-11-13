@@ -23,7 +23,7 @@ export const ui = {
   forecastVisiblePns: [],
   forecastPnChips: new Set(),
   forecastCustomers: new Set(), forecastCustSearch: '', // 거래처 다중 선택 (비어 있으면 전체, 여러 개면 OR)
-  forecastCategory: 'all', // 품목 구분: 'all' 전체 품목 | 'hero' 히어로 품목만 (마스크는 분류 데이터가 없어 보류)
+  forecastCategory: 'all', // 품목 구분: 'all' 전체 품목 | 'hero' 히어로 품목만 | 'mask' 마스크 품목만 (둘 다에 속할 수 있음)
   forecastYear: null, // 월별 판매 표시 연도 (null = 올해)
   forecastOverstockScope: 'all', // 'all' | 'b2b1' | 'emp'
   skuStatusSearch: '',
@@ -59,7 +59,7 @@ export const ui = {
 };
 
 /** @type {Record<string, any>} 기존 전역 객체 — 화면(TS)에서 자유롭게 읽도록 */
-export const settings = {rules:{}, hero:{}, box:{}};
+export const settings = {rules:{}, hero:{}, box:{}, mask:{}, maskKeys:[]}; // mask: 마스크 품목 {품번: true} (히어로처럼 직접 관리)
 
 // port: React 화면 연결 — 계산 함수나 데이터 처리가 상태를 바꾼 뒤 emit() 하면 화면이 다시 그려집니다.
 const listeners = new Set();

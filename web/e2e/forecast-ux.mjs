@@ -178,6 +178,28 @@ try {
   }
   await page.getByRole('button', {name: /^전체 \d+$/}).click();
 
+  // 마스크 품목 관리 (기준 설정) → '마스크 품목만' 필터
+  await page.getByText('기준 설정 (고급) · 히어로 품목').click();
+  await page.getByRole('heading', {name: '마스크 품목 관리'}).or(page.getByText('마스크 품목 관리').first()).first().waitFor();
+  await page.getByLabel(/마스크 품번 추가/).fill('sb001\r\nMC001\tZZ99\nsb001');
+  await page.getByRole('button', {name: '마스크 품목 추가'}).click();
+  await page.getByText(/3개 추가/).waitFor();
+  await page.getByText(/현재 데이터에 없는 품번 1개도 저장됨/).waitFor();
+  await page.getByRole('button', {name: '모두 삭제'}).waitFor();
+  await page.getByText('기준 설정 (고급) · 히어로 품목').click(); // 접기
+  await page.getByRole('button', {name: '마스크 품목만'}).click();
+  await page.getByRole('button', {name: '마스크 품목만', pressed: true}).waitFor();
+  assert.deepEqual((await codes(page)).sort(), ['MC001', 'SB001'], '마스크 필터 결과');
+  await page.getByRole('button', {name: '히어로 품목만'}).click(); // 히어로 지정 없음 → 비어 있음 (마스크와 별개)
+  assert.equal(await codes(page).then(c => c.length), 0);
+  await page.getByRole('button', {name: '전체 품목'}).click();
+  await page.getByText('기준 설정 (고급) · 히어로 품목').click();
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', {name: '모두 삭제'}).click();
+  await page.getByText('등록된 마스크 품목이 없습니다.').waitFor();
+  await page.getByText('기준 설정 (고급) · 히어로 품목').click();
+  assert.ok((await codes(page)).length > 2, '전체 품목으로 돌아와 모든 품목이 보임');
+
   // 4) 좁은 화면: 가로 스크롤 + 끌기 (체크박스 클릭 · 행 펼치기는 그대로 동작)
   await page.setViewportSize({width: 1000, height: 800});
   const sc = page.locator('.astryx-table-scroll-wrapper').first();

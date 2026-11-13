@@ -257,13 +257,14 @@ export function computeDerived(){
     const inc = validIncoming(sched);
     const target = prof.target, incoming = inc.valid;
     const discontinued = !!(sched && /단종/.test(sched.품목상태||'')) && !(settings.hero[code] && settings.hero[code].minQty>0); // 히어로로 직접 지정한 품목은 예외 // 제품일정표에서 단종 → 발주 대상 아님(참고). 화면에 이유를 표시하고 숨기지 않음
+    const isMask = !!(settings.mask && settings.mask[code]); // 마스크 지정은 직접 관리하는 품번 목록 (히어로와 겹칠 수 있음)
     const isHero = !!(settings.hero[code] && settings.hero[code].minQty>0); // 히어로 지정은 미판매여도 유지 (알람 · 상태만 참고로)
     const act = lastSaleInfo(salesRowsByProduct.get(code)); // 실제 마지막 판매일 · 미판매 사유
     const g = discontinued || act.reason ? {grade:'데이터부족', ratio:null} : gradeFor({pn:code, available, incoming, target}); // 미판매 품목은 부족 수량이 있어도 참고 (부족 수량 계산은 그대로 보존)
     const orderQty = discontinued ? 0 : Math.max(0, target - available - incoming);
     forecast.push({품번:code, 품명, 바코드, brand, available, sold6, discontinued, lastSale:act.last, inactiveReason:act.reason, incoming, incomingExcluded:inc.excluded, target, orderQty, ratio:g.ratio, grade:g.grade,
       avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust,
-      hero:isHero, heroMin:isHero?settings.hero[code].minQty:0, heroWarn:isHero?(settings.hero[code].warnQty||0):0, sched});
+      hero:isHero, mask:isMask, heroMin:isHero?settings.hero[code].minQty:0, heroWarn:isHero?(settings.hero[code].warnQty||0):0, sched});
   });
   forecast.sort((a,b)=>{
     const order = {'위험':0,'주의':1,'안전':2,'데이터부족':3};

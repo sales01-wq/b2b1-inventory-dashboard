@@ -1,7 +1,7 @@
 const { verifyUser, callGas } = require('./_lib');
 
 // 공유 설정 저장소. box(직접 입력한 박스 정보)는 누구나, hero(히어로 기준)·rules(등급 기준)는 업데이트 권한자만 저장 가능.
-const KINDS = { box: { adminOnly: false }, hero: { adminOnly: true }, rules: { adminOnly: true } };
+const KINDS = { box: { adminOnly: false }, hero: { adminOnly: true }, mask: { adminOnly: true }, rules: { adminOnly: true } };
 let cache = null, cacheTs = 0;
 
 // 시트의 줄을 {kind, key, value} 로 되돌림. 예전 저장분은 key 칸에 GAS_KEY(비밀 키)가 적혀 있어서 브라우저로 보내지 않고 버림

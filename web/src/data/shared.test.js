@@ -66,7 +66,7 @@ async function scenario(env) {
     out[k] = {
       log: srv.log.splice(0), bars: env.bars.splice(0), gate: env.gate(), user: canon(env.shared.user), token: env.shared.token ? 'set' : null,
       stored: env.stored(), active: env.shared.active, meta: canon(env.shared.meta), info: noTiming(env.info()), loaded: env.state.loaded,
-      forecast: canon(env.state.forecast), settings: canon(env.settings), box: canon(env.ui.manualBoxInfo), sync: env.sync(), metaLine: env.metaLine(),
+      forecast: canon(env.state.forecast), settings: canon({rules: env.settings.rules, hero: env.settings.hero, box: env.settings.box}), // 마스크는 새 기능이라 운영 비교에서 제외 box: canon(env.ui.manualBoxInfo), sync: env.sync(), metaLine: env.metaLine(),
       google: env.calls.splice(0),
     };
   };

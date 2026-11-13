@@ -454,3 +454,47 @@ describe('미판매 품목을 발주 목록에 담을 때 · 히어로 · 품목
     reset();
   });
 });
+
+describe('마스크 품목 필터 (히어로와 겹칠 수 있음)', () => {
+  const y = NOWD.getFullYear(), mo = NOWD.getMonth();
+  const d = (back, day) => new Date(y, mo - back, day);
+  const reset = () => { Object.assign(a.ui, {forecastGrade: '', forecastShowNoSales: true, forecastCategory: 'all', forecastBrand: ''}); a.ui.forecastCustomers = new Set(); };
+  const pns = () => a.forecastModel().list.map(x => x.품번).sort();
+  it('마스크로 지정한 품목만, 히어로와 둘 다인 품목은 두 필터 모두에 보임, 전체 품목은 그대로', () => {
+    reset(); run([row('A', 'SB002', 100, d(1, 10)), row('B', 'SB004', 100, d(1, 10)), row('A', 'MC001', 500, d(1, 10)), row('A', 'MT002', 500, d(9, 10))]);
+    a.settings.hero = {SB002: {minQty: 1e9}, MT002: {minQty: 1e9}}; a.settings.mask = {SB002: true, MC001: true, MT002: true}; a.computeDerived();
+    const everyone = pns(); expect(everyone.length).toBeGreaterThan(4);
+    a.ui.forecastCategory = 'mask'; expect(pns()).toEqual(['MC001', 'MT002', 'SB002']);
+    a.ui.forecastCategory = 'hero'; expect(pns()).toEqual(['MT002', 'SB002']);
+    expect(item('SB002')).toMatchObject({hero: true, mask: true}); // 둘 다에 속함
+    a.ui.forecastCategory = 'all'; expect(pns()).toEqual(everyone);
+  });
+  it('거래처 · 브랜드 · 상태 · 미판매 필터와 함께, 행 · 상태 칩 · 요약 · 일괄 선택 대상이 같이 바뀜', () => {
+    reset(); run([row('A', 'SB002', 100, d(1, 10)), row('B', 'SB004', 100, d(1, 10)), row('A', 'MC001', 500, d(1, 10)), row('A', 'MT002', 500, d(9, 10))]);
+    a.settings.hero = {}; a.settings.mask = {SB002: true, MC001: true, MT002: true, SB004: true}; a.computeDerived();
+    a.ui.forecastCategory = 'mask';
+    let m = a.forecastModel();
+    expect(m.gradeChips.find(c => c[0] === '')[2]).toBe(m.list.length);
+    expect(a.ui.forecastVisiblePns.slice().sort()).toEqual(m.list.map(x => x.품번).sort()); // 전체 선택 대상 = 필터 결과
+    expect(m.gradeChips.find(c => c[0] === '미판매')[2]).toBe(m.list.filter(x => x.inactiveReason).length);
+    const need = m.list.filter(x => x.orderQty > 0 && x.grade !== '데이터부족');
+    expect([m.needItems, m.needQty]).toEqual([need.length, need.reduce((s, x) => s + x.orderQty, 0)]);
+    a.ui.forecastCustomers = new Set(['B']); expect(pns()).toEqual(['SB004']); // 거래처 B + 마스크
+    a.ui.forecastCustomers = new Set(); a.ui.forecastBrand = '밀크터치'; expect(pns()).toEqual(['MT002']); // 브랜드
+    a.ui.forecastBrand = ''; a.ui.forecastGrade = '미판매'; expect(pns()).toEqual(['MT002']); // 미판매 + 마스크 (MT002 는 9개월 전 판매)
+    a.ui.forecastGrade = '조치필요'; expect(pns().includes('MT002')).toBe(false); // 미판매 마스크는 생산 필요 · 추천에서 빠짐
+    a.settings.mask = {}; a.computeDerived(); reset();
+  });
+  it('저장된 보기에 마스크 구분 포함', async () => {
+    const ins = await import('./insights.js'); reset();
+    a.ui.forecastCategory = 'mask'; ins.saveView('마스크'); a.ui.forecastCategory = 'all'; ins.applyView('마스크');
+    expect(a.ui.forecastCategory).toBe('mask'); ins.deleteView('마스크'); reset();
+  });
+  it('마스크 지정은 계산(부족 수량 · 상태)을 바꾸지 않음', () => {
+    reset(); run([row('A', 'SB002', 100, d(1, 10))]);
+    a.settings.mask = {}; a.computeDerived(); const before = {...item('SB002')};
+    a.settings.mask = {SB002: true}; a.computeDerived(); const after = item('SB002');
+    ['target', 'orderQty', 'grade', 'available', 'incoming', 'inactiveReason'].forEach(k => expect(after[k]).toEqual(before[k]));
+    a.settings.mask = {}; a.computeDerived();
+  });
+});

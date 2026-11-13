@@ -4,11 +4,11 @@ import {num} from '../lib/parse.js';
 import {computeDerived} from '../lib/forecast.js';
 import {shared, setSharedBar} from './shared.js';
 import {READ_ONLY} from '../app/defaults';
-import {rulesValid, RULES_INVALID_MSG, heroInput} from '../lib/views.js';
+import {rulesValid, RULES_INVALID_MSG, heroInput, maskInput} from '../lib/views.js';
 
 export function canEditSettings(){ return typeof shared==='undefined' || !shared.active || !!(shared.user && shared.user.isUpdater); }
 
-export function localSettingsSave(){ try{ localStorage.setItem('inv_settings_v1', JSON.stringify({rules:settings.rules, hero:settings.hero, box:settings.box})); }catch(_e){} }
+export function localSettingsSave(){ try{ localStorage.setItem('inv_settings_v1', JSON.stringify({rules:settings.rules, hero:settings.hero, box:settings.box, mask:settings.mask})); }catch(_e){} }
 
 export function applyBoxSettings(){
   ui.manualBoxInfo.clear();
@@ -18,7 +18,7 @@ export function applyBoxSettings(){
 export function settingsLoadLocal(){
   try{
     const o = JSON.parse(localStorage.getItem('inv_settings_v1')||'null');
-    if(o){ settings.rules = o.rules||{}; settings.hero = o.hero||{}; settings.box = o.box||{}; }
+    if(o){ settings.rules = o.rules||{}; settings.hero = o.hero||{}; settings.box = o.box||{}; settings.mask = o.mask||{}; }
   }catch(_e){}
   applyBoxSettings();
 }
@@ -44,16 +44,17 @@ export async function loadRemoteSettings(){
     const r = await fetch('/api/settings', {headers:{Authorization:'Bearer '+shared.token}});
     if(!r.ok) return;
     const j = await r.json();
-    const rules = {}, hero = {}, box = {};
+    const rules = {}, hero = {}, box = {}, mask = {}, maskKeys = [];
     (j.items||[]).forEach(it=>{
       if(it.kind==='rules' && it.key==='main') Object.assign(rules, it.value||{});
       else if(it.kind==='hero' && it.value) hero[it.key] = it.value;
       else if(it.kind==='box' && it.value) box[it.key] = it.value;
+      else if(it.kind==='mask' && Array.isArray(it.value)){ maskKeys.push(it.key); it.value.forEach(pn=>{ if(pn) mask[String(pn)] = true; }); } // 마스크: 여러 품번을 한 줄(최대 120개)에 묶어 저장
     });
-    const before = JSON.stringify({r:settings.rules, h:settings.hero});
-    settings.rules = rules; settings.hero = hero; settings.box = box;
+    const before = JSON.stringify({r:settings.rules, h:settings.hero, m:settings.mask});
+    settings.rules = rules; settings.hero = hero; settings.box = box; settings.mask = mask; settings.maskKeys = maskKeys;
     localSettingsSave(); applyBoxSettings();
-    if(state.loaded && before !== JSON.stringify({r:rules, h:hero})){ computeDerived(); emit(); }
+    if(state.loaded && before !== JSON.stringify({r:rules, h:hero, m:mask})){ computeDerived(); emit(); }
     else if(state.loaded){ emit(); } // port: renderAll / renderForecastRules 대신 emit
   }catch(_e){}
 }
@@ -117,4 +118,41 @@ export async function deleteHero(pn){
   delete settings.hero[pn];
   await persistSetting('hero', pn, null);
   ui.rulesOpen = true; computeDerived(); emit();
+}
+
+/* ---------- 마스크 품목 관리 (히어로처럼 직접 관리하는 품번 목록, 같은 설정 저장소 · kind 'mask') ----------
+   서버 설정 한 줄의 값 길이 제한(4000자) 때문에 120개씩 묶어 g0, g1, ... 줄로 저장하고, 줄어들어 필요 없어진 묶음은 지움. 한 번 붙여넣기 = 요청 몇 번뿐 */
+export const MASK_CHUNK = 120;
+async function persistMask(){
+  const codes = Object.keys(settings.mask).sort();
+  const chunks = []; for(let i=0;i<codes.length;i+=MASK_CHUNK) chunks.push(codes.slice(i,i+MASK_CHUNK));
+  const keys = chunks.map((_,i)=>'g'+i), old = settings.maskKeys||[];
+  let ok = true;
+  for(let i=0;i<chunks.length;i++){ const r = await persistSetting('mask', keys[i], chunks[i]); ok = ok && !!r.ok; }
+  for(const k of old){ if(!keys.includes(k)){ const r = await persistSetting('mask', k, null); ok = ok && !!r.ok; } }
+  if(ok) settings.maskKeys = keys;
+  localSettingsSave();
+  return ok;
+}
+/** 붙여넣은 글자 전체를 마스크 품목에 추가 (엑셀에서 열 복사 가능). {added, existing, invalid, notInData} */
+export async function addMaskCodes(raw){
+  if(!canEditSettings()) return {error:null};
+  const r = maskInput(raw);
+  if(r.codes.length===0) return {error: r.invalid.length ? '품번 형식이 아닙니다: '+r.invalid.slice(0,5).join(', ') : '추가할 품번을 입력해 주세요.'};
+  let added = 0; r.codes.forEach(pn=>{ if(!settings.mask[pn]){ settings.mask[pn] = true; added++; } });
+  ui.rulesOpen = true; computeDerived(); emit();
+  await persistMask();
+  return {added, existing:r.codes.length-added, invalid:r.invalid, notInData:r.notInData};
+}
+export async function removeMaskCode(pn){
+  if(!canEditSettings()) return;
+  delete settings.mask[pn];
+  ui.rulesOpen = true; computeDerived(); emit();
+  await persistMask();
+}
+export async function clearMaskCodes(){
+  if(!canEditSettings()) return;
+  settings.mask = {};
+  ui.rulesOpen = true; computeDerived(); emit();
+  await persistMask();
 }

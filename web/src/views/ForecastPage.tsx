@@ -15,6 +15,7 @@ import {RadioList, RadioListItem} from '@astryxdesign/core/RadioList';
 import {Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow} from '@astryxdesign/core/Table';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Text} from '@astryxdesign/core/Text';
+import {TextArea} from '@astryxdesign/core/TextArea';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {ToggleButton, ToggleButtonGroup} from '@astryxdesign/core/ToggleButton';
 import {Token} from '@astryxdesign/core/Token';
@@ -30,7 +31,7 @@ import {state, ui} from '../lib/store.js';
 import {getRules, groupOf, STATUS_LABEL, teamLabel, forecastListCsv} from '../lib/forecast.js';
 import {coverageBands, customerShortRows, forecastModel, forecastDetail, rulesModel, warehouseRows} from '../lib/views.js';
 import * as act from '../lib/actions.js';
-import {canEditSettings, saveRules, resetRules, addHero, deleteHero} from '../data/settings.js';
+import {canEditSettings, saveRules, resetRules, addHero, deleteHero, addMaskCodes, removeMaskCode, clearMaskCodes} from '../data/settings.js';
 import {fmt} from '../lib/format';
 import {ProductLink} from './ProductLink';
 import {addManyToCart, addToCart, applyView, deleteView, saveView, savedViews} from '../lib/insights.js';
@@ -132,6 +133,7 @@ function Filters({m}: {m: Model}) {
           <ToggleButtonGroup label="품목 구분" size="sm" value={ui.forecastCategory} onChange={v => v !== null && act.setForecastCategory(v as string)}>
             <ToggleButton value="all" label="전체 품목" />
             <ToggleButton value="hero" label="히어로 품목만" />
+            <ToggleButton value="mask" label="마스크 품목만" />
           </ToggleButtonGroup>
           <CustomerPicker />
           <div className="grow-field">
@@ -208,7 +210,7 @@ export function GradeBadge({grade}: {grade: string}) {
 
 interface Spike {month: {y: number; m: number}; qty: number; second: number; customers: {cust: string; qty: number}[]; oneMonth: boolean}
 interface Peak {month: {y: number; m: number}; qty: number; customers: {cust: string; qty: number}[]}
-interface FRow {lastSale: Date | null; inactiveReason: string | null; scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
+interface FRow {mask?: boolean; lastSale: Date | null; inactiveReason: string | null; scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
 
 // 열 너비(px): 고정 레이아웃. 품번/품명 칸은 넓게(품명은 줄바꿈), 숫자 칸은 촘촘하게. 넓은 화면에서는 앞 4칸이 함께 고정됨
 const W = {pn: 278, grade: 100, avail: 76, short: 88, month: 50};
@@ -372,7 +374,7 @@ function Detail({x}: {x: FRow}) {
   return (
     <Grid columns={{minWidth: 300, repeat: 'fit'}} gap={4}>
       <VStack gap={2}>
-        <HStack gap={2} vAlign="center" wrap="wrap"><BrandBadge brand={x.brand} /><Button label="발주 목록에 담기" size="sm" variant="secondary" isDisabled={x.orderQty <= 0} onClick={() => addToCart(x.품번)} /></HStack>
+        <HStack gap={2} vAlign="center" wrap="wrap"><BrandBadge brand={x.brand} />{x.mask && <Badge variant="neutral" label="마스크" />}{x.hero && <Badge variant="neutral" label="히어로" />}<Button label="발주 목록에 담기" size="sm" variant="secondary" isDisabled={x.orderQty <= 0} onClick={() => addToCart(x.품번)} /></HStack>
         <Heading level={4}>부족 수량 근거 · {x.scoped ? '선택 거래처 기준' : '전체 거래처 기준'}</Heading>
         <MiniTable num={[1]} head={['항목', '수량']} rows={[
           [x.scoped ? '목표 재고 (선택 거래처의 최근 12개월 월 최대 판매)' : '목표 재고 (최근 12개월 월 최대 판매)', fmt(x.target)],
@@ -493,13 +495,21 @@ function MiniTable({head, rows, num}: {head: string[]; rows: ReactNode[][]; num:
 /* ---------------- 기준 설정 (고급) · 히어로 품목 (기존 renderForecastRules) ---------------- */
 const RULE_LABEL: Record<string, string> = {riskPct: '생산 필요 기준(%)'};
 function RulesEditor() {
-  const {R, heroRows, alertN} = rulesModel();
+  const {R, heroRows, maskRows, alertN} = rulesModel();
   const cb = coverageBands();
   const edit = canEditSettings();
   const [form, setForm] = useState<Record<string, number | null>>({...R});
   const [msg, setMsg] = useState<{text: string; tone: 'danger' | 'muted' | 'safe'} | null>(null);
   const [hero, setHero] = useState<{pn: string; min: number | null; warn: number | null}>({pn: '', min: null, warn: null});
   const [heroMsg, setHeroMsg] = useState('');
+  const [maskText, setMaskText] = useState('');
+  const [maskMsg, setMaskMsg] = useState<{text: string; tone: 'danger' | 'muted' | 'safe'} | null>(null);
+  const addMask = async () => {
+    const r = await addMaskCodes(maskText);
+    if (r.error) { setMaskMsg(r.error ? {text: r.error, tone: 'danger'} : null); return; }
+    setMaskMsg({text: `${fmt(r.added ?? 0)}개 추가${r.existing ? `, ${fmt(r.existing)}개는 이미 있음` : ''}${r.notInData && r.notInData.length ? ` · 현재 데이터에 없는 품번 ${fmt(r.notInData.length)}개도 저장됨(데이터에 들어오면 적용)` : ''}${r.invalid && r.invalid.length ? ` · 형식이 달라 건너뜀: ${r.invalid.slice(0, 5).join(', ')}` : ''}`, tone: 'safe'});
+    setMaskText('');
+  };
   const num = (k: string, w = 72) => (
     <span className="inline-num" style={{width: w}}>
       <NumberInput label={RULE_LABEL[k]} isLabelHidden size="sm" min={0} isDisabled={!edit} value={form[k]} onChange={v => setForm(f => ({...f, [k]: v}))} />
@@ -561,6 +571,26 @@ function RulesEditor() {
                 edit ? <Button label="삭제" size="sm" variant="ghost" onClick={() => deleteHero(h.pn)} /> : null,
               ])}
             />
+          )}
+          <hr className="rule" />
+          <Text type="body" weight="bold">마스크 품목 관리 <Text type="supporting">— 마스크 품번을 직접 지정해 두면 위쪽 '마스크 품목만' 필터로 따로 볼 수 있습니다 (히어로 품목과 겹쳐도 됩니다)</Text></Text>
+          {edit && (
+            <VStack gap={2}>
+              <TextArea label="마스크 품번 추가 (엑셀에서 열을 복사해 붙여넣기 · 줄 · 쉼표 · 공백 구분)" size="sm" rows={3} placeholder={'예:\nMC1001\nMC1002\nSB2010'} value={maskText} onChange={setMaskText} />
+              <HStack gap={2} vAlign="center" wrap="wrap">
+                <Button label="마스크 품목 추가" size="sm" variant="primary" isDisabled={!maskText.trim()} onClick={addMask} />
+                {maskRows.length > 0 && <Button label="모두 삭제" size="sm" variant="ghost" onClick={() => { if (window.confirm('마스크 품목 지정을 모두 지울까요?')) clearMaskCodes(); }} />}
+                {maskMsg && <Text type="supporting"><span className={'text-' + maskMsg.tone} role={maskMsg.tone === 'danger' ? 'alert' : 'status'}>{maskMsg.text}</span></Text>}
+              </HStack>
+            </VStack>
+          )}
+          {maskRows.length === 0 ? (
+            <Text type="supporting">등록된 마스크 품목이 없습니다.</Text>
+          ) : (
+            <HStack gap={1} wrap="wrap" vAlign="center">
+              <Text type="supporting">{fmt(maskRows.length)}개</Text>
+              {maskRows.map((m: {pn: string; x?: unknown}) => <Token key={m.pn} size="sm" label={m.x ? m.pn : m.pn + ' (데이터 없음)'} onRemove={edit ? () => removeMaskCode(m.pn) : undefined} />)}
+            </HStack>
           )}
         </VStack>
       </Collapsible>

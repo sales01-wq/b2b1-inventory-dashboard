@@ -29,6 +29,7 @@ export function forecastModel(){
   // 거래처 필터(여러 개 = OR): 고른 거래처 중 하나라도 최근 12개월 안에 산 적 있는 품목만 남기고, 그 거래처들의 판매만으로 목표 · 부족 · 상태를 다시 계산 (scopeForecastItem).
   // 품목은 한 번만 나오고 재고 · 입고예정은 품목당 한 번 그대로라 같은 재고를 거래처마다 중복해서 세지 않음
   let src = state.forecast.filter(x=>brandPasses(x.brand));
+  if(ui.forecastCategory==='mask') src = src.filter(x=>x.mask); // 마스크로 지정한 품목만 (히어로이면서 마스크인 품목은 두 필터 모두에 보임)
   if(ui.forecastCategory==='hero') src = src.filter(x=>x.hero); // 품목 구분: 히어로 지정 품목만 (히어로 지정은 미판매여도 유지 → 참고/미판매에서 계속 보임)
   if(ui.forecastCustomers.size>0){
     const cut = new Date(); cut.setFullYear(cut.getFullYear()-1);
@@ -232,12 +233,27 @@ export function heroInput(pnIn, minQty, warnQty){
   return {pn:found.품번, val:{minQty, warnQty}};
 }
 
+/** 마스크 품번 붙여넣기(엑셀 열 복사 포함) 해석: 줄 · 탭 · 쉼표 · 공백으로 나눔, 중복 제거, 현재 데이터에 있는 품번은 그 표기(대소문자)로 맞춤.
+ *  데이터에 없는 품번도 저장함(데이터에 들어오면 적용) — notInData 로 알려 줌. 형식이 이상한 항목은 invalid */
+export function maskInput(raw){
+  const known = new Map((state.forecast||[]).map(x=>[x.품번.toLowerCase(), x.품번]));
+  const seen = new Set(), codes = [], invalid = [], notInData = [];
+  String(raw||'').split(/[\s,;]+/).map(t=>t.trim()).filter(Boolean).forEach(t=>{
+    if(!/^[A-Za-z0-9][A-Za-z0-9._\-]{0,39}$/.test(t)){ invalid.push(t); return; }
+    const pn = known.get(t.toLowerCase()) || t;
+    if(seen.has(pn)) return; seen.add(pn); codes.push(pn);
+    if(!known.has(t.toLowerCase())) notInData.push(pn);
+  });
+  return {codes, invalid, notInData};
+}
+
 /* renderForecastRules 의 기준표 · 히어로 목록 */
 export function rulesModel(){
   const R = getRules();
   const fm = new Map((state.forecast||[]).map(x=>[x.품번,x]));
   const heroRows = Object.keys(settings.hero).sort().map(pn=>({pn, h:settings.hero[pn], x:fm.get(pn)}));
-  return {R, heroRows, alertN:(state.heroAlerts||[]).length};
+  const maskRows = Object.keys(settings.mask||{}).sort().map(pn=>({pn, x:fm.get(pn)}));
+  return {R, heroRows, maskRows, alertN:(state.heroAlerts||[]).length};
 }
 
 
