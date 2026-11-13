@@ -324,3 +324,4 @@ code.pn-lg { font-size: 0.9375rem; font-weight: 600; }
   .fc-table .fc-s3 { inset-inline-start: var(--fc2); }
   .fc-table .fc-s4 { inset-inline-start: var(--fc3); box-shadow: inset -1px 0 0 var(--color-border-emphasized); }
 }
+.scope-cell { font-size: 0.8125rem; color: var(--color-text-secondary); white-space: normal; line-height: 1.35; }

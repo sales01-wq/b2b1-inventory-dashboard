@@ -11,6 +11,7 @@ const item = pn => a.state.forecast.find(x => x.품번 === pn);
 
 beforeAll(async () => {
   vi.useFakeTimers({toFake: ['Date']}); vi.setSystemTime(NOW);
+  const mem = new Map(); globalThis.localStorage = {getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: k => mem.delete(k)};
   a = (await loadPort()).api; A = a;
   const sh = makeSheets(NOW);
   a.state.inventory = a.parseInventory(sh.inventory);
@@ -243,5 +244,59 @@ describe('선택 거래처 기준 재계산 (단일 · 다중 · 전체 · 공�
     expect(a.forecastListCsv().csv).toContain(',선택 거래처 기준');
     a.ui.forecastCustomers = new Set(); a.ui._forecastCsvRows = a.forecastModel().list;
     expect(a.forecastListCsv().csv).toContain(',전체 거래처 기준');
+  });
+});
+
+describe('발주 목록에 담을 때 부족 수량 · 계산 기준 저장', () => {
+  const SALES = () => [row('A', 'SB005', 200, inMonth(1)), row('B', 'SB005', 200, inMonth(1)), row('C', 'SB005', 200, inMonth(1))];
+  const meta = pn => a.ui.cartMeta.get(pn);
+  it('전체 기준으로 담으면 전체 부족 수량 + 전체 거래처 기준, 선택 기준으로 담으면 그 부족 수량 + 거래처 이름', async () => {
+    const ins = await import('./insights.js'); a.ui.cart.clear(); a.ui.cartMeta.clear();
+    run(SALES());
+    a.ui.forecastCustomers = new Set();
+    ins.addManyToCart(['SB005']);
+    expect(a.ui.cart.get('SB005')).toBe(500); expect(meta('SB005')).toEqual({scope: '전체 거래처 기준', calc: 500});
+    ins.removeFromCart('SB005'); expect(a.ui.cartMeta.has('SB005')).toBe(false);
+    a.ui.forecastCustomers = new Set(['A', 'B']);
+    ins.addToCart('SB005');
+    expect(a.ui.cart.get('SB005')).toBe(300); expect(meta('SB005')).toEqual({scope: '선택 거래처 기준: A, B', calc: 300});
+    a.ui.forecastCustomers = new Set();
+  });
+  it('필터를 바꾸거나 다시 담아도 기존 수량 · 기준을 덮어쓰지 않고, 수동 수정은 유지(수정됨 표시)', async () => {
+    const ins = await import('./insights.js'); a.ui.cart.clear(); a.ui.cartMeta.clear();
+    run(SALES());
+    a.ui.forecastCustomers = new Set(['A']); ins.addToCart('SB005'); // 부족 100, 선택 거래처 기준: A
+    ins.setCartQty('SB005', 150); // 수동 수정
+    a.ui.forecastCustomers = new Set(); a.forecastModel(); // 필터 전환
+    expect(ins.addToCart('SB005')).toEqual({added: false}); // 다시 담기 = 무시
+    expect(ins.addManyToCart(['SB005'])).toEqual({added: 0, existing: 1});
+    expect(a.ui.cart.get('SB005')).toBe(150); expect(meta('SB005')).toEqual({scope: '선택 거래처 기준: A', calc: 100});
+    const r = ins.cartRows().find(x => x.pn === 'SB005');
+    expect(r).toMatchObject({qty: 150, calc: 100, scope: '선택 거래처 기준: A', edited: true});
+    ins.setCartQty('SB005', 100); expect(ins.cartRows()[0].edited).toBe(false);
+    // 다른 품목을 다른 범위로 담아도 기존 항목은 그대로
+    run([...SALES(), row('A', 'SB002', 100, inMonth(1))]);
+    ins.addToCart('SB002'); expect(meta('SB002').scope).toBe('전체 거래처 기준'); expect(meta('SB005').scope).toBe('선택 거래처 기준: A');
+  });
+  it('품목 상세에서 담으면 전체 기준 수량을 명시해서 저장(현재 거래처 필터와 무관)', async () => {
+    const ins = await import('./insights.js'); a.ui.cart.clear(); a.ui.cartMeta.clear();
+    run(SALES()); a.ui.forecastCustomers = new Set(['A']);
+    ins.addToCart('SB005', 500, ins.SCOPE_ALL);
+    expect(a.ui.cart.get('SB005')).toBe(500); expect(meta('SB005').scope).toBe('전체 거래처 기준');
+    a.ui.forecastCustomers = new Set();
+  });
+  it('저장 · 불러오기(예전 형식 포함)와 CSV 에 기준 포함', async () => {
+    const ins = await import('./insights.js'); a.ui.cart.clear(); a.ui.cartMeta.clear();
+    run(SALES()); a.ui.forecastCustomers = new Set(['A', 'B']); ins.addToCart('SB005'); a.ui.forecastCustomers = new Set();
+    const saved = JSON.parse(localStorage.getItem('inv_order_list'));
+    expect(saved).toEqual([['SB005', 300, {scope: '선택 거래처 기준: A, B', calc: 300}]]);
+    const csv = ins.cartCsv().csv;
+    expect(csv.split('\r\n')[0]).toBe('\uFEFF품번,품명,바코드,구분,가용재고,입고예정,담을 때 부족 수량,계산 기준,발주수량');
+    expect(csv).toContain(',300,"선택 거래처 기준: A, B",300');
+    localStorage.setItem('inv_order_list', JSON.stringify([['SB001', 40]])); // 예전에 저장된 형식
+    vi.resetModules(); const again = await import('./insights.js'); const st = await import('./store.js');
+    expect(st.ui.cart.get('SB001')).toBe(40);
+    expect(again.cartRows()[0]).toMatchObject({qty: 40, scope: '', calc: null, edited: false}); // 기준 정보 없음으로 표시
+    localStorage.removeItem('inv_order_list');
   });
 });

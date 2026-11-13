@@ -1,3 +1,4 @@
+import {Badge} from '@astryxdesign/core/Badge';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
 import {EmptyState} from '@astryxdesign/core/EmptyState';
@@ -20,7 +21,9 @@ import {fmt} from '../lib/format';
 import {saveCsv} from '../lib/saveCsv';
 import {useHashRoute} from '../app/useHashRoute';
 
-interface Row {pn: string; qty: number; name: string; brand: string; available: number; incoming: number; suggested: number}
+const SEL = '선택 거래처 기준: ';
+const scopeShort = (s: string) => (!s ? '기준 정보 없음' : s.startsWith(SEL) && s.length > SEL.length + 40 ? s.slice(0, SEL.length + 38) + '…' : s); // 전체 이름은 마우스를 올리면 보임
+interface Row {pn: string; qty: number; name: string; brand: string; available: number; incoming: number; scope: string; calc: number | null; edited: boolean}
 
 /** 발주 목록: 담은 품목의 수량을 고쳐서 CSV(엑셀에서 열림)로 내려받음. 이 브라우저에만 저장됨 */
 export function OrderListPage() {
@@ -42,7 +45,7 @@ export function OrderListPage() {
             </HStack>
           </HStack>
           <Card padding={0}>
-            <Table className="sticky-first fixed-cols" density="compact" dividers="rows" style={{tableLayout: 'fixed', minWidth: 820}}>
+            <Table className="sticky-first fixed-cols" density="compact" dividers="rows" style={{tableLayout: 'fixed', minWidth: 1020}}>
               <TableHeader>
                 <TableRow>
                   <TableHeaderCell className="sticky-col" style={{width: 110}}>품번</TableHeaderCell>
@@ -50,7 +53,8 @@ export function OrderListPage() {
                   <TableHeaderCell style={{width: 220}}>품명</TableHeaderCell>
                   <TableHeaderCell className="num" style={{width: 84}}>가용재고</TableHeaderCell>
                   <TableHeaderCell className="num" style={{width: 84}}>입고예정</TableHeaderCell>
-                  <TableHeaderCell className="num" style={{width: 92}}>추천 수량</TableHeaderCell>
+                  <TableHeaderCell className="num" style={{width: 104}}>담을 때 부족 수량</TableHeaderCell>
+                  <TableHeaderCell style={{width: 200}}>계산 기준</TableHeaderCell>
                   <TableHeaderCell style={{width: 130}}>발주 수량</TableHeaderCell>
                   <TableHeaderCell style={{width: 96}}>작업</TableHeaderCell>
                 </TableRow>
@@ -63,7 +67,8 @@ export function OrderListPage() {
                     <TableCell>{r.name || '-'}</TableCell>
                     <TableCell className="num">{fmt(r.available)}</TableCell>
                     <TableCell className="num">{fmt(r.incoming)}</TableCell>
-                    <TableCell className="num muted">{r.suggested > 0 ? fmt(r.suggested) : '-'}</TableCell>
+                    <TableCell className="num muted">{r.calc !== null ? fmt(r.calc) : '-'}</TableCell>
+                    <TableCell><span className="scope-cell" title={r.scope || '기준 정보 없음'}>{scopeShort(r.scope)}</span>{r.edited && <> <Badge variant="neutral" label="수량 수정됨" /></>}</TableCell>
                     <TableCell><NumberInput label={`${r.pn} 발주 수량`} isLabelHidden size="sm" min={0} value={r.qty} onChange={v => setCartQty(r.pn, v ?? 0)} /></TableCell>
                     <TableCell>
                       <HStack gap={1}>

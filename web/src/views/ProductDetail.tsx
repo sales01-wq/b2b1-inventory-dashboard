@@ -11,7 +11,7 @@ import {Text} from '@astryxdesign/core/Text';
 import {VStack} from '@astryxdesign/core/VStack';
 import {useStore} from '../app/useStore';
 import {state, ui} from '../lib/store.js';
-import {addToCart, closeDetail, lookupFor, productDetail} from '../lib/insights.js';
+import {SCOPE_ALL, addToCart, closeDetail, lookupFor, productDetail} from '../lib/insights.js';
 import {expiryRows, incomingChips, warehouseRows} from '../lib/views.js';
 import {lookupSearch} from '../lib/actions.js';
 import {fmt} from '../lib/format';
@@ -44,7 +44,7 @@ export function ProductDetail({go}: {go: (v: 'lookup') => void}) {
                 <Stat label="목표 재고" value={fmt(x.target)} />
               </div>
               <HStack gap={2} wrap="wrap">
-                <Button label="발주 목록에 담기" size="sm" onClick={() => addToCart(pn)} />
+                <Button label="발주 목록에 담기" size="sm" onClick={() => addToCart(pn, x.orderQty > 0 ? x.orderQty : 1, SCOPE_ALL)} />
                 <Button label="조회에서 확인" size="sm" variant="secondary" onClick={() => { lookupFor(pn, x.orderQty); lookupSearch(); closeDetail(); go('lookup'); }} />
               </HStack>
             </>

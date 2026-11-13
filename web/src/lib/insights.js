@@ -90,25 +90,41 @@ export function openDetail(pn){ ui.detailPn = pn; emit(); }
 export function closeDetail(){ ui.detailPn = ''; emit(); }
 
 const KEY = 'inv_order_list';
-function loadCart(){ try{ return new Map(JSON.parse(localStorage.getItem(KEY)||'[]')); }catch(_e){ return new Map(); } }
-ui.cart = loadCart(); // 품번 -> 발주 수량
-function saveCart(){ try{ localStorage.setItem(KEY, JSON.stringify(Array.from(ui.cart.entries()))); }catch(_e){} emit(); }
-/** 화면에 보이는 부족 수량(선택 거래처가 있으면 그 기준)으로 기본 수량을 정함 */
-const shownQty = pn => { const x = scopeForecastItem(findForecast(pn), ui.forecastCustomers); return (x&&x.orderQty)||1; };
-export function addToCart(pn, qty){ const x = findForecast(pn); ui.cart.set(pn, Math.max(1, Math.round(qty!==undefined ? qty : shownQty(pn)))); saveCart(); }
-/** 이미 담긴 품목은 수량을 그대로 두고 건너뜀. {added, existing} 반환 */
-export function addManyToCart(pns){ let added=0, existing=0; new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } ui.cart.set(pn, Math.max(1, Math.round(shownQty(pn)))); added++; }); saveCart(); return {added, existing}; }
-export function setCartQty(pn, qty){ const v = Math.round(num(qty)); if(v>0) ui.cart.set(pn, v); else ui.cart.delete(pn); saveCart(); }
-export function removeFromCart(pn){ ui.cart.delete(pn); saveCart(); }
-export function clearCart(){ ui.cart.clear(); saveCart(); }
+export const SCOPE_ALL = '전체 거래처 기준';
+// 저장 형식: [품번, 수량, {scope, calc}] (예전 형식 [품번, 수량] 도 읽음 → 기준 정보 없음)
+function loadCart(){
+  const qty = new Map(), meta = new Map();
+  try{ JSON.parse(localStorage.getItem(KEY)||'[]').forEach(e=>{ if(!Array.isArray(e)||!e[0]) return; qty.set(e[0], Number(e[1])||1); if(e[2]&&typeof e[2]==='object') meta.set(e[0], {scope:String(e[2].scope||''), calc:Number(e[2].calc)||0}); }); }catch(_e){}
+  return {qty, meta};
+}
+{ const c = loadCart(); ui.cart = c.qty; ui.cartMeta = c.meta; } // 품번 -> 발주 수량 / 품번 -> {scope: 계산 기준, calc: 담을 때 부족 수량}
+function saveCart(){ try{ localStorage.setItem(KEY, JSON.stringify(Array.from(ui.cart.entries()).map(([pn,q])=>[pn,q,ui.cartMeta.get(pn)||null]))); }catch(_e){} emit(); }
+/** 지금 선택된 거래처 범위의 이름표: 없으면 '전체 거래처 기준', 있으면 '선택 거래처 기준: A, B' */
+export function currentScopeLabel(){ return ui.forecastCustomers.size>0 ? '선택 거래처 기준: '+[...ui.forecastCustomers].join(', ') : SCOPE_ALL; }
+/** 화면에 보이는 부족 수량(선택 거래처가 있으면 그 기준) */
+const shownQty = pn => { const x = scopeForecastItem(findForecast(pn), ui.forecastCustomers); return (x&&x.orderQty)||0; };
+function put(pn, calc, scope){ ui.cart.set(pn, Math.max(1, Math.round(calc))); ui.cartMeta.set(pn, {scope, calc:Math.max(0, Math.round(calc))}); }
+/** 한 품목 담기. 이미 있으면 수량 · 기준을 그대로 둠(필터를 바꿔 다시 눌러도 덮어쓰지 않음). qty · scope 를 주면 그 값(예: 품목 상세는 전체 기준)을 저장 */
+export function addToCart(pn, qty, scope){
+  if(ui.cart.has(pn)) return {added:false};
+  put(pn, qty!==undefined ? qty : shownQty(pn), scope!==undefined ? scope : currentScopeLabel());
+  saveCart(); return {added:true};
+}
+/** 이미 담긴 품목은 수량을 그대로 두고 건너뜀. 새 품목은 지금 선택 범위의 부족 수량과 범위 이름을 저장. {added, existing} 반환 */
+export function addManyToCart(pns){ let added=0, existing=0; const scope = currentScopeLabel(); new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } put(pn, shownQty(pn), scope); added++; }); saveCart(); return {added, existing}; }
+export function setCartQty(pn, qty){ const v = Math.round(num(qty)); if(v>0) ui.cart.set(pn, v); else { ui.cart.delete(pn); ui.cartMeta.delete(pn); } saveCart(); } // 수동 수정: 기준 · 담을 때 수량 기록은 그대로
+export function removeFromCart(pn){ ui.cart.delete(pn); ui.cartMeta.delete(pn); saveCart(); }
+export function clearCart(){ ui.cart.clear(); ui.cartMeta.clear(); saveCart(); }
 export function cartRows(){
-  return Array.from(ui.cart.entries()).map(([pn,qty])=>{ const x = findForecast(pn); return {pn, qty, name:x?x.품명:'', barcode:x?x.바코드:'', brand:x?x.brand:'', available:x?x.available:0, incoming:x?x.incoming:0, suggested:x?x.orderQty:0}; });
+  return Array.from(ui.cart.entries()).map(([pn,qty])=>{ const x = findForecast(pn), m = ui.cartMeta.get(pn);
+    return {pn, qty, name:x?x.품명:'', barcode:x?x.바코드:'', brand:x?x.brand:'', available:x?x.available:0, incoming:x?x.incoming:0,
+      scope: m ? m.scope : '', calc: m ? m.calc : null, edited: !!m && qty!==Math.max(1, m.calc)}; });
 }
 export function cartCsv(){
   const esc = v => { const t = v==null?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
   const rows = cartRows();
-  const lines = [['품번','품명','바코드','구분','가용재고','입고예정','추천 발주수량','발주수량'].join(',')];
-  rows.forEach(r=>lines.push([r.pn,r.name,r.barcode,r.brand,r.available,r.incoming,r.suggested,r.qty].map(esc).join(',')));
+  const lines = [['품번','품명','바코드','구분','가용재고','입고예정','담을 때 부족 수량','계산 기준','발주수량'].join(',')];
+  rows.forEach(r=>lines.push([r.pn,r.name,r.barcode,r.brand,r.available,r.incoming,r.calc===null?'':r.calc,r.scope||'기준 정보 없음',r.qty].map(esc).join(',')));
   return {csv:'﻿'+lines.join('\r\n'), filename:`발주목록_${new Date().toISOString().slice(0,10)}.csv`};
 }
 /** 조회 화면으로: 이 품번 + 발주 수량으로 바코드 조회를 실행 */

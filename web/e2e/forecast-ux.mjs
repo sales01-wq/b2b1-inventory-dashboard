@@ -97,6 +97,45 @@ try {
   await page.getByRole('tab', {name: '품목별'}).waitFor();
   await page.getByRole('button', {name: /^전체 \d+$/}).click();
 
+  // 발주 목록: 담을 때의 계산 기준 · 부족 수량 저장, 필터를 바꿔도 덮어쓰지 않음, 수동 수정 유지
+  await page.goto(base + '/#/orders');
+  await page.getByRole('columnheader', {name: '계산 기준'}).waitFor();
+  assert.equal(await page.locator('tbody tr').filter({hasText: '전체 거래처 기준'}).count(), all.length, '전체 기준으로 담은 항목에 기준 표시');
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', {name: '비우기'}).click();
+  await page.getByRole('heading', {name: '담은 품목이 없습니다.'}).waitFor();
+  await page.goto(base + '/#/forecast');
+  await page.getByRole('tab', {name: '품목별'}).waitFor();
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
+  await page.getByRole('button', {name: '거래처 전체'}).click();
+  await page.getByRole('checkbox', {name: /^A상사$/}).check();
+  await page.keyboard.press('Escape');
+  await page.getByText('선택 거래처 기준 (1곳)').waitFor();
+  const first = (await codes(page))[0];
+  await page.getByRole('checkbox', {name: `${first} 선택`}).check();
+  await page.getByRole('button', {name: '선택 품목 발주 목록에 담기'}).click();
+  await page.getByText(/1개 담음/).waitFor();
+  await page.goto(base + '/#/orders');
+  await page.locator('tbody tr', {hasText: first}).getByText('선택 거래처 기준: A상사').waitFor();
+  const qtyBox = page.locator('tbody tr', {hasText: first}).getByRole('spinbutton');
+  await qtyBox.fill('4321'); await qtyBox.blur();
+  await page.locator('tbody tr', {hasText: first}).getByText('수량 수정됨').waitFor();
+  await page.goto(base + '/#/forecast'); // 필터는 그대로(선택 거래처) → 해제 후 다시 담기 시도: 덮어쓰지 않음
+  await page.getByRole('tab', {name: '품목별'}).waitFor();
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
+  await page.getByRole('button', {name: '모두 해제'}).first().click();
+  await page.getByRole('checkbox', {name: `${first} 선택`}).check();
+  await page.getByRole('button', {name: '선택 품목 발주 목록에 담기'}).click();
+  await page.getByText(/0개 담음, 1개는 이미 있어 수량 유지/).waitFor();
+  await page.getByRole('button', {name: '선택 해제'}).click();
+  await page.goto(base + '/#/orders');
+  const row = page.locator('tbody tr', {hasText: first});
+  assert.equal(await row.getByRole('spinbutton').inputValue().then(v => v.replace(/,/g, '')), '4321', '수동 수정 수량 유지');
+  await row.getByText('선택 거래처 기준: A상사').waitFor(); // 기준도 그대로
+  await page.goto(base + '/#/forecast');
+  await page.getByRole('tab', {name: '품목별'}).waitFor();
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
+
   // 7) 펼친 행: 목표 재고 기준 월
   await page.locator('tr', {has: page.getByText('SB001', {exact: true})}).getByRole('button', {name: '근거 보기'}).click();
   await page.getByText(/목표 재고 기준 월:/).waitFor();
