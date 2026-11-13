@@ -2,8 +2,8 @@
 // 식은 index.html 과 같게 유지합니다. 결과는 views.test.js 가 운영 화면에 그려진 값과 비교합니다.
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
-import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, nextOrderOf, usableAvailable, getRules, ruleThresholds} from './forecast.js';
-import {custAdjust, custShortSummaryCached, productList, buildSkuStatusData, buildPivotRows} from './sales.js';
+import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, usableAvailable, getRules} from './forecast.js';
+import {productList, buildSkuStatusData, buildPivotRows} from './sales.js';
 import {detectSheetType, findHeaderRow, SHEET_SIGNATURES, teamFromName, teamFromRows} from './parse.js';
 import {boxInfoFor, baseBarcode, buildExportRows, incomingItemsFor, shortDate} from './lookup.js';
 
@@ -28,16 +28,12 @@ export function forecastModel(){
   // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
   let list = isOverstock
     ? state.forecast.filter(x=>brandPasses(x.brand) && x.sold6===0)
-    : state.forecast.filter(x=>brandPasses(x.brand) && (ui.forecastShowNoSales || ui.forecastGrade==='참고' || x.sold6>0));
+    : state.forecast.filter(x=>brandPasses(x.brand) && (ui.forecastShowNoSales || ui.forecastGrade==='참고' || x.sold6>0 || x.orderQty>0));
 
-  // 거래처 필터: 그 거래처가 실제로 사간 품목만 남기고, 예상 분기수요/재고비율/추가발주/등급을 그 거래처 수요 기준으로 재계산
+  // 거래처 필터: 그 거래처가 최근 12개월 안에 산 적 있는 품목만 남김. 재고 · 목표 · 부족 수량은 품목 기준 그대로 (거래처끼리 나누거나 더하면 같은 재고를 중복해서 세게 됨)
   if(ui.forecastCustomer){
-    list = list.filter(x=> x.orderPattern && x.orderPattern.has(ui.forecastCustomer)).map(x=>{
-      const cd = x.orderPattern.get(ui.forecastCustomer);
-      const a = custAdjust(x, cd), avgQuarterly = cd.분기환산수량;
-      const orderQty = a.short;
-      return {...x, avgQuarterly, horizon:a.horizon, leadDemand:a.lead, nextOrder:a.next ? {...a.next, cust:ui.forecastCustomer} : null, bumped:a.bumped, ratio:a.ratio, orderQty, grade:a.grade, coverNow:a.coverNow, coverAll:a.coverAll, orderGap:a.orderGap, orderCount:cd.주문횟수, _customerScoped:true, _cd:cd};
-    });
+    const cut = new Date(); cut.setFullYear(cut.getFullYear()-1);
+    list = list.filter(x=>(state.salesRowsByProduct.get(x.품번)||[]).some(r=>r.거래처===ui.forecastCustomer && r.실적일자>=cut));
   }
 
   if(ui.forecastBrand) list = list.filter(x=>x.brand===ui.forecastBrand);
@@ -88,14 +84,12 @@ export function forecastModel(){
     });
     return arr;
   };
-  const topShort = custShortSummaryCached().filter(c=>c.shortItems>0).slice(0,8);
-  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly, topShort};
+  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly};
 }
 
-/* forecastDetailRow (1284행): 펼친 행의 거래처별 발주 패턴 · 최근 판매 20건 · 입고예정 */
+/* 펼친 행: 목표 재고 근거(월별 합계) · 거래처별 월 판매 · 최근 판매 20건 · 입고예정 · 반품 · 대량 판매 표시 */
 export function forecastDetail(x){
-  const pattern = Array.from((x.orderPattern||new Map()).values()).sort((a,b)=>b.분기환산수량-a.분기환산수량)
-    .map(p=>({...p, next:nextOrderOf(p)}));
+  const customers = Array.from((x.byCustomer||new Map()).entries()).map(([거래처,months])=>({거래처, months, total:months.reduce((a,b)=>a+b,0)})).sort((a,b)=>b.total-a.total);
   const details = salesDetailFor(x.품번).slice(0,20);
   const incomingRows = [];
   if(x.sched){
@@ -104,7 +98,35 @@ export function forecastDetail(x){
     if(x.sched.sep_q>0) incomingRows.push({m:ml[1], d:x.sched.sep_d, q:x.sched.sep_q});
     if(x.sched.oct_q>0) incomingRows.push({m:ml[2], d:x.sched.oct_d, q:x.sched.oct_q});
   }
-  return {pattern, details, incomingRows};
+  return {customers, details, incomingRows, months:x.profileMonths||[], monthTotals:x.monthTotals||[]};
+}
+
+/* 거래처별 보기: 거래처마다 최근 12개월에 산 품목 수와, 그중 부족 수량이 있는 품목 수 (수량은 품목 기준이라 합치지 않음) */
+export function customerShortRows(){
+  const cut = new Date(); cut.setFullYear(cut.getFullYear()-1);
+  const by = new Map();
+  state.forecast.forEach(x=>{
+    if(!brandPasses(x.brand)) return;
+    const seen = new Map();
+    (state.salesRowsByProduct.get(x.품번)||[]).forEach(r=>{ if(r.실적일자>=cut && r.수량>0 && r.거래처){ const d = seen.get(r.거래처); if(!d || r.실적일자>d) seen.set(r.거래처, r.실적일자); } });
+    seen.forEach((last,cust)=>{
+      let c = by.get(cust); if(!c){ c = {cust, items:0, short:0, last:null}; by.set(cust,c); }
+      c.items++; if(x.orderQty>0 && x.grade!=='데이터부족') c.short++;
+      if(!c.last || last>c.last) c.last = last;
+    });
+  });
+  return Array.from(by.values()).sort((a,b)=>b.short-a.short || b.items-a.items || a.cust.localeCompare(b.cust,'ko'));
+}
+
+/* 기준 설정 · 비율 분포: 목표 대비 (가용+입고예정) 비율 구간별 품목 수 → 위험 기준(%)을 실제 분포로 정할 때 참고 */
+export function coverageBands(){
+  const bands = [['0~25%',0,25],['25~50%',25,50],['50~75%',50,75],['75~100%',75,100],['100% 이상',100,Infinity]].map(([label,lo,hi])=>({label,lo,hi,n:0}));
+  let ref = 0;
+  state.forecast.filter(x=>brandPasses(x.brand) && !x.hero).forEach(x=>{
+    if(x.ratio===null){ ref++; return; }
+    bands.find(b=>x.ratio>=b.lo && x.ratio<b.hi).n++;
+  });
+  return {bands, ref};
 }
 
 /* addForecastPnTokens (1338행) / addPnTokens (1705행): 붙여넣은 품번을 칩으로 */
@@ -185,11 +207,9 @@ export function customerTableModel(){
   return {quarterCols, groupByCust, rows};
 }
 
-/* 기준 설정 저장 버튼의 검사 (forecastRules 클릭 처리, 4085행) */
-export function rulesValid(r){
-  return r.leadDays>0 && r.urgentDays>0 && r.urgentDays<r.leadDays && r.cautionExtra>0 && r.safeExtra>r.cautionExtra && r.minOrders>=1 && r.dormantMonths>=0 && r.dormantMonths<=12;
-}
-export const RULES_INVALID_MSG = '긴급 기준은 리드타임보다 작아야 하고, 관찰 구간(리드타임+α)은 주의 구간보다 커야 합니다. 주문 횟수는 1 이상, 휴면 개월은 0~12여야 합니다.';
+/* 기준 설정 저장 버튼의 검사: 위험 기준(%)은 1~99 */
+export function rulesValid(r){ return r.riskPct>=1 && r.riskPct<=99; }
+export const RULES_INVALID_MSG = '위험 기준은 1~99(%) 사이여야 합니다.';
 
 /* 히어로 품목 추가 검사 (4100행). 통과하면 {pn, val}, 아니면 {error} */
 export function heroInput(pnIn, minQty, warnQty){
@@ -202,23 +222,12 @@ export function heroInput(pnIn, minQty, warnQty){
 
 /* renderForecastRules 의 기준표 · 히어로 목록 */
 export function rulesModel(){
-  const R = getRules(), T = ruleThresholds(R);
+  const R = getRules();
   const fm = new Map((state.forecast||[]).map(x=>[x.품번,x]));
   const heroRows = Object.keys(settings.hero).sort().map(pn=>({pn, h:settings.hero[pn], x:fm.get(pn)}));
-  return {R, T, heroRows, alertN:(state.heroAlerts||[]).length};
+  return {R, heroRows, alertN:(state.heroAlerts||[]).length};
 }
 
-
-/* 발주 현황 표의 "다음 주문" 설명 (renderForecast 의 noTxt2) */
-export function forecastNextText(x){
-  const no = x.nextOrder;
-  return no ? (no.overdue ? `주문 예정일 지남 · 약 ${fmt(no.qty)}` : `다음 주문 ${no.date.getMonth()+1}/${no.date.getDate()} · 약 ${fmt(no.qty)}`) : (x.horizon>0 ? '최근 판매 기준 환산' : '');
-}
-
-/* 펼친 행의 "다음 예상 주문" (forecastDetailRow) */
-export function patternNextText(n){
-  return n ? (n.overdue ? `예정일 ${n.lateDays}일 지남` : `${n.date.getMonth()+1}/${n.date.getDate()}`) : '—';
-}
 
 /* renderSyncStatus (1158행): 머리글의 데이터 상태 문구 */
 export function syncStatusText(shared){

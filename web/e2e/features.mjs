@@ -28,7 +28,7 @@ try {
     await page.getByText('재고 신호등').waitFor();
     // 개요: 새 요약 3칸
     await page.getByRole('heading', {name: '월별 판매'}).waitFor();
-    await page.getByRole('heading', {name: '곧 주문할 거래처'}).waitFor();
+    await page.getByRole('heading', {name: '오래 주문 없는 거래처'}).waitFor();
     await noOverflow(page, name + ' 개요');
 
     // 품번 → 상세 패널 (모든 화면 공통)

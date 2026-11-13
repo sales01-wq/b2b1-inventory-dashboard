@@ -12,7 +12,7 @@ import {VStack} from '@astryxdesign/core/VStack';
 import {useStore} from '../app/useStore';
 import {state, ui} from '../lib/store.js';
 import {addToCart, closeDetail, lookupFor, productDetail} from '../lib/insights.js';
-import {expiryRows, forecastNextText, incomingChips, warehouseRows} from '../lib/views.js';
+import {expiryRows, incomingChips, warehouseRows} from '../lib/views.js';
 import {lookupSearch} from '../lib/actions.js';
 import {fmt} from '../lib/format';
 import {GradeBadge} from './ForecastPage';
@@ -38,10 +38,10 @@ export function ProductDetail({go}: {go: (v: 'lookup') => void}) {
               <div className="detail-stats">
                 <Stat label="가용재고" value={fmt(x.available)} />
                 <Stat label="입고예정(3개월)" value={fmt(x.incoming)} />
-                <Stat label="월평균 판매" value={fmt(x.avgQuarterly / 3)} />
-                <Stat label="발주할 수량" value={x.orderQty > 0 ? fmt(x.orderQty) : '-'} strong={x.orderQty > 0} />
+                <Stat label="월평균 판매(12개월)" value={fmt(x.avgQuarterly / 3)} />
+                <Stat label="부족 수량" value={x.orderQty > 0 ? fmt(x.orderQty) : '-'} strong={x.orderQty > 0} />
                 <Stat label="소진 예상" value={d.depletion === null ? '판매 없음' : `${fmt(d.depletion)}일`} />
-                <Stat label="다음 주문" value={forecastNextText(x) || '-'} small />
+                <Stat label="목표 재고" value={fmt(x.target)} />
               </div>
               <HStack gap={2} wrap="wrap">
                 <Button label="발주 목록에 담기" size="sm" onClick={() => addToCart(pn)} />
@@ -72,10 +72,10 @@ export function ProductDetail({go}: {go: (v: 'lookup') => void}) {
           )}
           {d.customers.length > 0 && (
             <VStack gap={2}>
-              <Heading level={3}>거래처별 주문 (분기 환산 많은 순)</Heading>
+              <Heading level={3}>거래처별 판매 (최근 12개월, 많은 순)</Heading>
               <Table density="compact" dividers="rows" className="fixed-cols">
-                <TableHeader><TableRow><TableHeaderCell>거래처</TableHeaderCell><TableHeaderCell className="num">분기 환산</TableHeaderCell><TableHeaderCell className="num">주문 횟수</TableHeaderCell></TableRow></TableHeader>
-                <TableBody>{d.customers.map((c: {거래처: string; 분기환산수량: number; 주문횟수: number}) => <TableRow key={c.거래처}><TableCell>{c.거래처}</TableCell><TableCell className="num">{fmt(c.분기환산수량)}</TableCell><TableCell className="num">{fmt(c.주문횟수)}</TableCell></TableRow>)}</TableBody>
+                <TableHeader><TableRow><TableHeaderCell>거래처</TableHeaderCell><TableHeaderCell className="num">12개월 판매</TableHeaderCell></TableRow></TableHeader>
+                <TableBody>{d.customers.map((c: {거래처: string; total: number}) => <TableRow key={c.거래처}><TableCell>{c.거래처}</TableCell><TableCell className="num">{fmt(c.total)}</TableCell></TableRow>)}</TableBody>
               </Table>
             </VStack>
           )}

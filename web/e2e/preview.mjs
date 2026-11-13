@@ -36,7 +36,7 @@ try {
     await page.getByText('미리보기 — 테스트 데이터입니다').waitFor();
     assert.equal(await page.getByText('로그인 정보를 확인하는 중입니다...').count(), 0);
     await page.getByText('재고 신호등').waitFor(); // 화면 코드는 따로 받아옴
-    assert.match(await page.getByRole('main').innerText(), /재고 신호등[\s\S]*SB004/); // 테스트 데이터가 그려짐
+    assert.match(await page.getByRole('main').innerText(), /재고 신호등[\s\S]*SB00\d/); // 테스트 데이터가 그려짐
     // 글꼴: CDN 을 모두 막은 상태에서도 앱에 포함된 Pretendard 가변 글꼴이 실제로 내려받아져 쓰임
     const font = await page.evaluate(async () => {
       await document.fonts.ready;
@@ -49,7 +49,7 @@ try {
     assert.match(await page.evaluate(() => fetch('/api/config').then(() => 'allowed', e => e.message)), /미리보기 모드/);
     assert.match(await page.evaluate(() => fetch('https://script.google.com/macros/s/x/exec').then(() => 'allowed', e => e.message)), /미리보기 모드/);
     await page.getByRole('button', {name: '새로고침'}).click(); // 새로고침 = 테스트 데이터 다시 적용
-    await page.getByRole('cell', {name: 'SB004'}).waitFor(); // 다시 적용된 테스트 데이터
+    await page.getByRole('cell', {name: /SB00\d/}).first().waitFor(); // 다시 적용된 테스트 데이터
     if (process.env.SHOT_DIR) await page.screenshot({path: `${process.env.SHOT_DIR}/preview-${opts.viewport ? 'desktop' : 'mobile'}.png`});
     assert.deepEqual([errors, dataRequests], [[], []]);
   }

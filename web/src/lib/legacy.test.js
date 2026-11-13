@@ -36,9 +36,8 @@ function scenario({api: a, calcExportPlt, csv}) {
       customers: a.state.customers, quarters: a.state.quarters, custQuarterProduct: a.state.custQuarterProduct,
       invByProduct: a.state.invByProduct, salesByProduct: a.state.salesByProduct,
       productList: a.productList(), months: a.getAllSalesMonths(),
-      scoped: a.state.forecast.map(x => ['all', 'b2b1', 'emp'].map(s => a.scopedAvailable(x.품번, s))),
-      salesDetail: a.salesDetailFor('SB001'), groups: a.state.forecast.map(x => a.groupOf(x.grade)),
-      custShort: a.custShortSummary(a.buildCustShort()), custShortCached: a.custShortSummaryCached(),
+      scoped: [...a.state.forecast].sort((p, q) => (p.품번 < q.품번 ? -1 : 1)).map(x => ['all', 'b2b1', 'emp'].map(s => a.scopedAvailable(x.품번, s))),
+      salesDetail: a.salesDetailFor('SB001'),
       sku: a.buildSkuStatusData(['SB001', 'MC002']), skuLabel: ['2026-01', '2025-12'].map(m => [a.skuMonthLabel(m, true), a.skuMonthLabel(m, false)]),
       teamLabel: a.teamLabel(),
     });
@@ -49,24 +48,12 @@ function scenario({api: a, calcExportPlt, csv}) {
     derived(team);
   }
   a.ui.team = 'B2B1팀';
-  a.settings.rules = {leadDays: 45, urgentDays: 20, minOrders: 1, dormantMonths: 0};
+  a.settings.rules = {riskPct: 30};
   a.settings.hero = {MT002: {minQty: 200, warnQty: 400}, SB002: {minQty: 5}, NOPE1: {minQty: 1}};
   loadAll();
   derived('custom-rules-hero');
   a.settings.rules = {}; a.settings.hero = {};
   loadAll();
-
-  // 등급 판정 경계값 (일평균 수요 1개: avgQuarterly = 91.25)
-  const lastSale = new Date(NOW - 10 * 86400000);
-  const g = (available, incoming, extra = {}) => a.gradeFor({pn: 'P', available, incoming, avgQuarterly: 91.25, orderCount: 3, lastSale, ...extra});
-  rec('grade', [
-    g(120, 0), g(119.9, 0), g(60, 60), g(29, 0), g(30, 0), g(59, 0), g(60, 0), g(89, 0), g(90, 0),
-    g(10, 0, {orderCount: 1}), g(10, 0, {lastSale: new Date(NOW - 200 * 86400000)}), g(10, 0, {avgQuarterly: 0}),
-  ]);
-  const ent = a.orderEntry('X', [new Date(NOW - 90 * 86400000), new Date(NOW - 60 * 86400000), new Date(NOW - 30 * 86400000)], 300);
-  const stale = a.orderEntry('Y', [new Date(NOW - 300 * 86400000), new Date(NOW - 280 * 86400000)], 100);
-  const one = a.orderEntry('Z', [new Date(NOW - 5 * 86400000)], 365);
-  rec('pattern', [ent, stale, one, [ent, stale, one].map(a.nextOrderOf), [ent, stale, one].map(e => [a.windowDemand(e, 91.25), a.windowDemand(e, 60)]), a.computeOrderPattern('SB001')]);
 
   // 3) 판매 현황 피벗 (거래처 0 / 1 / 2개 선택, 브랜드 · 품번 필터)
   const pivot = (cust, pns, brands) => {
@@ -76,7 +63,6 @@ function scenario({api: a, calcExportPlt, csv}) {
     return a.buildPivotRows();
   };
   rec('pivot', [pivot([], [], []), pivot(['A상사'], [], []), pivot(['A상사', 'B유통'], [], []), pivot([], ['SB001', 'MC002'], []), pivot([], [], ['마미케어'])]);
-  rec('custShortBrand', a.custShortSummary(a.buildCustShort()));
   a.ui.brandSelected.clear(); a.ui.custSelected.clear(); a.ui.pnSelected.clear();
 
   // 4) 바코드 · 품명 조회
@@ -126,11 +112,6 @@ function scenario({api: a, calcExportPlt, csv}) {
   rec('plt:defaults', pltState());
 
   // 7) 나머지 CSV
-  a.state.forecast.slice(0, 6).forEach(x => a.ui.forecastSelected.add(x.품번));
-  rec('csv:forecast', csv('downloadForecastCsv'));
-  a.ui._forecastCsvRows = a.state.forecast;
-  a.ui.forecastCustomer = 'A상사';
-  rec('csv:forecastList', csv('downloadForecastListCsv'));
   ['SB001', 'MC002'].forEach(p => a.ui.skuStatusSelected.add(p));
   rec('csv:sku', csv('downloadSkuStatusCsv'));
 
@@ -162,8 +143,8 @@ describe('src/lib 계산 결과 = 운영 index.html 계산 결과', () => {
   });
 
   const steps = ['detect', 'teams', 'dates', 'nums', 'monthCols', 'parsed', 'derived:B2B1팀', 'derived:B2B2팀', 'derived:전체', 'derived:custom-rules-hero',
-    'grade', 'pattern', 'pivot', 'custShortBrand', 'resolve', 'lookupItems', 'lots', 'selection', 'pltRow', 'pack',
-    'plt:separate', 'csv:export-separate', 'plt:mixed', 'csv:export-mixed', 'plt:defaults', 'csv:forecast', 'csv:forecastList', 'csv:sku', 'removed'];
+    'pivot', 'resolve', 'lookupItems', 'lots', 'selection', 'pltRow', 'pack',
+    'plt:separate', 'csv:export-separate', 'plt:mixed', 'csv:export-mixed', 'plt:defaults', 'csv:sku', 'removed'];
   it.each(steps)('%s', step => {
     expect(actual[step]).toEqual(expected[step]);
   });

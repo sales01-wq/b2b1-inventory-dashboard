@@ -307,3 +307,6 @@ code.pn-lg { font-size: 0.9375rem; font-weight: 600; }
 .health-line:hover { background: var(--color-background-muted); }
 
 .scroll-hint { display: none; }
+/* 발주 현황: 부족 수량을 가장 눈에 띄게, 품명은 품번 아래 한 줄 */
+.short-qty { font-weight: 700; font-size: 1rem; color: light-dark(#b91c1c, #f87171); }
+.pn-name { font-size: 0.8125rem; color: var(--color-text-secondary); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

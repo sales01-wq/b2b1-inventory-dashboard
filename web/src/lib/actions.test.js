@@ -31,7 +31,7 @@ describe('팀 · 브랜드 전환 = 운영 버튼 동작', () => {
     globalThis.localStorage = new JSDOM('', {url: 'http://localhost/'}).window.localStorage;
     const {setTeam, toggleBrand} = await import('./actions.js');
     load(a);
-    const act = [];
+    const act = []; // 표에 보이는 목록은 새 계산 방식이라 forecast.target.test.js 가 따로 검증
     for (const [k, v] of STEPS) {
       a.ui.forecastPage = 150; a.ui.customerPage = 100; a.ui.forecastCustomer = 'A상사';
       (k === 'team' ? setTeam : toggleBrand)(v);
@@ -119,8 +119,6 @@ describe('발주 현황 조작 · 기준 설정 = 운영 화면 조작', () => {
     ['과잉재고 범위: EMP', (w, d) => d.querySelector('input[name="forecastOverstockScope"][value="emp"]').click(), x => x.setOverstockScope('emp')],
     ['과잉재고 범위: 팀 창고', (w, d) => d.querySelector('input[name="forecastOverstockScope"][value="b2b1"]').click(), x => x.setOverstockScope('b2b1')],
     ['등급 드롭다운: 발주 필요', (w, d) => change(w, d.getElementById('gradeSelect'), '조치필요'), x => x.setForecastGrade('조치필요')],
-    ['기준 저장 (잘못된 값)', async (w, d) => { setRuleInputs(d, [30, 30, 30, 60, 2, 6]); d.querySelector('[data-action="rules-save"]').click(); await tick(); }, (x, st) => st.saveRules(rulesIn([30, 30, 30, 60, 2, 6]))],
-    ['기준 저장 (소수점 포함)', async (w, d) => { setRuleInputs(d, [45.6, 10, 20, 50, 1, 0]); d.querySelector('[data-action="rules-save"]').click(); await tick(); }, (x, st) => st.saveRules(rulesIn([45.6, 10, 20, 50, 1, 0]))],
     ['히어로 추가', async (w, d) => { d.getElementById('heroPn').value = ' mt002 '; d.getElementById('heroMin').value = '200'; d.getElementById('heroWarn').value = '500'; d.querySelector('[data-action="hero-add"]').click(); await tick(); }, (x, st) => st.addHero(' mt002 ', '200', '500')],
     ['히어로 추가 (주의 ≤ 위험)', async (w, d) => { d.getElementById('heroPn').value = 'SB001'; d.getElementById('heroMin').value = '100'; d.getElementById('heroWarn').value = '100'; d.querySelector('[data-action="hero-add"]').click(); await tick(); }, (x, st) => st.addHero('SB001', '100', '100')],
     ['히어로 삭제', async (w, d) => { d.querySelector('[data-action="hero-del"][data-pn="MT002"]').click(); await tick(); }, (x, st) => st.deleteHero('MT002')],
@@ -136,7 +134,7 @@ describe('발주 현황 조작 · 기준 설정 = 운영 화면 조작', () => {
     const exp = [];
     for (const [name, run] of STEPS) {
       try { await run(o.w, d); } catch (e) { throw new Error(name + ': ' + e.message); }
-      exp.push(snap(o.api, o.api.ui._forecastCsvRows));
+      exp.push(snap(o.api, []));
     }
     o.close();
     vi.useFakeTimers({toFake: ['Date']}); vi.setSystemTime(NOW);
@@ -145,12 +143,10 @@ describe('발주 현황 조작 · 기준 설정 = 운영 화면 조작', () => {
     const x = await import('./actions.js'), st = await import('../data/settings.js');
     load(a);
     const act = [];
-    for (const [, , run] of STEPS) { await run(x, st, a); act.push(snap(a, a.forecastModel().list)); }
+    for (const [, , run] of STEPS) { await run(x, st, a); act.push(snap(a, [])); }
     vi.useRealTimers();
     STEPS.forEach(([name], i) => expect([name, act[i]]).toEqual([name, exp[i]]));
-    expect(exp[1].list.length).toBeGreaterThan(0);
-    expect(exp[23].rules).toEqual({leadDays: 46, urgentDays: 10, cautionExtra: 20, safeExtra: 50, minOrders: 1, dormantMonths: 0});
-    expect(Object.keys(exp[24].hero)).toEqual(['MT002']);
+    expect(Object.keys(exp[22].hero)).toEqual(['MT002']);
     expect(exp[9].page).toBe(51); expect(exp[10].page).toBe(50);
   });
 });

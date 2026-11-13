@@ -1,6 +1,7 @@
 // index.html 에서 그대로 옮긴 계산 로직입니다. 바꾼 곳에는 "port:" 주석을 달았습니다. 결과는 src/lib/legacy.test.js 가 운영 index.html 과 비교합니다.
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
+import {parseDateStr} from './parse.js';
 
 /* ---------------- Derived computations ---------------- */
 export function quarterLabel(d){ return `${d.getFullYear()} Q${Math.ceil((d.getMonth()+1)/3)}`; }
@@ -60,106 +61,73 @@ export function salesDetailFor(pn){
 
 export const QUARTER_DAYS = 91.25;
 
-/* ---------------- 등급 기준 / 히어로 기준 / 직접 입력 정보 (설정) ---------------- */
-// 리드타임(생산~입고) 기준: 위험하면 leadDays 뒤에 들어온다고 보고, 입고예정까지 더한 재고가 며칠치인지로 판정
-export const RULE_DEFAULTS = {leadDays:60, urgentDays:30, cautionExtra:30, safeExtra:60, minOrders:2, dormantMonths:6};
-
-export function ruleThresholds(R){ return {urgent:R.urgentDays, risk:R.leadDays, caution:R.leadDays+R.cautionExtra, watch:R.leadDays+R.safeExtra}; }
+/* ---------------- 부족 수량 · 위험 판정 (목표 재고 방식) ----------------
+   목표 재고 = 최근 12개월(이번 달 제외, 달력 기준) 중 '모든 거래처 합계 월 판매량'이 가장 컸던 달의 판매량.
+   부족 수량 = max(0, 목표 재고 − 가용재고 − 유효 입고예정).   위험 판정도 같은 숫자(목표 대비 재고 비율)로 함 → 부족이 0 일 때만 '여유'.
+   주문 주기 예측은 쓰지 않음. 반품 · 마이너스 조정은 판매와 따로 모으고 목표에 반영하지 않음. */
+export const RULE_DEFAULTS = {riskPct:50}; // 위험: (가용+입고예정)이 목표의 riskPct% 미만. 주의: 그 이상 ~ 100% 미만. 여유: 100% 이상
+export const SPIKE_RATIO = 2; // 가장 많이 팔린 달이 두 번째로 많이 팔린 달의 2배 이상이면 '대량 판매 확인' 표시 (제외하지 않고 목표에 그대로 반영)
 
 export function getRules(){ return Object.assign({}, RULE_DEFAULTS, settings.rules); }
 
-/* 등급 판정: 소진예상일 = (현재 가용재고 + 입고예정) ÷ 일평균 수요(예상 분기수요 ÷ 91.25) */
+export const monthKey = d => d.getFullYear()*12 + d.getMonth();
+/** 최근 완료된 달력 월 n개 (이번 달 제외), 오래된 달부터 */
+export function completedMonths(n=12){
+  const now = new Date(), out = [];
+  for(let k=n;k>=1;k--){ const d = new Date(now.getFullYear(), now.getMonth()-k, 1); out.push({y:d.getFullYear(), m:d.getMonth(), key:monthKey(d)}); }
+  return out;
+}
+
+/** 품목의 판매 프로필: 월별 합계 · 거래처별 월 판매 · 목표 재고 · 반품 · 대량 판매 표시 */
+export function salesProfile(rows){
+  const months = completedMonths(12), idx = new Map(months.map((m,i)=>[m.key,i]));
+  const totals = months.map(()=>0), byCust = new Map();
+  let returns = 0;
+  (rows||[]).forEach(r=>{
+    const i = idx.get(monthKey(r.실적일자)); if(i===undefined) return;
+    if(r.수량<0){ returns += -r.수량; return; } // 반품 · 마이너스 조정: 판매와 분리
+    if(!(r.수량>0)) return;
+    totals[i] += r.수량;
+    if(!byCust.has(r.거래처)) byCust.set(r.거래처, months.map(()=>0));
+    byCust.get(r.거래처)[i] += r.수량;
+  });
+  const target = Math.max(0, ...totals), peak = totals.indexOf(target);
+  const sorted = totals.slice().sort((a,b)=>b-a), second = sorted[1]||0;
+  let spike = null;
+  if(target>0 && target >= SPIKE_RATIO*second){
+    const top = Array.from(byCust.entries()).map(([cust,a])=>({cust, qty:a[peak]})).filter(c=>c.qty>0).sort((a,b)=>b.qty-a.qty).slice(0,3);
+    spike = {month:months[peak], qty:target, second, customers:top, oneMonth: second===0};
+  }
+  return {months, totals, byCust, target, returns, spike, total12: totals.reduce((a,b)=>a+b,0)};
+}
+
+/** 유효 입고예정: 날짜가 이미 지난 입고는 이미 재고에 들어왔거나 불확실하므로 제외 (제외한 수량은 따로 보여 줌) */
+export function validIncoming(sched){
+  if(!sched) return {valid:0, excluded:0};
+  const today = new Date(); today.setHours(0,0,0,0);
+  let valid = 0, excluded = 0;
+  [['aug_d','aug_q'],['sep_d','sep_q'],['oct_d','oct_q']].forEach(([d,q])=>{
+    const qty = sched[q]||0; if(!(qty>0)) return;
+    const dt = parseDateStr(sched[d]);
+    if(dt && dt<today) excluded += qty; else valid += qty;
+  });
+  return {valid, excluded};
+}
+
+/* 위험 판정: 비율 = (가용 + 유효 입고예정) ÷ 목표 재고. 히어로 품목은 설정한 수량 기준을 그대로 사용 */
 export function gradeFor(p){
-  const R = getRules(), T = ruleThresholds(R);
+  const R = getRules();
   const hero = settings.hero[p.pn];
+  const ratio = p.target>0 ? ((p.available+p.incoming)/p.target)*100 : null;
   if(hero && hero.minQty>0){
-    // 히어로 품목: 일수 기준 대신 '수량 기준'만 사용
     let grade = '안전';
     if(p.available <= hero.minQty) grade = '위험';
     else if(hero.warnQty>0 && p.available <= hero.warnQty) grade = '주의';
-    const daily = p.avgQuarterly>0 ? p.avgQuarterly/QUARTER_DAYS : 0;
-    return {grade, ratio: p.avgQuarterly>0 ? (p.available/p.avgQuarterly)*100 : null,
-            coverNow: daily>0 ? p.available/daily : null, coverAll: daily>0 ? (p.available+p.incoming)/daily : null, orderGap:null,
-            hero:true, heroMin:hero.minQty, heroWarn:hero.warnQty||0};
+    return {grade, ratio, hero:true, heroMin:hero.minQty, heroWarn:hero.warnQty||0};
   }
-  if(!(p.avgQuarterly>0)) return {grade:'데이터부족', ratio:null, coverNow:null, coverAll:null, orderGap:null};
-  const ratio = (p.available/p.avgQuarterly)*100;
-  const daily = p.avgQuarterly/QUARTER_DAYS;
-  const coverNow = p.available/daily, coverAll = (p.available+p.incoming)/daily;
-  let grade;
-  if(coverNow >= T.watch) grade = '안전';
-  else if(coverAll >= T.watch) grade = '안전(입고예정)';
-  else if(coverAll < T.urgent) grade = '긴급';
-  else if(coverAll < T.risk) grade = '위험';
-  else if(coverAll < T.caution) grade = '주의';
-  else grade = '관찰';
-  const alertGrade = (grade==='긴급'||grade==='위험'||grade==='주의'||grade==='관찰');
-  if(alertGrade && R.dormantMonths>0 && p.lastSale){
-    // 최근 N개월 출고가 없는 품목(단종·옛 품번 등)은 위험 알림에서 제외
-    const cut = new Date(); cut.setMonth(cut.getMonth()-R.dormantMonths);
-    if(p.lastSale < cut) return {grade:'휴면', ratio, coverNow, coverAll, orderGap:null};
-  }
-  if(alertGrade && p.orderCount < R.minOrders) grade = '단발성';
-  // 발주여유일: 며칠 안에 발주해야 결품을 피하는지 (음수면 이미 늦음)
-  return {grade, ratio, coverNow, coverAll, orderGap: coverAll - R.leadDays};
-}
-
-export function orderEntry(cust, datesIn, totalQty){
-  const dates = datesIn.slice().sort((a,b)=>a-b);
-  const n = dates.length;
-  const avgQtyPerOrder = totalQty / n;
-  let avgCycleDays = null, q;
-  if(n>=2){
-    const spanDays = (dates[n-1]-dates[0]) / (1000*60*60*24);
-    if(spanDays>0){ avgCycleDays = spanDays/(n-1); q = avgQtyPerOrder * (QUARTER_DAYS/avgCycleDays); }
-    else q = totalQty * (QUARTER_DAYS/365); // 같은 날 여러 건: 관측 기간(최대 365일) 대비로 환산
-  } else q = totalQty * (QUARTER_DAYS/365); // 주문 1건뿐: 과대추정 방지
-  return {거래처:cust, 주문횟수:n, 총수량:totalQty, 평균발주수량:avgQtyPerOrder, 평균발주주기:avgCycleDays, 최근발주일:dates[n-1], 분기환산수량:q};
-}
-
-export const DAY_MS = 86400000;
-
-export function nextOrderOf(ent){
-  if(!(ent.평균발주주기>0)) return null;
-  const now = Date.now(), nxt = ent.최근발주일.getTime() + ent.평균발주주기*DAY_MS;
-  const overdue = (now - nxt)/DAY_MS;
-  if(overdue > Math.max(ent.평균발주주기, 45)) return null; // 거래 중단으로 판단
-  return {date:new Date(Math.max(nxt, now)), qty:ent.평균발주수량, overdue:overdue>0, lateDays:Math.max(0, Math.round(overdue))};
-}
-
-export function windowDemand(ent, W){
-  if(!(ent.평균발주주기>0)) return ent.총수량 * W / 365;
-  const n = nextOrderOf(ent); if(!n) return 0;
-  const end = Date.now() + W*DAY_MS, step = ent.평균발주주기*DAY_MS;
-  let t = n.date.getTime(), cnt = 0;
-  while(t <= end && cnt < 400){ cnt++; t += step; }
-  return cnt * ent.평균발주수량;
-}
-
-export function computeOrderPattern(pn){
-  const cutoff = new Date(); cutoff.setFullYear(cutoff.getFullYear()-1); // 최근 12개월 기준
-  const rows = (state.salesRowsByProduct.get(pn)||[]).filter(r=>r.실적일자>=cutoff);
-  const byCust = new Map(); // 거래처 -> {dates:[], totalQty}
-  rows.forEach(r=>{
-    if(!byCust.has(r.거래처)) byCust.set(r.거래처, {dates:[], totalQty:0});
-    const e = byCust.get(r.거래처);
-    e.dates.push(r.실적일자);
-    e.totalQty += r.수량;
-  });
-  let totalQuarterly = 0;
-  const result = new Map();
-  byCust.forEach((e, cust)=>{
-    const ent = orderEntry(cust, e.dates, e.totalQty);
-    totalQuarterly += ent.분기환산수량;
-    result.set(cust, ent);
-  });
-  const R = getRules();
-  let horizon = 0, lead = 0, next = null;
-  result.forEach(e=>{
-    horizon += windowDemand(e, QUARTER_DAYS); lead += windowDemand(e, R.leadDays);
-    const n = nextOrderOf(e); if(n && (!next || n.date < next.date)) next = {...n, cust:e.거래처};
-  });
-  return {byCustomer:result, totalQuarterly, horizon, lead, next};
+  if(!(p.target>0)) return {grade:'데이터부족', ratio:null}; // 최근 12개월 판매 없음 → 참고
+  if(ratio>=100) return {grade:'안전', ratio};
+  return {grade: ratio < R.riskPct ? '위험' : '주의', ratio};
 }
 
 /* 같은 회사의 다른 표기(한글/영문 법인명)를 하나의 거래처로 합침 */
@@ -247,40 +215,29 @@ export function computeDerived(){
     if(!code) return;
     const brand = brandOf(code);
     if(!brand) return; // 나머지 품번 삭제
-    const sched = schByProduct.get(code);
+    const sched = schByProduct.get(code); // 제품일정표는 품번당 첫 줄만 사용 (거래처마다 줄이 있어도 입고예정을 중복해서 세지 않음)
     const inv = invByProduct.get(code);
     const sinfo = salesByProduct.get(code);
     const 품명 = (sched && sched.품명) || (inv && inv.rows[0] && inv.rows[0].품명) || (sinfo && sinfo.품명) || '';
     const 바코드 = (sched && sched.바코드) || (inv && inv.rows[0] && inv.rows[0].바코드) || '';
-    const available = usableAvailable(inv);
+    const available = usableAvailable(inv); // 재고는 품목 하나당 한 번만 (거래처별로 나누거나 더하지 않음)
     const sold6 = sinfo ? sinfo.sum6mo : 0;
-    const pattern = computeOrderPattern(code);
-    const avgQuarterly = pattern.totalQuarterly;
-    const incoming = sched ? (sched.aug_q + sched.sep_q + sched.oct_q) : 0;
-    const orderQty = Math.max(0, Math.round(pattern.horizon - available - incoming));
-    const orderCount = Array.from(pattern.byCustomer.values()).reduce((s,e)=>s+e.주문횟수,0);
-    const lastSale = Array.from(pattern.byCustomer.values()).reduce((m,e)=>(!m||e.최근발주일>m)?e.최근발주일:m, null);
-    const g = gradeFor({pn:code, available, incoming, avgQuarterly, orderCount, lastSale});
-    let grade = g.grade, bumped = false;
-    if(!g.hero && ['안전','안전(입고예정)','관찰','주의'].includes(grade)){
-      const R = getRules(), have = available + incoming, cut = new Date(); cut.setMonth(cut.getMonth()-R.dormantMonths);
-      if(orderCount >= R.minOrders && !(R.dormantMonths>0 && lastSale && lastSale<cut)){
-        if(pattern.lead > have){ grade='위험'; bumped=true; }          // 리드타임 안에 올 주문을 못 받음
-        else if(pattern.horizon > have && grade!=='주의'){ grade='주의'; bumped=true; } // 3개월 안 주문을 못 받음
-      }
-    }
-    forecast.push({품번:code, 품명, 바코드, brand, available, sold6, avgQuarterly, incoming, orderQty, horizon:pattern.horizon, leadDemand:pattern.lead, nextOrder:pattern.next, bumped, ratio:g.ratio, grade,
-      coverNow:g.coverNow, coverAll:g.coverAll, orderGap:g.orderGap, orderCount, lastSale, hero:!!g.hero, heroMin:g.heroMin||0, heroWarn:g.heroWarn||0, sched, orderPattern:pattern.byCustomer});
+    const prof = salesProfile(salesRowsByProduct.get(code));
+    const inc = validIncoming(sched);
+    const target = prof.target, incoming = inc.valid;
+    const discontinued = !!(sched && /단종/.test(sched.품목상태||'')) && !(settings.hero[code] && settings.hero[code].minQty>0); // 히어로로 직접 지정한 품목은 예외 // 제품일정표에서 단종 → 발주 대상 아님(참고). 화면에 이유를 표시하고 숨기지 않음
+    const g = discontinued ? {grade:'데이터부족', ratio:null} : gradeFor({pn:code, available, incoming, target});
+    const orderQty = discontinued ? 0 : Math.max(0, target - available - incoming);
+    forecast.push({품번:code, 품명, 바코드, brand, available, sold6, discontinued, incoming, incomingExcluded:inc.excluded, target, orderQty, ratio:g.ratio, grade:g.grade,
+      avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, byCustomer:prof.byCust,
+      hero:!!g.hero, heroMin:g.heroMin||0, heroWarn:g.heroWarn||0, sched});
   });
   forecast.sort((a,b)=>{
-    const order = {'긴급':0,'위험':1,'주의':2,'관찰':3,'안전(입고예정)':4,'안전':5,'단발성':6,'휴면':7,'데이터부족':8};
+    const order = {'위험':0,'주의':1,'안전':2,'데이터부족':3};
     if(order[a.grade]!==order[b.grade]) return order[a.grade]-order[b.grade];
     if(a.hero!==b.hero) return a.hero ? -1 : 1;
-    if(order[a.grade]<=3){ // 위험/주의/관찰: 더 빨리 바닥나는 순
-      const ca = a.coverAll===null ? 1e9 : a.coverAll, cb = b.coverAll===null ? 1e9 : b.coverAll;
-      if(ca!==cb) return ca-cb;
-    }
-    return (b.sold6)-(a.sold6);
+    if(a.orderQty!==b.orderQty) return b.orderQty-a.orderQty; // 부족 수량이 큰 순
+    return b.sold6-a.sold6;
   });
   state.forecast = forecast;
   // 히어로 알람: 설정한 수량 이하로 떨어진 히어로 품목
@@ -298,29 +255,22 @@ export function groupOf(g){
   return '참고';
 }
 
+const csvEsc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
+const flagText = x => x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
+function stockCsv(rows, filename){
+  const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요'].join(',')];
+  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,groupOf(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x)].map(csvEsc).join(',')));
+  return {csv:'\uFEFF'+lines.join('\r\n'), filename};
+}
 // port: 다운로드 대신 {csv, filename} 반환 — 실제 저장은 saveCsv()
 export function forecastListCsv(){
   const rows = ui._forecastCsvRows || []; if(!rows.length) return;
-  const esc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
-  const lines=[['구분','품번','품명','월평균 판매','3개월 예상수요','가용재고','입고예정','발주할 수량','상태'].join(',')];
-  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,Math.round(x.avgQuarterly/3),Math.round(x.horizon),x.available,x.incoming,x.orderQty,groupOf(x.grade)].map(esc).join(',')));
-  return {csv:'\uFEFF'+lines.join('\r\n'), filename:`발주현황_${ui.forecastCustomer||'전체'}_${new Date().toISOString().slice(0,10)}.csv`};
+  return stockCsv(rows, `발주현황_${ui.forecastCustomer||'전체'}_${new Date().toISOString().slice(0,10)}.csv`);
 }
 
 // port: 다운로드 대신 {csv, filename} 반환
 export function forecastCsv(){
   const selected = state.forecast.filter(x=>ui.forecastSelected.has(x.품번));
   if(selected.length===0) return;
-  const headers = ['품번','브랜드','품명','최근6개월 판매','예상 분기수요','현재 가용재고','입고예정(3개월)','추가발주 필요','소진예상일','발주여유일(음수=지연)','등급'];
-  const escape = v => {
-    const s = (v===null||v===undefined)?'':String(v);
-    return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
-  };
-  const lines = [headers.join(',')];
-  selected.forEach(x=>{
-    lines.push([x.품번,x.brand,x.품명,fmt(x.sold6),fmt(x.avgQuarterly),fmt(x.available),fmt(x.incoming),fmt(x.orderQty),x.coverAll===null||x.coverAll===undefined?'':Math.round(x.coverAll),x.orderGap===null||x.orderGap===undefined?'':Math.round(x.orderGap),x.grade].map(escape).join(','));
-  });
-  const csv = '\uFEFF' + lines.join('\r\n');
-  const ts = new Date().toISOString().slice(0,10);
-  return {csv, filename:`발주예측_선택품목_${ts}.csv`};
+  return stockCsv(selected, `발주현황_선택품목_${new Date().toISOString().slice(0,10)}.csv`);
 }

@@ -1,7 +1,7 @@
 // index.html 에서 그대로 옮긴 계산 로직입니다. 바꾼 곳에는 "port:" 주석을 달았습니다. 결과는 src/lib/legacy.test.js 가 운영 index.html 과 비교합니다.
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
-import {QUARTER_DAYS, brandOf, brandPasses, getRules, gradeFor, nextOrderOf, orderEntry, quarterLabel, windowDemand} from './forecast.js';
+import {brandOf, brandPasses, quarterLabel} from './forecast.js';
 
 export function productList(){
   if(state._productListCache) return state._productListCache;
@@ -97,74 +97,3 @@ export function buildPivotRows(){
 }
 
 /* ---------------- 거래처별 부족 현황 ---------------- */
-/* 판매처 그룹: 실제 거래처 이름과 다른 '최종 고객/채널'(TJX, 타겟 등)을 거래처명 또는 품명 태그로 묶는다 */
-export const CUST_GROUPS = [];
-
-/* 거래처 기준 판정: 그 거래처 수요로 등급 계산 + 평균 1회 주문도 못 받거나 자동 발주점 미만이면 등급 상향 */
-export function custAdjust(x, cd){
-  const custQ = cd.분기환산수량;
-  const g = gradeFor({pn:'', available:x.available, incoming:x.incoming, avgQuarterly:custQ, orderCount:cd.주문횟수, lastSale:cd.최근발주일});
-  const R = getRules(), have = x.available + x.incoming;
-  const horizon = windowDemand(cd, QUARTER_DAYS), lead = windowDemand(cd, R.leadDays);
-  let grade = g.grade, bumped = false;
-  const cut = new Date(); cut.setMonth(cut.getMonth()-R.dormantMonths);
-  const dormant = R.dormantMonths>0 && cd.최근발주일 < cut;
-  if(cd.주문횟수 >= R.minOrders && !dormant && ['안전','안전(입고예정)','관찰','주의'].includes(grade)){
-    if(lead > have){ grade='위험'; bumped=true; }
-    else if(horizon > have && grade!=='주의'){ grade='주의'; bumped=true; }
-  }
-  return {grade, bumped, horizon, lead, short:Math.max(0, Math.round(horizon-have)), next:nextOrderOf(cd), coverAll:g.coverAll, orderGap:g.orderGap, ratio:g.ratio, coverNow:g.coverNow};
-}
-
-export function buildCustShort(){
-  // 거래처(및 그룹) -> 품목 목록 (그 수요 기준으로 등급 재계산, 히어로 수량기준은 제외하고 수요 기준으로만 판정)
-  const by = new Map();
-  const cutoff = new Date(); cutoff.setFullYear(cutoff.getFullYear()-1);
-  const push = (key, x, cd)=>{
-    const a = custAdjust(x, cd);
-    if(!by.has(key)) by.set(key, []);
-    by.get(key).push({품번:x.품번, 품명:x.품명, brand:x.brand, hero:x.hero, cd, custQ:cd.분기환산수량, available:x.available, incoming:x.incoming,
-      short:a.short, shortTotal:x.orderQty, bumped:a.bumped, horizon:a.horizon, grade:a.grade, coverAll:a.coverAll, orderGap:a.orderGap});
-  };
-  (state.forecast||[]).forEach(x=>{
-    if(!brandPasses(x.brand) || !x.orderPattern) return;
-    x.orderPattern.forEach((cd, cust)=>{ if(cust) push(cust, x, cd); });
-    // 그룹: 이 품번의 최근 12개월 판매행 중 그룹 조건에 맞는 것만 모아 하나의 수요로 계산
-    const rows = (state.salesRowsByProduct.get(x.품번)||[]).filter(r=>r.실적일자>=cutoff);
-    CUST_GROUPS.forEach(gp=>{
-      const m = rows.filter(r=> (gp.cust && gp.cust.test(r.거래처||'')) || (gp.nameTag && gp.nameTag.test(r.품명||'')));
-      if(m.length) push(gp.name, x, orderEntry(gp.name, m.map(r=>r.실적일자), m.reduce((s,r)=>s+r.수량,0)));
-    });
-  });
-  const order = {'긴급':0,'위험':1,'주의':2,'관찰':3,'안전(입고예정)':4,'안전':5,'단발성':6,'휴면':7,'데이터부족':8};
-  by.forEach(list=> list.sort((a,b)=>{
-    if(order[a.grade]!==order[b.grade]) return order[a.grade]-order[b.grade];
-    if(order[a.grade]<=3){ const ca=a.coverAll===null?1e9:a.coverAll, cb=b.coverAll===null?1e9:b.coverAll; if(ca!==cb) return ca-cb; }
-    return b.custQ-a.custQ;
-  }));
-  return by;
-}
-
-export let _csMemo=null;
-
-export function custShortSummaryCached(){
-  const sig=[state.forecast,[...ui.brandSelected].join(),JSON.stringify(settings.rules),ui.team].map(v=>v&&typeof v==='object'&&!Array.isArray(v)?v:String(v));
-  if(_csMemo && _csMemo.sig.length===sig.length && _csMemo.sig.every((v,i)=>v===sig[i])) return _csMemo.val;
-  const val=custShortSummary(buildCustShort()); _csMemo={sig,val}; return val;
-}
-
-export function custShortSummary(by){
-  const out = [];
-  by.forEach((list, cust)=>{
-    const live = list.filter(r=>r.grade!=='휴면' && r.grade!=='단발성' && r.grade!=='데이터부족');
-    const s = {cust, items:live.length, shortItems:0, urgent:0, danger:0, caution:0, watch:0, shortQty:0, totalQty:0, last:null};
-    list.forEach(r=>{ s.totalQty += r.cd.총수량; if(!s.last || r.cd.최근발주일>s.last) s.last = r.cd.최근발주일; });
-    live.forEach(r=>{
-      if(r.grade==='긴급') s.urgent++; else if(r.grade==='위험') s.danger++; else if(r.grade==='주의') s.caution++; else if(r.grade==='관찰') s.watch++;
-      if(r.grade==='긴급'||r.grade==='위험'||r.grade==='주의'){ s.shortQty += r.short; if(r.short>0) s.shortItems++; }
-    });
-    out.push(s);
-  });
-  out.sort((a,b)=> b.shortQty-a.shortQty || b.totalQty-a.totalQty);
-  return out;
-}

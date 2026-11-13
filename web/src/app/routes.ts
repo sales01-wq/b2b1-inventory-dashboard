@@ -65,7 +65,7 @@ export const ROUTES: RouteDef[] = [
   {
     id: 'customers',
     label: '거래처 분석',
-    description: '거래처별 마지막 주문 · 주문 간격 · 다음 주문 예상을 판매실적으로 계산합니다.',
+    description: '거래처별 마지막 주문 · 경과일 · 최근 6개월 판매와 주요 품목을 판매실적으로 확인합니다.',
     section: '현황',
     icon: UserGroupIcon,
     selectedIcon: UserGroupSolid,

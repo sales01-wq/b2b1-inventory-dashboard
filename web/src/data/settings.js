@@ -82,8 +82,8 @@ export function persistBox(pn){
 
 /* ---------- 기준 설정 · 히어로 품목 버튼 (index.html 4080~4120행, forecastRules 클릭 처리) ----------
    port: 입력칸 값은 인자로 받고, 안내 문구는 반환값으로 돌려줌. 화면 다시 그리기는 emit() */
-const RULE_KEYS = ['leadDays','urgentDays','cautionExtra','safeExtra','minOrders','dormantMonths'];
-/** inputs: 입력칸 글자 그대로 {leadDays, urgentDays, ...} */
+const RULE_KEYS = ['riskPct'];
+/** inputs: 입력칸 글자 그대로 {riskPct} */
 export async function saveRules(inputs){
   if(!canEditSettings()) return {error:null};
   const g = k=>Math.round(Number(inputs[k]));

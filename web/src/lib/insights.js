@@ -32,29 +32,25 @@ export function productDetail(pn){
   return {
     pn, name, item:x, months, monthTotal: months.reduce((a,m)=>a+m.qty,0),
     depletion: x ? depletionDays(x.available, x.avgQuarterly) : null,
-    customers: x ? Array.from(x.orderPattern.values()).sort((a,b)=>b.분기환산수량-a.분기환산수량).slice(0,8) : [],
+    customers: x ? Array.from(x.byCustomer.entries()).map(([거래처,m])=>({거래처, total:m.reduce((a,b)=>a+b,0)})).sort((a,b)=>b.total-a.total).slice(0,8) : [],
   };
 }
 
-/** 거래처 분석: 마지막 주문 · 평균 주문 간격 · 다음 주문 예상 · 최근 6개월 판매 · 주요 품목 (판매실적 기준) */
+/** 거래처 분석 (과거 판매 기준): 마지막 주문 · 경과일 · 주문일 수 · 최근 6개월 판매 · 주요 품목. 앞으로의 주문 예측은 하지 않음 */
 export function customerAnalysis(){
   const now = new Date(), cut = new Date(now); cut.setMonth(cut.getMonth()-6);
   const by = new Map();
   state.sales.forEach(s=>{
-    if(!brandOf(s.품번) || !brandPasses(brandOf(s.품번))) return;
+    if(!brandOf(s.품번) || !brandPasses(brandOf(s.품번)) || s.수량<=0) return; // 반품 · 마이너스 조정은 판매 분석에서 제외
     let c = by.get(s.거래처); if(!c){ c = {거래처:s.거래처, days:new Set(), qty6:0, amt6:0, prod:new Map()}; by.set(s.거래처, c); }
     c.days.add(s.실적일자.getTime());
     if(s.실적일자>=cut){ c.qty6 += s.수량; c.amt6 += num(s.금액); c.prod.set(s.품번, (c.prod.get(s.품번)||0)+s.수량); }
   });
   return Array.from(by.values()).map(c=>{
-    const days = Array.from(c.days).sort((a,b)=>a-b), n = days.length, last = days[n-1];
-    const interval = n>=3 ? Math.round((last-days[0])/DAY/(n-1)) : null; // 주문일이 3일 이상이어야 간격을 말할 수 있음
-    const next = interval ? last + interval*DAY : null;
-    const daysToNext = next ? Math.round((next-now.getTime())/DAY) : null;
-    const status = daysToNext===null ? '데이터부족' : daysToNext < -interval ? '이탈 의심' : daysToNext <= 14 ? '곧 주문' : '정상';
+    const last = Math.max(...c.days);
     const top = Array.from(c.prod.entries()).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([pn,qty])=>({pn, qty, name:(findForecast(pn)||{}).품명||''}));
-    return {거래처:c.거래처, orderDays:n, lastOrder:new Date(last), interval, next:next?new Date(next):null, daysToNext, status, qty6:c.qty6, amt6:c.amt6, top};
-  }).sort((a,b)=>{ const k = x=>x.daysToNext===null?1e9:x.daysToNext; return k(a)-k(b) || b.qty6-a.qty6; });
+    return {거래처:c.거래처, orderDays:c.days.size, lastOrder:new Date(last), daysSince:Math.max(0, Math.round((now.getTime()-last)/DAY)), qty6:c.qty6, amt6:c.amt6, top};
+  }).sort((a,b)=>b.qty6-a.qty6 || a.daysSince-b.daysSince);
 }
 
 /** 재고 점검: 6개월 무판매 재고, 소진까지 오래 걸리는 재고, 유통기한 임박 LOT */

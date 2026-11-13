@@ -36,12 +36,12 @@ describe('월별 판매', () => {
 });
 
 describe('거래처 분석', () => {
-  it('거래처마다 한 행, 주문 간격은 주문일 3일 이상일 때만', () => {
+  it('거래처마다 한 행, 경과일은 마지막 주문일 기준, 반품은 제외', () => {
     const rows = I.customerAnalysis();
     expect(new Set(rows.map(r => r.거래처)).size).toBe(rows.length);
     expect(rows.length).toBeGreaterThan(0);
-    rows.forEach(r => { if (r.orderDays < 3) { expect(r.interval).toBeNull(); expect(r.status).toBe('데이터부족'); } });
-    rows.forEach(r => { if (r.interval) expect(r.next.getTime()).toBe(r.lastOrder.getTime() + r.interval * 86400000); });
+    rows.forEach(r => expect(r.daysSince).toBe(Math.max(0, Math.round((+new Date(NOW) - r.lastOrder.getTime()) / 86400000))));
+    expect(rows[0]).not.toHaveProperty('next'); // 주문 주기 예측은 하지 않음
   });
 });
 

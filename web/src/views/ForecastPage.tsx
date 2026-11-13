@@ -14,20 +14,21 @@ import {NumberInput} from '@astryxdesign/core/NumberInput';
 import {RadioList, RadioListItem} from '@astryxdesign/core/RadioList';
 import {Selector} from '@astryxdesign/core/Selector';
 import {Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow} from '@astryxdesign/core/Table';
+import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Text} from '@astryxdesign/core/Text';
 import {TextInput} from '@astryxdesign/core/TextInput';
 import {ToggleButton, ToggleButtonGroup} from '@astryxdesign/core/ToggleButton';
 import {Token} from '@astryxdesign/core/Token';
 import {VStack} from '@astryxdesign/core/VStack';
-import {Cog6ToothIcon, ShoppingCartIcon, StarIcon} from '@heroicons/react/16/solid';
+import {Cog6ToothIcon, StarIcon} from '@heroicons/react/16/solid';
 import {PageFrame} from './PageFrame';
 import {HeroAlert} from './HeroAlert';
 import {NoData} from './NoData';
 import {BrandBadge} from './BrandBadge';
 import {useStore} from '../app/useStore';
 import {state, ui} from '../lib/store.js';
-import {groupOf, teamLabel, forecastListCsv} from '../lib/forecast.js';
-import {forecastModel, forecastDetail, forecastNextText, patternNextText, rulesModel, warehouseRows} from '../lib/views.js';
+import {getRules, groupOf, teamLabel, forecastListCsv} from '../lib/forecast.js';
+import {coverageBands, customerShortRows, forecastModel, forecastDetail, rulesModel, warehouseRows} from '../lib/views.js';
 import * as act from '../lib/actions.js';
 import {canEditSettings, saveRules, resetRules, addHero, deleteHero} from '../data/settings.js';
 import {fmt} from '../lib/format';
@@ -50,43 +51,57 @@ export function ForecastPage() {
   );
 }
 
+let subview: 'item' | 'customer' = 'item'; // 판매 현황과 같은 방식: 다른 화면에 다녀와도 마지막 보기 유지
+
 function Forecast() {
+  const [, rerender] = useState(0);
   const m = forecastModel();
   const shown = m.list.slice(0, ui.forecastPage);
   return (
     <VStack gap={4}>
       <RulesEditor />
-      <Filters m={m} />
-      {m.isOverstock && <OverstockScope />}
-      <SavedViews />
-      <SummaryBar m={m} />
-      {m.list.length === 0 ? (
-        <EmptyState isCompact title="조건에 맞는 품목이 없습니다." />
-      ) : (
-        <>
-          {/* 계산 설명: 기본은 접힘 (내용은 기존 문구 그대로) */}
-          <Collapsible defaultIsOpen={false} trigger={<Text type="supporting" weight="medium">발주할 수량 계산 방법</Text>}>
-            <Text type="supporting">
-              <Text type="supporting" weight="bold">발주할 수량 = ① 3개월 예상수요 − ② 가용재고 − ③ 입고예정</Text> (<Text type="supporting" weight="bold">{teamLabel()}</Text> 정상창고 기준). ①은 거래처별로{' '}
-              <Text type="supporting" weight="bold">마지막 주문일 + 평균 주문주기</Text>를 계산해 3개월 안에 들어올 주문만 더한 값이라, 한 번에 많이 가져가고 쉬는 거래처도 반영됩니다. 아래 작은 글씨는 가장 가까운 예상 주문입니다. 행 앞의 화살표 버튼을 누르면 거래처별 근거가 열립니다.
-            </Text>
-          </Collapsible>
-          <ForecastTable m={m} shown={shown} />
-          <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (품번 열은 고정).</Text>
-          {m.list.length > shown.length && (
-            <HStack hAlign="center">
-              <Button label={`더 보기 (${fmt(m.list.length - shown.length)}개 더)`} variant="secondary" onClick={act.forecastMore} />
-            </HStack>
-          )}
-        </>
-      )}
+      <TabList role="tablist" size="sm" hasDivider value={subview} onChange={v => { subview = v as typeof subview; rerender(n => n + 1); }}>
+        <Tab value="item" label="품목별" panelId="forecast-panel" />
+        <Tab value="customer" label="거래처별" panelId="forecast-panel" />
+      </TabList>
+      <div id="forecast-panel" role="tabpanel" aria-label={subview === 'item' ? '품목별' : '거래처별'}>
+        {subview === 'customer' ? <CustomerView go={() => { subview = 'item'; rerender(n => n + 1); }} /> : (
+          <VStack gap={3}>
+            <Filters m={m} />
+            <SavedViews />
+            {m.isOverstock && <OverstockScope />}
+            <SummaryBar m={m} />
+            {m.list.length === 0 ? (
+              <EmptyState isCompact title="조건에 맞는 품목이 없습니다." />
+            ) : (
+              <>
+                <Collapsible defaultIsOpen={false} trigger={<Text type="supporting" weight="medium">부족 수량 계산 방법</Text>}>
+                  <Text type="supporting">
+                    <Text type="supporting" weight="bold">부족 수량 = 목표 재고 − 가용재고 − 입고예정</Text> (0 미만이면 0). 목표 재고는 최근 12개월(이번 달 제외) 중 <Text type="supporting" weight="bold">모든 거래처 합계 월 판매량이 가장 많았던 달</Text>의 판매량입니다.
+                    가용재고는 {teamLabel()} 정상창고 기준이며 품목마다 한 번만 셉니다. 입고예정은 날짜가 지나지 않은 것만 더합니다. 반품 · 마이너스 조정은 판매와 따로 보며 목표에 넣지 않습니다.
+                    상태는 (가용재고 + 입고예정) ÷ 목표 재고로 정합니다: 부족 수량이 없으면 여유, 목표의 {getRules().riskPct}% 미만은 위험, 그 사이는 주의, 최근 12개월 판매가 없으면 참고.
+                    가장 많이 팔린 달이 그다음 달의 2배 이상이면 일회성 대량 판매일 수 있어 '대량 판매 확인'으로 표시합니다 (목표에서 빼지는 않습니다). 행 앞의 화살표로 근거를 볼 수 있습니다.
+                  </Text>
+                </Collapsible>
+                <ForecastTable m={m} shown={shown} />
+                <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (품번 열은 고정).</Text>
+                {m.list.length > shown.length && (
+                  <HStack hAlign="center">
+                    <Button label={`더 보기 (${fmt(m.list.length - shown.length)}개 더)`} variant="secondary" onClick={act.forecastMore} />
+                  </HStack>
+                )}
+              </>
+            )}
+          </VStack>
+        )}
+      </div>
     </VStack>
   );
 }
 
 type Model = ReturnType<typeof forecastModel>;
 
-/* ---------------- 필터: 상태 · 브랜드 · 거래처 · 검색 · 품번 칩 · 판매 없는 품목 · 거래처별 부족 ---------------- */
+/* ---------------- 필터: 상태 · 거래처 · 검색 · 품번 칩 · 판매 없는 품목 (팀 · 브랜드는 화면 위 공통 필터) ---------------- */
 function Filters({m}: {m: Model}) {
   const [pnText, setPnText] = useState('');
   const onPnKey = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -101,13 +116,6 @@ function Filters({m}: {m: Model}) {
             <ToggleButtonGroup label="상태" size="sm" value={ui.forecastGrade || ALL} onChange={v => v !== null && act.setForecastGrade(toUi(v))}>
               {m.gradeChips.map(([v, l, n]) => <ToggleButton key={v || ALL} value={v || ALL} label={`${l} ${fmt(n)}`} />)}
               <ToggleButton value="과잉재고" label="과잉재고" />
-            </ToggleButtonGroup>
-          </HStack>
-          <HStack gap={2} vAlign="center" wrap="wrap">
-            <Text type="label" color="secondary">브랜드</Text>
-            <ToggleButtonGroup label="브랜드" size="sm" value={ui.forecastBrand || ALL} onChange={v => v !== null && act.setForecastBrand(toUi(v))}>
-              <ToggleButton value={ALL} label="전체" />
-              {m.brands.map((b: string) => <ToggleButton key={b} value={b} label={b} />)}
             </ToggleButtonGroup>
           </HStack>
         </HStack>
@@ -134,21 +142,6 @@ function Filters({m}: {m: Model}) {
           <HStack gap={1} wrap="wrap" vAlign="center">
             {[...ui.forecastPnChips].map((pn: string) => <Token key={pn} size="sm" label={pn} onRemove={() => act.removeForecastPnChip(pn)} />)}
             <Button label="전체 지우기" size="sm" variant="ghost" onClick={act.clearForecastPnChips} />
-          </HStack>
-        )}
-        {(m.topShort.length > 0 || ui.forecastCustomer) && (
-          <HStack gap={1} wrap="wrap" vAlign="center">
-            <Text type="supporting">거래처별 부족 (눌러서 보기)</Text>
-            {m.topShort.map((c: {cust: string; shortItems: number; shortQty: number}) => (
-              <ToggleButton
-                key={c.cust}
-                size="sm"
-                label={`${c.cust.length > 22 ? c.cust.slice(0, 21) + '…' : c.cust} ${c.shortItems}개 품목 · ${fmt(c.shortQty)}`}
-                isPressed={ui.forecastCustomer === c.cust}
-                onPressedChange={() => act.setForecastCustomer(c.cust)}
-              />
-            ))}
-            {ui.forecastCustomer && <Button label="✕ 전체 보기" size="sm" variant="ghost" onClick={() => act.setForecastCustomer('')} />}
           </HStack>
         )}
       </VStack>
@@ -208,53 +201,52 @@ export function GradeBadge({grade}: {grade: string}) {
   );
 }
 
-interface FRow {품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; horizon: number; available: number; incoming: number; avgQuarterly: number}
+interface Spike {month: {y: number; m: number}; qty: number; second: number; customers: {cust: string; qty: number}[]; oneMonth: boolean}
+interface FRow {discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; ratio: number | null}
 
-// 열 너비(px): 고정 레이아웃이라 긴 머리글 · 품명이 다른 칸을 밀어내지 않음. 합계가 표의 최소 너비 (좁으면 옆으로 스크롤)
-const W = {pn: 150, brand: 100, name: 160, grade: 84, order: 108, horizon: 150, avail: 96, incoming: 96, avg: 76, month: 64};
-const tableMin = (months: number) => W.pn + W.brand + W.name + W.grade + W.order + W.horizon + W.avail + W.incoming + W.avg + W.month * months;
+// 열 너비(px): 고정 레이아웃이라 긴 품명이 다른 칸을 밀어내지 않음. 합계가 표의 최소 너비 (좁으면 옆으로 스크롤)
+const W = {pn: 250, grade: 112, avail: 92, short: 108, month: 62};
+const tableMin = (months: number) => W.pn + W.grade + W.avail + W.short + W.month * months;
 
 function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
-  const cols = 9 + m.months.length;
+  const cols = 4 + m.months.length;
   return (
     <Card padding={0}>
       <Table className="sticky-first wrap-head fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: tableMin(m.months.length)}}>
         <TableHeader>
           <TableRow>
-            <TableHeaderCell className="sticky-col" style={{width: W.pn}}>품번</TableHeaderCell>
-            <TableHeaderCell style={{width: W.brand}}>구분</TableHeaderCell>
-            <TableHeaderCell style={{width: W.name}}>품명</TableHeaderCell>
+            <TableHeaderCell className="sticky-col" style={{width: W.pn}}>품번 / 품명</TableHeaderCell>
             <TableHeaderCell style={{width: W.grade}}>상태</TableHeaderCell>
-            <TableHeaderCell className="num" style={{width: W.order}}><span title="① − ② − ③">발주할 수량<br /><Text type="supporting">= ① − ② − ③</Text></span></TableHeaderCell>
-            <TableHeaderCell className="num" style={{width: W.horizon}}><span title="마지막 주문일 + 평균 주문주기로 다음 주문 시점을 계산해, 3개월 안에 나갈 것으로 예상되는 양">① 3개월<br />예상수요</span></TableHeaderCell>
-            <TableHeaderCell className="num" style={{width: W.avail}}>② 가용재고</TableHeaderCell>
-            <TableHeaderCell className="num" style={{width: W.incoming}}>③ 입고예정</TableHeaderCell>
-            <TableHeaderCell className="num" style={{width: W.avg}}>월평균<br />판매</TableHeaderCell>
-            {m.months.map((mm: {y: number; m: number}) => <TableHeaderCell key={mm.y + '-' + mm.m} className="num dense" style={{width: W.month}}>{mm.m + 1}월<br /><Text type="supporting">판매</Text></TableHeaderCell>)}
+            <TableHeaderCell className="num" style={{width: W.avail}}>가용재고</TableHeaderCell>
+            <TableHeaderCell className="num" style={{width: W.short}}>부족 수량</TableHeaderCell>
+            {m.months.map((mm: {y: number; m: number}) => <TableHeaderCell key={mm.y + '-' + mm.m} className="num dense" style={{width: W.month}}>{mm.m + 1}월</TableHeaderCell>)}
           </TableRow>
         </TableHeader>
         <TableBody>
           {shown.map(x => {
             const open = ui.forecastExpanded.has(x.품번);
-            const next = forecastNextText(x);
             return [
               <TableRow key={x.품번}>
                 <TableCell className="sticky-col">
                   <HStack gap={1} vAlign="center">
-                    <IconButton label={open ? '근거 닫기' : '거래처별 근거 보기'} size="sm" variant="ghost" icon={<Icon icon={open ? 'chevronDown' : 'chevronRight'} />} onClick={() => act.toggleForecastDetail(x.품번)} />
-                    <ProductLink pn={x.품번} className="nowrap" />
-                    {x.orderQty > 0 && <IconButton label={`${x.품번} 발주 목록에 담기`} size="sm" variant="ghost" icon={<ShoppingCartIcon width={16} height={16} aria-hidden />} onClick={() => addToCart(x.품번)} />}
-                    {x.hero && <span className="hero-mark" title="히어로 품목: 수량 기준으로 판정" role="img" aria-label="히어로 품목"><StarIcon width={14} height={14} aria-hidden /></span>}
+                    <IconButton label={open ? '근거 닫기' : '근거 보기'} size="sm" variant="ghost" icon={<Icon icon={open ? 'chevronDown' : 'chevronRight'} />} onClick={() => act.toggleForecastDetail(x.품번)} />
+                    <VStack gap={0}>
+                      <HStack gap={1} vAlign="center">
+                        <ProductLink pn={x.품번} className="nowrap" />
+                        {x.hero && <span className="hero-mark" title="히어로 품목: 수량 기준으로 판정" role="img" aria-label="히어로 품목"><StarIcon width={14} height={14} aria-hidden /></span>}
+                      </HStack>
+                      <span className="pn-name">{x.품명}</span>
+                    </VStack>
                   </HStack>
                 </TableCell>
-                <TableCell><BrandBadge brand={x.brand} /></TableCell>
-                <TableCell>{x.품명}</TableCell>
-                <TableCell><GradeBadge grade={x.grade} /></TableCell>
-                <TableCell className={x.orderQty > 0 ? 'num strong text-danger order-qty' : 'num muted'}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}</TableCell>
-                <TableCell className="num">{fmt(x.horizon)}{next && <div className="next"><Text type="supporting">{next}</Text></div>}</TableCell>
+                <TableCell>
+                  <VStack gap={0.5} hAlign="start">
+                    <GradeBadge grade={x.grade} />
+                    {x.spike && <Badge variant="yellow" label={x.spike.oneMonth ? '판매 한 달뿐' : '대량 판매 확인'} />}
+                  </VStack>
+                </TableCell>
                 <TableCell className="num">{fmt(x.available)}</TableCell>
-                <TableCell className="num">{x.incoming ? fmt(x.incoming) : '-'}</TableCell>
-                <TableCell className="num">{fmt(x.avgQuarterly / 3)}</TableCell>
+                <TableCell className={x.orderQty > 0 ? 'num short-qty' : 'num muted'}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}</TableCell>
                 {m.monthly(x).map((v: number, i: number) => <TableCell key={i} className="num muted dense">{v ? fmt(v) : '-'}</TableCell>)}
               </TableRow>,
               open && (
@@ -270,30 +262,50 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
   );
 }
 
-/** 펼친 행: 거래처별 발주 패턴 · 최근 판매 · 창고별 가용재고 · 입고예정 (기존 forecastDetailRow) */
+const ym = (d: {y: number; m: number}) => `${String(d.y).slice(2)}.${d.m + 1}`;
+
+/** 펼친 행: 부족 수량 근거 · 대량 판매 확인 · 거래처별 월 판매 · 창고별 재고 · 입고예정 · 최근 판매 */
 function Detail({x}: {x: FRow}) {
   const d = forecastDetail(x);
   const wh = warehouseRows(x.품번);
   const ml = state.scheduleMonthLabels;
+  const sp = x.spike;
   return (
     <Grid columns={{minWidth: 300, repeat: 'fit'}} gap={4}>
+      <VStack gap={2}>
+        <HStack gap={2} vAlign="center" wrap="wrap"><BrandBadge brand={x.brand} /><Button label="발주 목록에 담기" size="sm" variant="secondary" isDisabled={x.orderQty <= 0} onClick={() => addToCart(x.품번)} /></HStack>
+        <Heading level={4}>부족 수량 근거</Heading>
+        <MiniTable num={[1]} head={['항목', '수량']} rows={[
+          ['목표 재고 (최근 12개월 월 최대 판매)', fmt(x.target)],
+          ['− 가용재고', fmt(x.available)],
+          ['− 입고예정 (유효)', fmt(x.incoming)],
+          [<strong>부족 수량</strong>, <strong>{fmt(x.orderQty)}</strong>],
+        ]} />
+        {x.discontinued && <Text type="supporting">제품일정표에서 단종 품목이라 발주 대상(부족 수량)에서 제외했습니다.</Text>}
+        {x.incomingExcluded > 0 && <Text type="supporting">날짜가 지난 입고예정 {fmt(x.incomingExcluded)}개는 이미 입고됐거나 불확실해서 뺐습니다.</Text>}
+        {x.returns > 0 && <Text type="supporting">반품 · 마이너스 조정 {fmt(x.returns)}개는 판매와 따로 보며 목표에 넣지 않았습니다.</Text>}
+        {sp && (
+          <Text type="supporting"><span className="text-warn">대량 판매 확인:</span> 목표가 된 {sp.month.y}년 {sp.month.m + 1}월 판매 {fmt(sp.qty)}개가 그다음 많은 달({fmt(sp.second)}개)의 {sp.second > 0 ? `${(sp.qty / sp.second).toFixed(1)}배` : '무한대(다른 달 판매 없음)'}입니다
+            {sp.customers.length > 0 && <> · 주요 거래처 {sp.customers.map(c => `${c.cust} ${fmt(c.qty)}`).join(', ')}</>}. 일회성 주문이면 목표가 과대할 수 있으니 확인해 주세요 (계산에는 그대로 포함).</Text>
+        )}
+      </VStack>
       <VStack gap={2} className="detail-wide">
-        <Heading level={4}>거래처별 발주 패턴 (최근 12개월 · 주기로 다음 주문 예측)</Heading>
-        {d.pattern.length === 0 ? (
+        <Heading level={4}>월별 판매 (최근 12개월, 이번 달 제외)</Heading>
+        {d.customers.length === 0 ? (
           <Text type="supporting">최근 12개월간 판매 이력이 없습니다.</Text>
         ) : (
           <>
             <MiniTable
-              num={[1, 2, 3, 4, 5]}
-              head={['거래처', '주문횟수', '평균 발주수량', '평균 발주주기', '다음 예상 주문', '분기 환산']}
-              rows={d.pattern.map((p: {거래처: string; 주문횟수: number; 평균발주수량: number; 평균발주주기: number | null; 분기환산수량: number; next: {overdue: boolean} | null}) => [
-                <>{p.거래처}{ui.forecastCustomer && p.거래처 === ui.forecastCustomer && <> <Badge variant="green" label="선택됨" /></>}</>,
-                fmt(p.주문횟수), fmt(Math.round(p.평균발주수량)), p.평균발주주기 ? Math.round(p.평균발주주기) + '일' : '-',
-                <span className={p.next && p.next.overdue ? 'text-danger' : undefined}>{patternNextText(p.next)}</span>,
-                <strong>{fmt(Math.round(p.분기환산수량))}</strong>,
-              ])}
+              num={d.months.map((_: unknown, i: number) => i + 1).concat([d.months.length + 1])}
+              head={['거래처', ...d.months.map(ym), '합계']}
+              rows={[
+                ...d.customers.map((c: {거래처: string; months: number[]; total: number}) => [
+                  <>{c.거래처}{ui.forecastCustomer && c.거래처 === ui.forecastCustomer && <> <Badge variant="green" label="선택됨" /></>}</>,
+                  ...c.months.map(v => (v ? fmt(v) : '-')), fmt(c.total)]),
+                [<strong>전체 합계</strong>, ...d.monthTotals.map((v: number) => <strong>{v ? fmt(v) : '-'}</strong>), <strong>{fmt(d.monthTotals.reduce((a: number, b: number) => a + b, 0))}</strong>],
+              ]}
             />
-            <Text type="supporting">거래일자별 상세 (최근 20건)</Text>
+            <Text type="supporting">거래일자별 상세 (최근 6개월 · 최근 20건)</Text>
             <MiniTable num={[2]} head={['실적일자', '거래처', '수량']} rows={d.details.map((s: {실적일자: Date; 거래처: string; 수량: number}) => [s.실적일자.toLocaleDateString('ko-KR'), s.거래처, fmt(s.수량)])} />
           </>
         )}
@@ -308,7 +320,7 @@ function Detail({x}: {x: FRow}) {
             ...(wh.total !== null ? [[<strong>합계</strong>, <strong>{fmt(wh.total)}</strong>]] : []),
           ]}
         />
-        <Text type="supporting">위 표는 전체 창고 기준이며, 상단의 "현재 가용재고" 숫자는 {teamLabel()} 정상창고만 합산한 값입니다.</Text>
+        <Text type="supporting">위 표는 전체 창고 기준이며, 표의 "가용재고" 숫자는 {teamLabel()} 정상창고만 합산한 값입니다.</Text>
       </VStack>
       <VStack gap={2}>
         <Heading level={4}>입고예정 상세 ({ml[0]}~{ml[2]})</Heading>
@@ -317,9 +329,43 @@ function Detail({x}: {x: FRow}) {
         ) : (
           <MiniTable num={[2]} head={['월', '날짜', '수량']} rows={d.incomingRows.map((r: {m: string; d: string; q: number}) => [r.m, r.d || '날짜 미정', fmt(r.q)])} />
         )}
-        <Text type="supporting">예상 분기수요는 거래처별 평균 발주수량 × (91.25일 ÷ 평균 발주주기)의 합입니다.</Text>
       </VStack>
     </Grid>
+  );
+}
+
+/* ---------------- 거래처별: 거래처가 산 품목 중 부족한 품목 (부족 수량은 품목 기준이라 거래처끼리 더하지 않음) ---------------- */
+function CustomerView({go}: {go: () => void}) {
+  const rows: {cust: string; items: number; short: number; last: Date | null}[] = customerShortRows();
+  if (rows.length === 0) return <EmptyState isCompact title="최근 12개월 판매한 거래처가 없습니다." />;
+  return (
+    <VStack gap={3}>
+      <Card padding={0}>
+        <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 620}}>
+          <TableHeader>
+            <TableRow>
+              <TableHeaderCell className="sticky-col" style={{width: 240}}>거래처</TableHeaderCell>
+              <TableHeaderCell className="num" style={{width: 110}}>구매 품목</TableHeaderCell>
+              <TableHeaderCell className="num" style={{width: 130}}>부족 품목</TableHeaderCell>
+              <TableHeaderCell style={{width: 110}}>마지막 주문</TableHeaderCell>
+              <TableHeaderCell style={{width: 110}} />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map(r => (
+              <TableRow key={r.cust}>
+                <TableCell className="sticky-col">{r.cust}</TableCell>
+                <TableCell className="num">{fmt(r.items)}</TableCell>
+                <TableCell className={r.short > 0 ? 'num short-qty' : 'num muted'}>{r.short > 0 ? fmt(r.short) : '-'}</TableCell>
+                <TableCell>{r.last ? r.last.toLocaleDateString('ko-KR') : '-'}</TableCell>
+                <TableCell><Button label="품목 보기" size="sm" variant="ghost" onClick={() => { act.setForecastCustomer(r.cust); go(); }} /></TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+      <Text type="supporting">부족 품목은 그 거래처가 최근 12개월 안에 산 품목 중 부족 수량이 있는 품목 수입니다. 재고는 모든 거래처가 함께 쓰므로 부족 수량은 거래처별로 나누거나 더하지 않고, '품목 보기'에서 품목 기준으로 확인합니다.</Text>
+    </VStack>
   );
 }
 
@@ -341,9 +387,10 @@ function MiniTable({head, rows, num}: {head: string[]; rows: ReactNode[][]; num:
 }
 
 /* ---------------- 기준 설정 (고급) · 히어로 품목 (기존 renderForecastRules) ---------------- */
-const RULE_LABEL: Record<string, string> = {leadDays: '리드타임(일)', urgentDays: '긴급 기준(일)', cautionExtra: '주의 추가 일수', safeExtra: '관찰 추가 일수', dormantMonths: '휴면 기준(개월)', minOrders: '최소 주문 횟수'};
+const RULE_LABEL: Record<string, string> = {riskPct: '위험 기준(%)'};
 function RulesEditor() {
-  const {R, T, heroRows, alertN} = rulesModel();
+  const {R, heroRows, alertN} = rulesModel();
+  const cb = coverageBands();
   const edit = canEditSettings();
   const [form, setForm] = useState<Record<string, number | null>>({...R});
   const [msg, setMsg] = useState<{text: string; tone: 'danger' | 'muted' | 'safe'} | null>(null);
@@ -375,15 +422,8 @@ function RulesEditor() {
     <Card>
       <Collapsible trigger={trigger} isOpen={!!ui.rulesOpen} onOpenChange={o => { act.setRulesOpen(o); setForm({...rulesModel().R}); setMsg(null); }}>
         <VStack gap={2} paddingBlockStart={3}>
-          <Text type="body">생산~입고 <strong>리드타임</strong> {num('leadDays')}일 — 위험하면 이 기간 뒤에 입고된다고 보고 판정합니다.</Text>
-          <Text type="supporting">소진예상일 = (현재 가용재고 + 입고예정) ÷ 일평균 수요 &nbsp;(일평균 수요 = 예상 분기수요 ÷ 91일) · 발주여유일 = 소진예상일 − 리드타임</Text>
-          <Text type="body"><Badge variant="red" label="긴급" /> 소진예상 <strong>{R.urgentDays}일</strong> 미만 (기준 {num('urgentDays')}일) — 위험해도 입고 전에 결품. 긴급 대응 필요</Text>
-          <Text type="body"><Badge variant="red" label="위험" /> 소진예상 <strong>{T.urgent}~{T.risk}일</strong> — 리드타임보다 재고가 적음. <strong>지금 바로 발주</strong>해야 함 (발주 지연)</Text>
-          <Text type="body"><Badge variant="yellow" label="주의" /> 소진예상 <strong>{T.risk}~{T.caution}일</strong> (리드타임 + {num('cautionExtra', 64)}일) — 한 달 안에 발주</Text>
-          <Text type="body"><Badge variant="blue" label="관찰" /> 소진예상 <strong>{T.caution}~{T.watch}일</strong> (리드타임 + {num('safeExtra', 64)}일까지) — 다음 발주 시점 검토</Text>
-          <Text type="body"><Badge variant="teal" label="안전(입고예정)" /> 현재고만으론 {T.watch}일 미만이지만 입고예정까지 더하면 충분 · <Badge variant="green" label="안전" /> 현재고만으로 {T.watch}일 이상</Text>
-          <Text type="body"><Badge variant="neutral" label="휴면" /> 마지막 출고가 {num('dormantMonths', 60)}개월 이상 전이면 긴급·위험·주의·관찰 대신 <strong>휴면(참고)</strong>으로 분류 (단종·옛 품번 때문에 생기는 혼선 방지, 0이면 사용 안 함)</Text>
-          <Text type="body"><Badge variant="neutral" label="단발성" /> 최근 12개월 주문이 {num('minOrders', 60)}회 미만이면 긴급·위험·주의·관찰 대신 <strong>단발성(참고)</strong>으로 분류 (한 번 크게 나간 건 때문에 위험이 과대 표시되는 것을 방지)</Text>
+          <Text type="body"><Badge variant="red" label="위험" /> (가용재고 + 입고예정)이 목표 재고의 {num('riskPct', 64)}% 미만 · <Badge variant="yellow" label="주의" /> {R.riskPct}% 이상 ~ 100% 미만 · <Badge variant="green" label="여유" /> 100% 이상 (부족 수량 없음) · <Badge variant="neutral" label="참고" /> 최근 12개월 판매 없음</Text>
+          <Text type="supporting">현재 품목 분포 (비율 = (가용재고 + 입고예정) ÷ 목표 재고): {(cb.bands as {label: string; n: number}[]).map(b => `${b.label} ${fmt(b.n)}개`).join(' · ')} · 판매 없음 ${fmt(cb.ref)}개. 위험 기준은 이 분포를 보고 정하세요.</Text>
           {edit ? (
             <HStack gap={2} vAlign="center" wrap="wrap">
               <Button label="기준 저장" size="sm" variant="primary" onClick={save} />

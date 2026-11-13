@@ -110,10 +110,10 @@ try {
 
   // ---- 전체 개요: 운영 대시보드가 같은 데이터로 그리는 값 (views.test.js 에서 비교 확인된 숫자)
   const main = await text(page.getByRole('main'));
-  for (const re of [/품목 11개/, /위험 1 .*신호 품목 5개 중 20% 소진예상 60일 미만/, /주의 1 .*신호 품목 5개 중 20% 소진예상 60~90일/, /여유 3 .*신호 품목 5개 중 60% 소진예상 90일 이상/, /참고 6 휴면 · 단발성 · 데이터 부족 \(신호 계산에서 제외\)/, /거래처 4곳 · 최근 6개월 총판매 7,080/])
+  for (const re of [/품목 11개/, /위험 1 .*신호 품목 5개 중 20% 재고가 목표의 50% 미만/, /주의 0 .*신호 품목 5개 중 0% 재고가 목표의 50~100%/, /여유 4 .*신호 품목 5개 중 80% 부족 수량 없음/, /참고 6 최근 12개월 판매 없음 \(신호 계산에서 제외\)/, /거래처 4곳 · 최근 6개월 총판매 7,080/])
     assert.match(main, re);
   // 발주 필요 (위험+주의) 목록 = 발주 현황 '발주 필요 (위험+주의)' 칩과 같은 품목 · 순서
-  assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB004', 'SB001']);
+  assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB002']);
   await checkStickyColumns(page);
   await checkNoClippedCells(page);
   await shot(page, 'overview');
@@ -125,7 +125,7 @@ try {
   await page.getByRole('button', {name: '모든 브랜드', exact: true}).click();
   assert.deepEqual([await pressed('모든 브랜드'), await pressed('밀크터치')], [1, 0]);
   // 신호 칸 → 발주 현황이 그 상태로 걸러짐 (개요 숫자 = 표 행 수)
-  for (const [grade, pns] of [['주의', ['SB001']], ['위험', ['SB004']]]) {
+  for (const [grade, pns] of [['위험', ['SB002']]]) {
     await page.goto(base + '/#/overview');
     await page.getByRole('link', {name: new RegExp(`^${grade} \\d+개 — 발주 현황에서 보기$`)}).click();
     await page.waitForURL(/#\/forecast$/);
@@ -135,7 +135,7 @@ try {
   await page.goto(base + '/#/overview');
   await page.getByRole('link', {name: '발주 현황에서 전체 보기'}).click();
   await page.waitForURL(/#\/forecast$/);
-  assert.deepEqual((await page.locator('tbody tr td.sticky-col code').allInnerTexts()).slice(0, 2), ['SB004', 'SB001']);
+  assert.deepEqual((await page.locator('tbody tr td.sticky-col code').allInnerTexts()).slice(0, 2), ['SB002']);
 
   // ---- 판매 현황 · 거래처별: 합계 많은 순 첫 행 = SB001 (B2B1팀+EMP 가용재고 1,500, 판매 합계 6,400)
   await page.goto(base + '/#/customer');
@@ -205,47 +205,49 @@ try {
   await checkNoClippedCells(page);
   await shot(page, 'sales-sku');
 
-  // ---- 발주 현황: 기본 '발주 필요' → SB004(위험) · SB001(주의), 발주 필요 1개 품목 / 900개
+  // ---- 발주 현황: 기본 '발주 필요' → SB002(위험) 1개 품목 / 280개 (목표 재고 − 가용 − 입고예정)
   await page.goto(base + '/#/forecast');
-  assert.match(await text(page.getByRole('main')), /지금 발주 필요 1개 품목 \/ 총 900개/);
-  assert.deepEqual((await page.locator('tbody tr td.sticky-col code').allInnerTexts()).slice(0, 2), ['SB004', 'SB001']);
+  assert.match(await text(page.getByRole('main')), /지금 발주 필요 1개 품목 \/ 총 280개/);
+  assert.deepEqual((await page.locator('tbody tr td.sticky-col code').allInnerTexts()).slice(0, 2), ['SB002']);
+  assert.deepEqual(await page.locator('thead th').allInnerTexts().then(t => t.slice(0, 4).map(x => x.trim())), ['품번 / 품명', '상태', '가용재고', '부족 수량']); // 기본 표: 품번 · 상태 · 가용재고 · 부족 수량 + 최근 6개월
   await checkStickyColumns(page);
-  await checkNoClippedCells(page); // 월 판매 · 입고예정 숫자, '발주할 수량 = ① − ② − ③' 머리글
-  // 계산 설명: 처음엔 접힘, 누르면 펼쳐짐 (내용은 그대로)
-  assert.equal(await page.getByText(/^발주할 수량 = ① 3개월 예상수요/).isVisible(), false);
-  await page.getByText('발주할 수량 계산 방법').click();
-  await page.getByText(/^발주할 수량 = ① 3개월 예상수요/).waitFor();
-  // 행 펼치기: 창고별 가용재고 합계 = 전체 창고 2,300
-  await page.locator('tr', {has: page.getByText('SB001', {exact: true})}).getByRole('button', {name: '거래처별 근거 보기'}).click();
+  await checkNoClippedCells(page);
+  // 계산 설명: 처음엔 접힘, 누르면 펼쳐짐
+  assert.equal(await page.getByText(/^부족 수량 = 목표 재고/).isVisible(), false);
+  await page.getByText('부족 수량 계산 방법').click();
+  await page.getByText(/^부족 수량 = 목표 재고/).waitFor();
+  // 상태 '전체' → 행 펼치기: 창고별 가용재고 합계 = 전체 창고 2,300
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
+  await page.locator('tr', {has: page.getByText('SB001', {exact: true})}).getByRole('button', {name: '근거 보기'}).click();
   await page.getByRole('heading', {name: '창고별 가용재고 (전체 창고)'}).waitFor();
+  await page.getByRole('heading', {name: '부족 수량 근거'}).waitFor();
   assert.match(await text(page.getByRole('main')), /합계 2,300/);
   await checkNoClippedCells(page);
-  await checkNoBrokenWords(page); // 펼친 근거 표의 거래처 이름 · 머리글
+  await checkNoBrokenWords(page);
   await shot(page, 'forecast-detail');
   // 표 내려받기(CSV)
   [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', {name: '표 내려받기(CSV)'}).click()]);
-  assert.match(await page.evaluate(() => window.__lastDownloadName), /^발주현황_전체_\d{4}-\d{2}-\d{2}\.csv$/);
+  assert.match(await page.evaluate(() => window.__lastDownloadName), /^발주현황_.*_\d{4}-\d{2}-\d{2}\.csv$/);
   csv = await readDownload(download);
-  assert.ok(csv.startsWith('﻿구분,품번,품명,월평균 판매,3개월 예상수요,가용재고,입고예정,발주할 수량,상태\r\n'), csv.slice(0, 60));
-  assert.equal(csv.split('\r\n').length, 3); // 머리글 + 2행
+  assert.ok(csv.startsWith('﻿구분,품번,품명,상태,가용재고,입고예정(유효),목표 재고,부족 수량,확인 필요\r\n'), csv.slice(0, 80));
   // 과잉재고 · EMP 정상창고만 → 판매 없이 EMP 재고만 있는 SB006
   await page.getByRole('button', {name: '과잉재고'}).click();
   await page.getByRole('radio', {name: 'EMP 정상창고만'}).check();
   assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['SB006']);
   await page.getByRole('button', {name: /^발주 필요 \(위험\+주의\)/}).click();
-  // 기준 설정: 잘못된 값 → 안내, 리드타임 45 저장 → 구간 문구 변경 + 저장, 기본값으로
+  // 기준 설정: 잘못된 값 → 안내, 위험 기준 30% 저장 → 문구 변경 + 저장, 기본값으로
   await page.getByText('기준 설정 (고급) · 히어로 품목').click();
-  const lead = page.getByRole('textbox', {name: '리드타임(일)'}).or(page.getByRole('spinbutton', {name: '리드타임(일)'}));
-  await lead.fill('20'); await lead.press('Tab');
+  const risk = page.getByRole('textbox', {name: '위험 기준(%)'}).or(page.getByRole('spinbutton', {name: '위험 기준(%)'}));
+  await risk.fill('0'); await risk.press('Tab');
   await page.getByRole('button', {name: '기준 저장'}).click();
-  await page.getByText(/^긴급 기준은 리드타임보다 작아야 하고/).waitFor();
-  await lead.fill('45'); await lead.press('Tab');
+  await page.getByText('위험 기준은 1~99(%) 사이여야 합니다.').waitFor();
+  await risk.fill('30'); await risk.press('Tab');
   await page.getByRole('button', {name: '기준 저장'}).click();
   await page.getByText('저장되었습니다.').waitFor();
-  assert.match(await text(page.getByRole('main')), /소진예상 30~45일/);
-  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('inv_settings_v1')).rules.leadDays), 45);
+  assert.match(await text(page.getByRole('main')), /주의 30% 이상 ~ 100% 미만/);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('inv_settings_v1')).rules.riskPct), 30);
   await page.getByRole('button', {name: '기본값으로'}).click();
-  await page.getByText('소진예상 30~60일').waitFor();
+  await page.getByText(/주의 50% 이상 ~ 100% 미만/).waitFor();
   // 히어로 품목 추가 → 알람 → 삭제
   await page.getByRole('textbox', {name: '히어로 품번'}).fill('mt002');
   const heroMin = page.getByRole('textbox', {name: '위험 수량(이하)'}).or(page.getByRole('spinbutton', {name: '위험 수량(이하)'}));
@@ -263,6 +265,13 @@ try {
   await page.getByRole('button', {name: '삭제'}).click();
   await page.getByText('등록된 히어로 품목이 없습니다.').waitFor();
   assert.equal(await page.getByText(/히어로 품목 위험 알람/).count(), 0);
+  // 거래처별 탭: 거래처마다 구매 품목 · 부족 품목, '품목 보기' → 품목별 탭에서 그 거래처로 걸러짐
+  await page.getByRole('tab', {name: '거래처별'}).click();
+  await page.getByRole('columnheader', {name: '부족 품목'}).waitFor();
+  await page.locator('tr', {has: page.getByText('B유통', {exact: true})}).getByRole('button', {name: '품목 보기'}).click();
+  await page.getByRole('tab', {name: '품목별', selected: true}).waitFor();
+  assert.ok((await page.locator('tbody tr td.sticky-col code').count()) > 0);
+  await page.getByRole('button', {name: /^발주 필요 \(위험\+주의\)/}).click();
 
   // ---- 팀 전환 · 업로드 완료 문구
   await page.goto(base + '/#/overview');

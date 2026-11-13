@@ -16,8 +16,8 @@ import {BrandBadge} from './BrandBadge';
 import {GradeBadge} from './ForecastPage';
 import {useStore} from '../app/useStore';
 import {state} from '../lib/store.js';
-import {getRules, ruleThresholds} from '../lib/forecast.js';
-import {forecastNextText, overviewModel, urgentItems} from '../lib/views.js';
+import {getRules} from '../lib/forecast.js';
+import {overviewModel, urgentItems} from '../lib/views.js';
 import {openForecastSignal} from '../lib/actions.js';
 import {ProductLink} from './ProductLink';
 import {fmt} from '../lib/format';
@@ -44,10 +44,10 @@ export function OverviewPage() {
 
 function Overview() {
   const m = overviewModel();
-  const T = ruleThresholds(getRules());
+  const R = getRules();
   const signalTotal = m.nNow + m.nSoon + m.nOk;
   // 각 신호의 뜻: 발주 현황 '기준 설정'의 문구와 같은 기준 (설정을 바꾸면 같이 바뀜)
-  const meaning: Record<Signal, string> = {위험: `소진예상 ${T.risk}일 미만`, 주의: `소진예상 ${T.risk}~${T.caution}일`, 여유: `소진예상 ${T.caution}일 이상`};
+  const meaning: Record<Signal, string> = {위험: `재고가 목표의 ${R.riskPct}% 미만`, 주의: `재고가 목표의 ${R.riskPct}~100%`, 여유: '부족 수량 없음'};
   return (
     <VStack gap={6}>
       <VStack gap={2}>
@@ -66,7 +66,7 @@ function Overview() {
                 </SignalTile>
               );
             })}
-            <SignalTile grade="참고" label="참고" dot="neutral" value={m.nRef} note="휴면 · 단발성 · 데이터 부족 (신호 계산에서 제외)" />
+            <SignalTile grade="참고" label="참고" dot="neutral" value={m.nRef} note="최근 12개월 판매 없음 (신호 계산에서 제외)" />
           </div>
         </Card>
         <Text type="supporting">거래처 {fmt(m.totalCustomers)}곳 · 최근 6개월 총판매 {fmt(m.sold6moTotal)}</Text>
@@ -118,16 +118,15 @@ function UrgentItems() {
         <Card><EmptyState isCompact headingLevel={3} title="위험 · 주의 품목이 없습니다." description="위험 · 주의 품목이 생기면 여기에 급한 순으로 나옵니다." /></Card>
       ) : (
         <Card padding={0}>
-          <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 760}}>
+          <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 600}}>
             <TableHeader>
               <TableRow>
                 <TableHeaderCell className="sticky-col" style={{width: 104}}>품번</TableHeaderCell>
                 <TableHeaderCell className="hide-narrow" style={{width: 96}}>브랜드</TableHeaderCell>
                 <TableHeaderCell style={{width: 200}}>품명</TableHeaderCell>
                 <TableHeaderCell style={{width: 88}}>상태</TableHeaderCell>
-                <TableHeaderCell className="num" style={{width: 92}}>발주할 수량</TableHeaderCell>
+                <TableHeaderCell className="num" style={{width: 92}}>부족 수량</TableHeaderCell>
                 <TableHeaderCell className="num" style={{width: 84}}>가용재고</TableHeaderCell>
-                <TableHeaderCell style={{width: 160}}>다음 주문</TableHeaderCell>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -139,7 +138,6 @@ function UrgentItems() {
                   <TableCell><GradeBadge grade={x.grade} /></TableCell>
                   <TableCell className={x.orderQty > 0 ? 'num strong' : 'num muted'}>{fmt(x.orderQty)}</TableCell>
                   <TableCell className="num">{fmt(x.available)}</TableCell>
-                  <TableCell><Text type="supporting">{forecastNextText(x) || '-'}</Text></TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -154,7 +152,7 @@ function UrgentItems() {
 function Insights() {
   const months = totalMonthlySales();
   const h = inventoryHealth(90);
-  const custs = (customerAnalysis() as {거래처: string; status: string; daysToNext: number | null; qty6: number}[]).filter(c => c.status === '곧 주문' || c.status === '이탈 의심').slice(0, 5);
+  const custs = (customerAnalysis() as {거래처: string; daysSince: number; qty6: number}[]).filter(c => c.qty6 > 0 && c.daysSince > 90).sort((a, b) => b.qty6 - a.qty6).slice(0, 5);
   const total = months.reduce((a: number, m: {qty: number}) => a + m.qty, 0);
   return (
     <div className="overview-grid">
@@ -174,9 +172,9 @@ function Insights() {
       </Card>
       <Card>
         <VStack gap={2}>
-          <HStack gap={2} hAlign="between" vAlign="end"><Heading level={2}>곧 주문할 거래처</Heading><Link href="#/customers" type="supporting">거래처 분석</Link></HStack>
-          {custs.length === 0 ? <Text type="supporting">주문 간격으로 예상되는 거래처가 없습니다.</Text> : custs.map(c => (
-            <HStack key={c.거래처} hAlign="between" gap={2}><Text type="label">{c.거래처}</Text><Text type="supporting">{c.daysToNext! < 0 ? `${-c.daysToNext!}일 지남` : `${c.daysToNext}일 후`}</Text></HStack>
+          <HStack gap={2} hAlign="between" vAlign="end"><Heading level={2}>오래 주문 없는 거래처</Heading><Link href="#/customers" type="supporting">거래처 분석</Link></HStack>
+          {custs.length === 0 ? <Text type="supporting">최근 6개월 판매가 있는 거래처 중 90일 넘게 주문이 없는 곳이 없습니다.</Text> : custs.map(c => (
+            <HStack key={c.거래처} hAlign="between" gap={2}><Text type="label">{c.거래처}</Text><Text type="supporting">{c.daysSince}일 전 마지막 주문</Text></HStack>
           ))}
         </VStack>
       </Card>

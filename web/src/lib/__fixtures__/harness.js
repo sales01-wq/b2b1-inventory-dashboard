@@ -64,6 +64,7 @@ export async function loadPort() {
   return {api, calcExportPlt: inputs => api.calcExportPlt(inputs), csv: name => api[CSV[name]](), close() {}};
 }
 
+const isForecastItem = v => !!v && typeof v === 'object' && '품번' in v && 'orderQty' in v && 'grade' in v;
 /** 서로 다른 실행 환경(jsdom / node)의 Map · Set · Date 를 비교 가능한 모양으로 바꿈 */
 export function canon(v) {
   const t = Object.prototype.toString.call(v);
@@ -72,10 +73,16 @@ export function canon(v) {
   if (t === '[object Date]') return 'D:' + (isNaN(v.getTime()) ? 'invalid' : v.getTime());
   if (t === '[object RegExp]') return String(v);
   if (typeof v === 'function') return 'fn';
+  if (Array.isArray(v) && v.length && v.every(isForecastItem)) return v.map(canon).sort((a, b) => (a.품번 < b.품번 ? -1 : 1)); // 정렬 순서도 새 방식이라 품번순으로 맞춰 비교
   if (Array.isArray(v)) {
     const extra = Object.keys(v).filter(k => !/^\d+$/.test(k));
     const arr = v.map(canon);
     return extra.length ? {arr, extra: Object.fromEntries(extra.map(k => [k, canon(v[k])]))} : arr;
+  }
+  // 발주 현황 계산(부족 수량 · 위험 판정)은 새 방식이라 운영 index.html 과 다름 → 품목 항목은 바뀌지 않은 값(재고 · 판매 합계 · 입고일정 · 히어로 설정)만 비교.
+  // 새 계산은 forecast.target.test.js 가 따로 검증
+  if (isForecastItem(v)) {
+    return Object.fromEntries(['품번', '품명', '바코드', 'brand', 'available', 'sold6', 'hero', 'heroMin', 'heroWarn', 'sched'].map(k => [k, canon(v[k])]));
   }
   if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).map(k => [k, canon(v[k])]));
   return v;
