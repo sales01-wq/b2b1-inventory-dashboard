@@ -209,7 +209,7 @@ try {
   await page.goto(base + '/#/forecast');
   assert.match(await text(page.getByRole('main')), /지금 생산 필요 1개 품목 \/ 총 280개/);
   assert.deepEqual((await page.locator('tbody tr td.sticky-col code').allInnerTexts()).slice(0, 2), ['SB002']);
-  assert.deepEqual(await page.locator('thead th').allInnerTexts().then(t => t.slice(0, 4).map(x => x.trim())), ['품번 / 품명', '상태', '가용재고', '부족 수량']); // 기본 표: 품번 · 상태 · 가용재고 · 부족 수량 + 최근 6개월
+  assert.deepEqual(await page.locator('thead th').allInnerTexts().then(t => t.slice(0, 4).map(x => x.trim().split('\n').pop())), ['품번 / 품명', '상태', '가용재고', '부족 수량']); // 기본 표: 품번 · 상태 · 가용재고 · 부족 수량 + 최근 6개월
   await checkStickyColumns(page);
   await checkNoClippedCells(page);
   // 계산 설명: 처음엔 접힘, 누르면 펼쳐짐

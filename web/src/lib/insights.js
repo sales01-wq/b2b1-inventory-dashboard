@@ -94,7 +94,8 @@ function loadCart(){ try{ return new Map(JSON.parse(localStorage.getItem(KEY)||'
 ui.cart = loadCart(); // 품번 -> 발주 수량
 function saveCart(){ try{ localStorage.setItem(KEY, JSON.stringify(Array.from(ui.cart.entries()))); }catch(_e){} emit(); }
 export function addToCart(pn, qty){ const x = findForecast(pn); ui.cart.set(pn, Math.max(1, Math.round(qty!==undefined ? qty : (x&&x.orderQty)||1))); saveCart(); }
-export function addManyToCart(pns){ pns.forEach(pn=>{ if(!ui.cart.has(pn)){ const x = findForecast(pn); ui.cart.set(pn, Math.max(1, (x&&x.orderQty)||1)); } }); saveCart(); }
+/** 이미 담긴 품목은 수량을 그대로 두고 건너뜀. {added, existing} 반환 */
+export function addManyToCart(pns){ let added=0, existing=0; new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } const x = findForecast(pn); ui.cart.set(pn, Math.max(1, Math.round((x&&x.orderQty)||1))); added++; }); saveCart(); return {added, existing}; }
 export function setCartQty(pn, qty){ const v = Math.round(num(qty)); if(v>0) ui.cart.set(pn, v); else ui.cart.delete(pn); saveCart(); }
 export function removeFromCart(pn){ ui.cart.delete(pn); saveCart(); }
 export function clearCart(){ ui.cart.clear(); saveCart(); }
@@ -121,11 +122,11 @@ function putViews(v){ try{ localStorage.setItem(VKEY, JSON.stringify(v)); }catch
 export function saveView(name){
   const n = name.trim(); if(!n) return;
   const v = savedViews().filter(x=>x.name!==n);
-  v.push({name:n, grade:ui.forecastGrade, brand:ui.forecastBrand, customer:ui.forecastCustomer, search:ui.forecastSearch, noSales:ui.forecastShowNoSales});
+  v.push({name:n, grade:ui.forecastGrade, brand:ui.forecastBrand, customers:[...ui.forecastCustomers], search:ui.forecastSearch, noSales:ui.forecastShowNoSales});
   putViews(v);
 }
 export function deleteView(name){ putViews(savedViews().filter(x=>x.name!==name)); }
 export function applyView(name){
   const v = savedViews().find(x=>x.name===name); if(!v) return;
-  Object.assign(ui, {forecastGrade:v.grade, forecastBrand:v.brand, forecastCustomer:v.customer, forecastSearch:v.search, forecastShowNoSales:v.noSales, forecastPage:50}); ui.forecastPnChips.clear(); emit();
+  Object.assign(ui, {forecastGrade:v.grade, forecastBrand:v.brand, forecastCustomers:new Set(v.customers||(v.customer?[v.customer]:[])), forecastSearch:v.search, forecastShowNoSales:v.noSales, forecastPage:50}); ui.forecastPnChips.clear(); emit();
 }

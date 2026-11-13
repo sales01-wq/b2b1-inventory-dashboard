@@ -22,7 +22,8 @@ export const ui = {
   forecastSelected: new Set(),
   forecastVisiblePns: [],
   forecastPnChips: new Set(),
-  forecastCustomer: '',
+  forecastCustomers: new Set(), forecastCustSearch: '', // 거래처 다중 선택 (비어 있으면 전체, 여러 개면 OR)
+  forecastYear: null, // 월별 판매 표시 연도 (null = 올해)
   forecastOverstockScope: 'all', // 'all' | 'b2b1' | 'emp'
   skuStatusSearch: '',
   skuStatusSelected: new Set(), // 품번들 (여러 개 선택 가능)

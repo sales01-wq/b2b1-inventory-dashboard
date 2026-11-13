@@ -12,7 +12,7 @@ function load(a) {
   a.computeDerived(); a.state.loaded = true;
 }
 const STEPS = [['team', '전체'], ['brand', '마미케어'], ['brand', '밀크터치'], ['team', 'B2B2팀'], ['brand', '마미케어'], ['team', 'B2B1팀']];
-const snap = (a, ls) => canon({team: a.ui.team, brands: [...a.ui.brandSelected], fp: a.ui.forecastPage, cp: a.ui.customerPage, fc: a.ui.forecastCustomer,
+const snap = (a, ls) => canon({team: a.ui.team, brands: [...a.ui.brandSelected], fp: a.ui.forecastPage, cp: a.ui.customerPage, fc: a.ui.forecastCustomers ? [...a.ui.forecastCustomers][0] || '' : a.ui.forecastCustomer,
   sales: a.state.sales.length, forecast: a.state.forecast, stored: ls.getItem('inv_team')});
 
 describe('팀 · 브랜드 전환 = 운영 버튼 동작', () => {
@@ -33,7 +33,7 @@ describe('팀 · 브랜드 전환 = 운영 버튼 동작', () => {
     load(a);
     const act = []; // 표에 보이는 목록은 새 계산 방식이라 forecast.target.test.js 가 따로 검증
     for (const [k, v] of STEPS) {
-      a.ui.forecastPage = 150; a.ui.customerPage = 100; a.ui.forecastCustomer = 'A상사';
+      a.ui.forecastPage = 150; a.ui.customerPage = 100; a.ui.forecastCustomers = new Set(['A상사']);
       (k === 'team' ? setTeam : toggleBrand)(v);
       act.push(snap(a, globalThis.localStorage));
     }
@@ -124,7 +124,7 @@ describe('발주 현황 조작 · 기준 설정 = 운영 화면 조작', () => {
     ['히어로 삭제', async (w, d) => { d.querySelector('[data-action="hero-del"][data-pn="MT002"]').click(); await tick(); }, (x, st) => st.deleteHero('MT002')],
     ['기준 기본값으로', async (w, d) => { d.querySelector('[data-action="rules-reset"]').click(); await tick(); }, (x, st) => st.resetRules()],
   ];
-  const snap = (a, list) => canon({grade: a.ui.forecastGrade, brand: a.ui.forecastBrand, cust: a.ui.forecastCustomer, search: a.ui.forecastSearch, noSales: a.ui.forecastShowNoSales,
+  const snap = (a, list) => canon({grade: a.ui.forecastGrade, brand: a.ui.forecastBrand, cust: a.ui.forecastCustomers ? [...a.ui.forecastCustomers][0] || '' : a.ui.forecastCustomer, search: a.ui.forecastSearch, noSales: a.ui.forecastShowNoSales,
     scope: a.ui.forecastOverstockScope, page: a.ui.forecastPage, chips: [...a.ui.forecastPnChips], open: [...a.ui.forecastExpanded], rulesOpen: a.ui.rulesOpen,
     rules: a.settings.rules, hero: a.settings.hero, list, forecast: a.state.forecast});
 

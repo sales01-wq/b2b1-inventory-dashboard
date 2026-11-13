@@ -1,4 +1,4 @@
-import {useState, type KeyboardEvent, type ReactNode} from 'react';
+import {useRef, useState, type KeyboardEvent, type ReactNode} from 'react';
 import {Badge} from '@astryxdesign/core/Badge';
 import {Button} from '@astryxdesign/core/Button';
 import {Card} from '@astryxdesign/core/Card';
@@ -12,7 +12,6 @@ import {Icon} from '@astryxdesign/core/Icon';
 import {IconButton} from '@astryxdesign/core/IconButton';
 import {NumberInput} from '@astryxdesign/core/NumberInput';
 import {RadioList, RadioListItem} from '@astryxdesign/core/RadioList';
-import {Selector} from '@astryxdesign/core/Selector';
 import {Table, TableBody, TableCell, TableHeader, TableHeaderCell, TableRow} from '@astryxdesign/core/Table';
 import {Tab, TabList} from '@astryxdesign/core/TabList';
 import {Text} from '@astryxdesign/core/Text';
@@ -35,6 +34,8 @@ import {canEditSettings, saveRules, resetRules, addHero, deleteHero} from '../da
 import {fmt} from '../lib/format';
 import {ProductLink} from './ProductLink';
 import {addManyToCart, addToCart, applyView, deleteView, saveView, savedViews} from '../lib/insights.js';
+import {useDragScroll} from '../app/useDragScroll';
+import {Popover} from '@astryxdesign/core/Popover';
 import {saveCsv} from '../lib/saveCsv';
 
 const ALL = '__all__'; // 토글 그룹은 빈 값을 '선택 없음'으로 다뤄서 '전체'(빈 값)를 대신 표시
@@ -85,6 +86,8 @@ function Forecast() {
                     가장 많이 팔린 달이 그다음 달의 2배 이상이면 일회성 대량 판매일 수 있어 '대량 판매 확인'으로 표시합니다 (목표에서 빼지는 않습니다). 행 앞의 화살표로 근거를 볼 수 있습니다.
                   </Text>
                 </Collapsible>
+                <HStack hAlign="between" vAlign="center" wrap="wrap"><YearPicker m={m} /><Text type="supporting">0 판매는 -, 진행중인 달은 이번 달까지의 판매</Text></HStack>
+                <SelectionBar />
                 <ForecastTable m={m} shown={shown} />
                 <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (품번 열은 고정).</Text>
                 {m.list.length > shown.length && (
@@ -122,16 +125,7 @@ function Filters({m}: {m: Model}) {
           </HStack>
         </HStack>
         <HStack gap={2} wrap="wrap" vAlign="center">
-          <div className="grow-field">
-            <Selector
-              label="거래처"
-              isLabelHidden
-              size="sm"
-              value={ui.forecastCustomer || ALL}
-              options={[{value: ALL, label: '거래처 전체'}, ...state.customers.map((c: string) => ({value: c, label: c}))]}
-              onChange={v => act.setForecastCustomer(toUi(v))}
-            />
-          </div>
+          <CustomerPicker />
           <div className="grow-field">
             <TextInput label="품번 / 품명 검색" isLabelHidden size="sm" placeholder="품번 / 품명 검색" value={ui.forecastSearch} onChange={act.setForecastSearch} />
           </div>
@@ -140,6 +134,7 @@ function Filters({m}: {m: Model}) {
           </div>
           <CheckboxInput size="sm" label="최근 6개월 판매 이력 없는 품목도 보기" value={ui.forecastShowNoSales} onChange={act.setForecastShowNoSales} />
         </HStack>
+        {ui.forecastCustomers.size > 0 && <SelectedCustomers />}
         {ui.forecastPnChips.size > 0 && (
           <HStack gap={1} wrap="wrap" vAlign="center">
             {[...ui.forecastPnChips].map((pn: string) => <Token key={pn} size="sm" label={pn} onRemove={() => act.removeForecastPnChip(pn)} />)}
@@ -174,7 +169,7 @@ function SummaryBar({m}: {m: Model}) {
       <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap">
         {/* 문장은 보통 굵기, 품목 수 · 총 수량만 굵은 색 글자로 */}
         <Text type="label" className="summary-line">
-          {ui.forecastCustomer && <Text type="supporting">{ui.forecastCustomer} 기준 · </Text>}
+          {ui.forecastCustomers.size > 0 && <Text type="supporting">거래처 {fmt(ui.forecastCustomers.size)}곳 기준 · </Text>}
           {m.needItems > 0 ? (
             <>지금 생산 필요 <b className="text-danger">{fmt(m.needItems)}개 품목</b> <Text type="supporting">/ 총</Text> <b className="text-danger">{fmt(m.needQty)}개</b></>
           ) : (
@@ -204,52 +199,68 @@ export function GradeBadge({grade}: {grade: string}) {
 }
 
 interface Spike {month: {y: number; m: number}; qty: number; second: number; customers: {cust: string; qty: number}[]; oneMonth: boolean}
-interface FRow {discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; ratio: number | null}
+interface Peak {month: {y: number; m: number}; qty: number; customers: {cust: string; qty: number}[]}
+interface FRow {discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
 
-// 열 너비(px): 고정 레이아웃이라 긴 품명이 다른 칸을 밀어내지 않음. 합계가 표의 최소 너비 (좁으면 옆으로 스크롤)
-const W = {pn: 250, grade: 112, avail: 92, short: 108, month: 62};
-const tableMin = (months: number) => W.pn + W.grade + W.avail + W.short + W.month * months;
+// 열 너비(px): 고정 레이아웃. 품번/품명 칸은 넓게(품명은 줄바꿈), 숫자 칸은 촘촘하게. 넓은 화면에서는 앞 4칸이 함께 고정됨
+const W = {pn: 290, grade: 88, avail: 76, short: 88, month: 50};
+const tableMin = () => W.pn + W.grade + W.avail + W.short + W.month * 12;
 
 function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
-  const cols = 4 + m.months.length;
+  const ref = useRef<HTMLDivElement>(null);
+  useDragScroll(ref); // 표를 마우스로 끌어 옆으로 이동 (체크박스 · 버튼 · 글자 선택은 그대로)
+  const cols = 4 + 12;
+  const allPns: string[] = m.list.map((x: FRow) => x.품번);
+  const nSel = allPns.filter(pn => ui.forecastSelected.has(pn)).length;
+  const now = new Date();
+  const isCur = (mm: {y: number; m: number}) => mm.y === now.getFullYear() && mm.m === now.getMonth();
+  const isFuture = (mm: {y: number; m: number}) => mm.y > now.getFullYear() || (mm.y === now.getFullYear() && mm.m > now.getMonth());
   return (
+    <div ref={ref}>
     <Card padding={0}>
-      <Table className="sticky-first wrap-head fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: tableMin(m.months.length)}}>
+      <Table className="sticky-first wrap-head fixed-cols fc-table" density="compact" dividers="rows" hasHover
+        style={{tableLayout: 'fixed', minWidth: tableMin(), '--fc1': W.pn + 'px', '--fc2': W.pn + W.grade + 'px', '--fc3': W.pn + W.grade + W.avail + 'px'} as React.CSSProperties}>
         <TableHeader>
           <TableRow>
-            <TableHeaderCell className="sticky-col" style={{width: W.pn}}>품번 / 품명</TableHeaderCell>
-            <TableHeaderCell style={{width: W.grade}}>상태</TableHeaderCell>
-            <TableHeaderCell className="num" style={{width: W.avail}}>가용재고</TableHeaderCell>
-            <TableHeaderCell className="num" style={{width: W.short}}>부족 수량</TableHeaderCell>
-            {m.months.map((mm: {y: number; m: number}) => <TableHeaderCell key={mm.y + '-' + mm.m} className="num dense" style={{width: W.month}}>{mm.m + 1}월</TableHeaderCell>)}
+            <TableHeaderCell className="sticky-col" style={{width: W.pn}}>
+              <HStack gap={1} vAlign="center">
+                <CheckboxInput label="현재 목록 전체 선택" isLabelHidden size="sm" value={nSel === 0 ? false : nSel === allPns.length ? true : 'indeterminate'}
+                  onChange={checked => act.setForecastSelectMany(allPns, checked)} />
+                <span>품번 / 품명</span>
+              </HStack>
+            </TableHeaderCell>
+            <TableHeaderCell className="fc-s fc-s2" style={{width: W.grade}}>상태</TableHeaderCell>
+            <TableHeaderCell className="num fc-s fc-s3" style={{width: W.avail}}>가용재고</TableHeaderCell>
+            <TableHeaderCell className="num fc-s fc-s4" style={{width: W.short}}>부족 수량</TableHeaderCell>
+            {m.months.map((mm: {y: number; m: number}) => <TableHeaderCell key={mm.m} className="num dense" style={{width: W.month}}>{mm.m + 1}월{isCur(mm) ? <Text type="supporting" className="q-note">진행중</Text> : mm.m === 0 ? <Text type="supporting" className="q-note">{mm.y}</Text> : null}</TableHeaderCell>)}
           </TableRow>
         </TableHeader>
         <TableBody>
           {shown.map(x => {
             const open = ui.forecastExpanded.has(x.품번);
+            const mv: number[] = m.monthly(x);
             return [
               <TableRow key={x.품번}>
                 <TableCell className="sticky-col">
-                  <HStack gap={1} vAlign="center">
+                  <HStack gap={1} vAlign="start" wrap="nowrap">
+                    <CheckboxInput label={`${x.품번} 선택`} isLabelHidden size="sm" value={ui.forecastSelected.has(x.품번)} onChange={() => act.toggleForecastSelect(x.품번)} />
                     <IconButton label={open ? '근거 닫기' : '근거 보기'} size="sm" variant="ghost" icon={<Icon icon={open ? 'chevronDown' : 'chevronRight'} />} onClick={() => act.toggleForecastDetail(x.품번)} />
                     <VStack gap={0}>
                       <HStack gap={1} vAlign="center">
                         <ProductLink pn={x.품번} className="nowrap" />
                         {x.hero && <span className="hero-mark" title="히어로 품목: 수량 기준으로 판정" role="img" aria-label="히어로 품목"><StarIcon width={14} height={14} aria-hidden /></span>}
                       </HStack>
-                      <span className="pn-name">{x.품명}</span>
+                      <span className="pn-name pn-wrap">{x.품명}</span>
                     </VStack>
                   </HStack>
                 </TableCell>
-                <TableCell>
-                  <VStack gap={0.5} hAlign="start">
-                    <GradeBadge grade={x.grade} />
-                    {x.spike && <Badge variant="yellow" label={x.spike.oneMonth ? '판매 한 달뿐' : '대량 판매 확인'} />}
-                  </VStack>
-                </TableCell>
-                <TableCell className="num">{fmt(x.available)}</TableCell>
-                <TableCell className={x.orderQty > 0 ? 'num short-qty' : 'num muted'}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}</TableCell>
-                {m.monthly(x).map((v: number, i: number) => <TableCell key={i} className="num muted dense">{v ? fmt(v) : '-'}</TableCell>)}
+                <TableCell className="fc-s fc-s2"><GradeBadge grade={x.grade} /></TableCell>
+                <TableCell className="num fc-s fc-s3">{fmt(x.available)}</TableCell>
+                <TableCell className={'fc-s fc-s4 ' + (x.orderQty > 0 ? 'num short-qty' : 'num muted')}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}</TableCell>
+                {m.months.map((mm: {y: number; m: number}, i: number) => {
+                  const isPeak = !!x.peak && x.peak.month.y === mm.y && x.peak.month.m === mm.m;
+                  return <TableCell key={i} className={'num dense ' + (isFuture(mm) ? 'muted future' : 'muted') + (isPeak ? ' peak-month' : '')}><span title={isPeak ? '부족 수량의 목표 재고가 된 달' : undefined}>{mv[i] ? fmt(mv[i]) : '-'}</span></TableCell>;
+                })}
               </TableRow>,
               open && (
                 <TableRow key={x.품번 + '-detail'}>
@@ -261,6 +272,84 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
         </TableBody>
       </Table>
     </Card>
+    </div>
+  );
+}
+
+/** 선택한 품목 처리 막대: 개수 · 발주 목록에 담기(이미 담긴 품목은 수량 그대로) · 선택 해제 */
+function SelectionBar() {
+  const [msg, setMsg] = useState('');
+  const known = new Set(state.forecast.map((x: FRow) => x.품번));
+  const picked: string[] = [...ui.forecastSelected].filter((pn: string) => known.has(pn));
+  const visible = new Set(ui.forecastVisiblePns as string[]);
+  const outside = picked.filter(pn => !visible.has(pn)).length;
+  if (picked.length === 0) return null;
+  return (
+    <Card variant="muted">
+      <HStack gap={3} vAlign="center" hAlign="between" wrap="wrap">
+        <Text type="label" role="status">{fmt(picked.length)}개 선택{outside > 0 && <Text type="supporting"> (현재 필터 밖 {fmt(outside)}개 포함)</Text>}{msg && <Text type="supporting"> · {msg}</Text>}</Text>
+        <HStack gap={2}>
+          <Button label="선택 품목 발주 목록에 담기" size="sm" variant="primary" onClick={() => {
+            const r = addManyToCart(picked);
+            setMsg(`${fmt(r.added)}개 담음${r.existing > 0 ? `, ${fmt(r.existing)}개는 이미 있어 수량 유지` : ''}`);
+          }} />
+          <Button label="선택 해제" size="sm" variant="ghost" onClick={() => { act.clearForecastSelect(); setMsg(''); }} />
+        </HStack>
+      </HStack>
+    </Card>
+  );
+}
+
+/** 거래처 다중 선택: 검색 + 체크 (여러 개 = OR). 고른 거래처는 필터 아래 작은 칩으로 */
+function CustomerPicker() {
+  const q = ui.forecastCustSearch.toLowerCase();
+  const all: string[] = state.customers;
+  const items = (q ? all.filter(c => c.toLowerCase().includes(q)) : all).slice(0, 150);
+  const content = (
+    <VStack gap={2} padding={3}>
+      <TextInput label="거래처 검색" isLabelHidden size="sm" placeholder="거래처 검색" value={ui.forecastCustSearch} onChange={act.setForecastCustSearch} />
+      <HStack hAlign="between" vAlign="center">
+        <Text type="supporting">{ui.forecastCustomers.size > 0 ? `${fmt(ui.forecastCustomers.size)}곳 선택` : '선택 없음 = 전체'}</Text>
+        {ui.forecastCustomers.size > 0 && <Button label="모두 해제" size="sm" variant="ghost" onClick={act.clearForecastCustomers} />}
+      </HStack>
+      <div className="msel-list">
+        {items.length === 0 ? <Text type="supporting">일치하는 거래처가 없습니다.</Text> : items.map(c => (
+          <CheckboxInput key={c} size="sm" label={c} value={ui.forecastCustomers.has(c)} onChange={on => act.toggleForecastCustomer(c, on)} />
+        ))}
+        {(q ? all.filter(c => c.toLowerCase().includes(q)).length : all.length) > items.length && <Text type="supporting">검색어를 더 입력하면 좁혀집니다</Text>}
+      </div>
+    </VStack>
+  );
+  return (
+    <Popover content={content} label="거래처 선택" width={360}>
+      <Button label={ui.forecastCustomers.size === 0 ? '거래처 전체' : `거래처 ${ui.forecastCustomers.size}곳 선택`} size="sm" variant="secondary" endContent={<Icon icon="chevronDown" />} className="field-trigger" />
+    </Popover>
+  );
+}
+
+const CHIPS_SHOWN = 3;
+function SelectedCustomers() {
+  const list: string[] = [...ui.forecastCustomers];
+  return (
+    <HStack gap={1} vAlign="center" wrap="wrap">
+      <Text type="supporting">거래처</Text>
+      {list.slice(0, CHIPS_SHOWN).map(c => <Token key={c} size="sm" label={c.length > 18 ? c.slice(0, 17) + '…' : c} onRemove={() => act.toggleForecastCustomer(c, false)} />)}
+      {list.length > CHIPS_SHOWN && <span title={list.slice(CHIPS_SHOWN).join(', ')}><Text type="supporting">외 {fmt(list.length - CHIPS_SHOWN)}곳</Text></span>}
+      <Button label="모두 해제" size="sm" variant="ghost" onClick={act.clearForecastCustomers} />
+    </HStack>
+  );
+}
+
+/** 월별 판매 표시 연도 (기본 올해) */
+function YearPicker({m}: {m: Model}) {
+  if (m.yearList.length < 2) return <Text type="supporting">{m.year}년 월별 판매</Text>;
+  return (
+    <HStack gap={2} vAlign="center">
+      <Text type="supporting">월별 판매 연도</Text>
+      <ToggleButtonGroup label="연도" size="sm" value={String(m.year)} onChange={v => v !== null && act.setForecastYear(Number(v))}>
+        {m.yearList.map((y: number) => <ToggleButton key={y} value={String(y)} label={`${y}년`} />)}
+      </ToggleButtonGroup>
+    </HStack>
   );
 }
 
@@ -286,6 +375,10 @@ function Detail({x}: {x: FRow}) {
         {x.discontinued && <Text type="supporting">제품일정표에서 단종 품목이라 발주 대상(부족 수량)에서 제외했습니다.</Text>}
         {x.incomingExcluded > 0 && <Text type="supporting">날짜가 지난 입고예정 {fmt(x.incomingExcluded)}개는 이미 입고됐거나 불확실해서 뺐습니다.</Text>}
         {x.returns > 0 && <Text type="supporting">반품 · 마이너스 조정 {fmt(x.returns)}개는 판매와 따로 보며 목표에 넣지 않았습니다.</Text>}
+        {x.peak && (
+          <Text type="supporting">목표 재고 기준 월: <b>{x.peak.month.y}년 {x.peak.month.m + 1}월</b> 판매 합계 {fmt(x.peak.qty)}개
+            {x.peak.customers.length > 0 && <> ({x.peak.customers.map(c => `${c.cust} ${fmt(c.qty)}`).join(', ')})</>}. 최근 12개월은 이번 달을 뺀 직전 12개월이라, 위 표의 연도 밖(작년)의 달이 기준일 수 있습니다.</Text>
+        )}
         {sp && (
           <Text type="supporting"><span className="text-warn">대량 판매 확인:</span> 목표가 된 {sp.month.y}년 {sp.month.m + 1}월 판매 {fmt(sp.qty)}개가 그다음 많은 달({fmt(sp.second)}개)의 {sp.second > 0 ? `${(sp.qty / sp.second).toFixed(1)}배` : '무한대(다른 달 판매 없음)'}입니다
             {sp.customers.length > 0 && <> · 주요 거래처 {sp.customers.map(c => `${c.cust} ${fmt(c.qty)}`).join(', ')}</>}. 일회성 주문이면 목표가 과대할 수 있으니 확인해 주세요 (계산에는 그대로 포함).</Text>
@@ -302,7 +395,7 @@ function Detail({x}: {x: FRow}) {
               head={['거래처', ...d.months.map(ym), '합계']}
               rows={[
                 ...d.customers.map((c: {거래처: string; months: number[]; total: number}) => [
-                  <>{c.거래처}{ui.forecastCustomer && c.거래처 === ui.forecastCustomer && <> <Badge variant="green" label="선택됨" /></>}</>,
+                  <>{c.거래처}{ui.forecastCustomers.has(c.거래처) && <> <Badge variant="green" label="선택됨" /></>}</>,
                   ...c.months.map(v => (v ? fmt(v) : '-')), fmt(c.total)]),
                 [<strong>전체 합계</strong>, ...d.monthTotals.map((v: number) => <strong>{v ? fmt(v) : '-'}</strong>), <strong>{fmt(d.monthTotals.reduce((a: number, b: number) => a + b, 0))}</strong>],
               ]}

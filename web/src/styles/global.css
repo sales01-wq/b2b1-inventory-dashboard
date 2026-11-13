@@ -310,3 +310,17 @@ code.pn-lg { font-size: 0.9375rem; font-weight: 600; }
 /* 발주 현황: 부족 수량을 가장 눈에 띄게, 품명은 품번 아래 한 줄 */
 .short-qty { font-weight: 700; font-size: 1rem; color: light-dark(#b91c1c, #f87171); }
 .pn-name { font-size: 0.8125rem; color: var(--color-text-secondary); max-width: 190px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 생산 필요 현황 표: 품명은 줄바꿈(말줄임 없음), 숫자 칸은 촘촘하게, 넓은 화면에서는 앞 4칸 고정 */
+.pn-wrap { white-space: normal; max-width: none; overflow: visible; text-overflow: clip; line-height: 1.35; }
+.fc-table .num { font-variant-numeric: tabular-nums; }
+.fc-table td.dense, .fc-table th.dense { padding-inline: 0.25rem; }
+.fc-table .future { opacity: 0.55; }
+.fc-table td.peak-month { background-color: color-mix(in srgb, var(--color-background-muted) 70%, transparent); font-weight: 600; color: var(--color-text-primary); box-shadow: inset 0 -2px 0 var(--color-border-emphasized); }
+@media (min-width: 1400px) {
+  .fc-table .fc-s { position: sticky; z-index: 1; background-color: var(--color-background-surface); }
+  .fc-table th.fc-s { background-color: var(--color-background-muted); }
+  .fc-table .fc-s2 { inset-inline-start: var(--fc1); }
+  .fc-table .fc-s3 { inset-inline-start: var(--fc2); }
+  .fc-table .fc-s4 { inset-inline-start: var(--fc3); box-shadow: inset -1px 0 0 var(--color-border-emphasized); }
+}

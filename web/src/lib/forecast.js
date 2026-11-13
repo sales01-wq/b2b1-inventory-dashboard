@@ -98,12 +98,13 @@ export function salesProfile(rows){
   });
   const target = Math.max(0, ...totals), peak = totals.indexOf(target);
   const sorted = totals.slice().sort((a,b)=>b-a), second = sorted[1]||0;
-  let spike = null;
-  if(target>0 && target >= SPIKE_RATIO*second){
-    const top = Array.from(byCust.entries()).map(([cust,a])=>({cust, qty:a[peak]})).filter(c=>c.qty>0).sort((a,b)=>b.qty-a.qty).slice(0,3);
-    spike = {month:months[peak], qty:target, second, customers:top, oneMonth: second===0};
+  let spike = null, peakInfo = null;
+  if(target>0){
+    const top = Array.from(byCust.entries()).map(([cust,a])=>({cust, qty:a[peak]})).filter(c=>c.qty>0).sort((a,b)=>b.qty-a.qty).slice(0,5);
+    peakInfo = {month:months[peak], qty:target, customers:top}; // 목표 재고가 된 달 (화면에 근거로 표시)
+    if(target >= SPIKE_RATIO*second) spike = {month:months[peak], qty:target, second, customers:top.slice(0,3), oneMonth: second===0};
   }
-  return {months, totals, byCust, target, returns, spike, total12: totals.reduce((a,b)=>a+b,0)};
+  return {months, totals, byCust, target, returns, spike, peak:peakInfo, total12: totals.reduce((a,b)=>a+b,0)};
 }
 
 /** 유효 입고예정: 날짜가 이미 지난 입고는 이미 재고에 들어왔거나 불확실하므로 제외 (제외한 수량은 따로 보여 줌) */
@@ -235,7 +236,7 @@ export function computeDerived(){
     const g = discontinued ? {grade:'데이터부족', ratio:null} : gradeFor({pn:code, available, incoming, target});
     const orderQty = discontinued ? 0 : Math.max(0, target - available - incoming);
     forecast.push({품번:code, 품명, 바코드, brand, available, sold6, discontinued, incoming, incomingExcluded:inc.excluded, target, orderQty, ratio:g.ratio, grade:g.grade,
-      avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, byCustomer:prof.byCust,
+      avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust,
       hero:!!g.hero, heroMin:g.heroMin||0, heroWarn:g.heroWarn||0, sched});
   });
   forecast.sort((a,b)=>{
@@ -274,7 +275,7 @@ function stockCsv(rows, filename){
 // port: 다운로드 대신 {csv, filename} 반환 — 실제 저장은 saveCsv()
 export function forecastListCsv(){
   const rows = ui._forecastCsvRows || []; if(!rows.length) return;
-  return stockCsv(rows, `발주현황_${ui.forecastCustomer||'전체'}_${new Date().toISOString().slice(0,10)}.csv`);
+  return stockCsv(rows, `발주현황_${ui.forecastCustomers.size===1?[...ui.forecastCustomers][0]:ui.forecastCustomers.size>1?'거래처'+ui.forecastCustomers.size+'곳':'전체'}_${new Date().toISOString().slice(0,10)}.csv`);
 }
 
 // port: 다운로드 대신 {csv, filename} 반환

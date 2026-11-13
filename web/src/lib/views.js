@@ -30,10 +30,10 @@ export function forecastModel(){
     ? state.forecast.filter(x=>brandPasses(x.brand) && x.sold6===0)
     : state.forecast.filter(x=>brandPasses(x.brand) && (ui.forecastShowNoSales || ui.forecastGrade==='참고' || x.sold6>0 || x.orderQty>0));
 
-  // 거래처 필터: 그 거래처가 최근 12개월 안에 산 적 있는 품목만 남김. 재고 · 목표 · 부족 수량은 품목 기준 그대로 (거래처끼리 나누거나 더하면 같은 재고를 중복해서 세게 됨)
-  if(ui.forecastCustomer){
+  // 거래처 필터(여러 개 = OR): 고른 거래처 중 하나라도 최근 12개월 안에 산 적 있는 품목만 남김. 재고 · 목표 · 부족 수량은 품목 기준 그대로 (품목은 한 번만 나오고 거래처끼리 나누거나 더하지 않아 같은 재고를 중복해서 세지 않음)
+  if(ui.forecastCustomers.size>0){
     const cut = new Date(); cut.setFullYear(cut.getFullYear()-1);
-    list = list.filter(x=>(state.salesRowsByProduct.get(x.품번)||[]).some(r=>r.거래처===ui.forecastCustomer && r.실적일자>=cut));
+    list = list.filter(x=>(state.salesRowsByProduct.get(x.품번)||[]).some(r=>ui.forecastCustomers.has(r.거래처) && r.실적일자>=cut));
   }
 
   if(ui.forecastBrand) list = list.filter(x=>x.brand===ui.forecastBrand);
@@ -74,17 +74,22 @@ export function forecastModel(){
   }
   ui.forecastVisiblePns = list.map(x=>x.품번); ui._forecastCsvRows = list; // 전체 선택 대상 (필터링된 전체, 더보기 이전 포함)
 
-  const months = []; { const n=new Date(); for(let k=5;k>=0;k--){ const d=new Date(n.getFullYear(), n.getMonth()-k, 1); months.push({y:d.getFullYear(), m:d.getMonth()}); } }
+  // 월별 판매: 선택한 연도의 1~12월 (기본 올해). 거래처를 골랐으면 그 거래처들 합계. 반품 · 마이너스는 제외 (목표 계산과 같은 기준)
+  const years = new Set([new Date().getFullYear()]);
+  state.sales.forEach(r=>years.add(r.실적일자.getFullYear()));
+  const yearList = Array.from(years).sort((p,q)=>q-p);
+  const year = yearList.includes(ui.forecastYear) ? ui.forecastYear : new Date().getFullYear();
+  const months = Array.from({length:12}, (_,m)=>({y:year, m}));
   const monthly = x=>{
     const arr = months.map(()=>0);
     (state.salesRowsByProduct.get(x.품번)||[]).forEach(r=>{
-      if(ui.forecastCustomer && r.거래처!==ui.forecastCustomer) return;
-      const d=r.실적일자; const idx = months.findIndex(mm=>mm.y===d.getFullYear() && mm.m===d.getMonth());
-      if(idx>=0) arr[idx]+=r.수량;
+      if(ui.forecastCustomers.size>0 && !ui.forecastCustomers.has(r.거래처)) return;
+      const d=r.실적일자, q=Number(r.수량);
+      if(d.getFullYear()===year && q>0 && Number.isFinite(q)) arr[d.getMonth()]+=q;
     });
     return arr;
   };
-  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly};
+  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly, year, yearList};
 }
 
 /* 펼친 행: 목표 재고 근거(월별 합계) · 거래처별 월 판매 · 최근 판매 20건 · 입고예정 · 반품 · 대량 판매 표시 */
