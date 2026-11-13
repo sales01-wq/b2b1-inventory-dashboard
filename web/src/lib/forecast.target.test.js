@@ -110,6 +110,17 @@ describe('대량 판매 확인 (제외하지 않고 표시)', () => {
   });
 });
 
+describe('화면 용어', () => {
+  it('위험 → 생산 필요, 주의 → 생산 추천, 여유 · 참고 그대로 (계산 등급 키는 그대로)', () => {
+    expect(['위험', '주의', '안전', '데이터부족'].map(a.statusLabel)).toEqual(['생산 필요', '생산 추천', '여유', '참고']);
+    run([row('A', 'SB002', 100, inMonth(1))]);
+    expect(item('SB002').grade).toBe('위험');
+    a.ui._forecastCsvRows = [item('SB002')];
+    expect(a.forecastListCsv().csv).toContain(',생산 필요,');
+    expect(a.gradeChips === undefined && a.forecastModel().gradeChips.map(c => c[1])).toEqual(['생산 필요 + 추천', '생산 필요', '생산 추천', '여유', '참고', '전체']);
+  });
+});
+
 describe('단종 품목', () => {
   it('제품일정표에서 단종이면 참고, 부족 수량 0 (이유는 화면에 표시)', () => {
     run([row('A', 'SB003', 500, inMonth(1))]); // 단종 토너 (가용 5)

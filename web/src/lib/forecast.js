@@ -248,6 +248,9 @@ export function computeDerived(){
 
 /* ---------------- Rendering ---------------- */
 /* 화면에는 4단계만 보여줌 (내부 계산 등급은 그대로 유지): 위험 / 주의 / 여유 / 참고 */
+/** 화면에 보이는 상태 이름 (내부 등급 키 '위험' · '주의' 는 계산용이라 그대로) */
+export const STATUS_LABEL = {위험:'생산 필요', 주의:'생산 추천', 여유:'여유', 참고:'참고'};
+export const statusLabel = g => STATUS_LABEL[groupOf(g)];
 export function groupOf(g){
   if(g==='긴급'||g==='위험') return '위험';
   if(g==='주의') return '주의';
@@ -259,7 +262,7 @@ const csvEsc = v => { const t=(v===null||v===undefined)?'':String(v); return /["
 const flagText = x => x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
 function stockCsv(rows, filename){
   const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요'].join(',')];
-  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,groupOf(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x)].map(csvEsc).join(',')));
+  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,statusLabel(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x)].map(csvEsc).join(',')));
   return {csv:'\uFEFF'+lines.join('\r\n'), filename};
 }
 // port: 다운로드 대신 {csv, filename} 반환 — 실제 저장은 saveCsv()

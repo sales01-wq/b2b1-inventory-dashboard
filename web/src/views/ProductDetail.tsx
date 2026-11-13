@@ -33,7 +33,7 @@ export function ProductDetail({go}: {go: (v: 'lookup') => void}) {
       {d && (
         <VStack gap={5} padding={5}>
           <DrawerHeader title={<HStack gap={2} vAlign="center" wrap="wrap"><code>{pn}</code>{x && <GradeBadge grade={x.grade} />}</HStack>} subtitle={d.name || '품명 없음'} endContent={<IconButton label="닫기" size="sm" variant="ghost" icon={<Icon icon="close" />} onClick={closeDetail} />} />
-          {!x ? <Text type="supporting">이 품번은 현재 발주 현황 대상(브랜드 규칙)에 없어서 계산 결과가 없습니다.</Text> : (
+          {!x ? <Text type="supporting">이 품번은 현재 생산 필요 현황 대상(브랜드 규칙)에 없어서 계산 결과가 없습니다.</Text> : (
             <>
               <div className="detail-stats">
                 <Stat label="가용재고" value={fmt(x.available)} />

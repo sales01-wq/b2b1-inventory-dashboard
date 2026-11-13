@@ -16,7 +16,7 @@ import {BrandBadge} from './BrandBadge';
 import {GradeBadge} from './ForecastPage';
 import {useStore} from '../app/useStore';
 import {state} from '../lib/store.js';
-import {getRules} from '../lib/forecast.js';
+import {getRules, STATUS_LABEL} from '../lib/forecast.js';
 import {overviewModel, urgentItems} from '../lib/views.js';
 import {openForecastSignal} from '../lib/actions.js';
 import {ProductLink} from './ProductLink';
@@ -60,8 +60,8 @@ function Overview() {
             {m.circles.map(c => {
               const g = c.label as Signal;
               return (
-                <SignalTile key={g} grade={g} label={g} dot={SIGNAL[g]} value={c.count} note={meaning[g]}>
-                  <ProgressBar label={`${g} 비율`} isLabelHidden value={c.pct} variant={SIGNAL[g]} />
+                <SignalTile key={g} grade={g} label={STATUS_LABEL[g]} dot={SIGNAL[g]} value={c.count} note={meaning[g]}>
+                  <ProgressBar label={`${STATUS_LABEL[g]} 비율`} isLabelHidden value={c.pct} variant={SIGNAL[g]} />
                   <Text type="supporting">신호 품목 {fmt(signalTotal)}개 중 {c.pct}%</Text>
                 </SignalTile>
               );
@@ -77,10 +77,10 @@ function Overview() {
   );
 }
 
-/** 신호 칸: 누르면 발주 현황을 그 상태로 걸러서 엶 (발주 현황 표의 품목 수 = 이 칸의 숫자) */
+/** 신호 칸: 누르면 생산 필요 현황을 그 상태로 걸러서 엶 (발주 현황 표의 품목 수 = 이 칸의 숫자) */
 function SignalTile({grade, label, value, dot, note, children}: {grade: string; label: string; value: number; dot: 'error' | 'warning' | 'success' | 'neutral'; note: string; children?: React.ReactNode}) {
   return (
-    <a className="stat stat-link" href="#/forecast" onClick={() => openForecastSignal(grade)} aria-label={`${label} ${fmt(value)}개 — 발주 현황에서 보기`}>
+    <a className="stat stat-link" href="#/forecast" onClick={() => openForecastSignal(grade)} aria-label={`${label} ${fmt(value)}개 — 생산 필요 현황에서 보기`}>
       <VStack gap={1.5}>
         <HStack gap={1.5} vAlign="center" hAlign="between">
           <HStack gap={1.5} vAlign="center">
@@ -105,17 +105,17 @@ function UrgentItems() {
     <VStack gap={2}>
       <HStack gap={2} hAlign="between" vAlign="end" wrap="wrap">
         <HStack gap={2} vAlign="end">
-          <Heading level={2}>발주 필요 (위험+주의)</Heading>
+          <Heading level={2}>생산 필요 + 추천</Heading>
           <Text type="supporting">{list.length > shown.length ? `${fmt(list.length)}개 중 급한 순 ${shown.length}개` : `${fmt(list.length)}개`}</Text>
         </HStack>
         {list.length > 0 && (
           <Link href="#/forecast" type="supporting" onClick={() => openForecastSignal('조치필요')}>
-            발주 현황에서 전체 보기
+            생산 필요 현황에서 전체 보기
           </Link>
         )}
       </HStack>
       {list.length === 0 ? (
-        <Card><EmptyState isCompact headingLevel={3} title="위험 · 주의 품목이 없습니다." description="위험 · 주의 품목이 생기면 여기에 급한 순으로 나옵니다." /></Card>
+        <Card><EmptyState isCompact headingLevel={3} title="생산 필요 · 추천 품목이 없습니다." description="생산 필요 · 추천 품목이 생기면 여기에 급한 순으로 나옵니다." /></Card>
       ) : (
         <Card padding={0}>
           <Table className="sticky-first fixed-cols" density="compact" dividers="rows" hasHover style={{tableLayout: 'fixed', minWidth: 600}}>

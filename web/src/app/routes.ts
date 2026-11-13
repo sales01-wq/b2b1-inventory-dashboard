@@ -48,8 +48,8 @@ export const ROUTES: RouteDef[] = [
   },
   {
     id: 'forecast',
-    label: '발주 현황',
-    description: '몇 개 품목이 얼마나 부족한지, 언제까지 발주해야 하는지 확인합니다.',
+    label: '생산 필요 현황',
+    description: '어떤 품목이 얼마나 부족한지 품목별 · 거래처별로 확인합니다.',
     section: '현황',
     icon: ClipboardDocumentListIcon,
     selectedIcon: ClipboardSolid,

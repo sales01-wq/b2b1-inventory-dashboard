@@ -5,7 +5,7 @@ import {heroAlertModel} from '../lib/views.js';
 import {ProductLink} from './ProductLink';
 import {fmt} from '../lib/format';
 
-/** 히어로 품목 위험 알람 (기존 #heroAlertOverview / #heroAlertForecast): 얇은 경고 상자 */
+/** 히어로 품목 생산 필요 알람 (기존 #heroAlertOverview / #heroAlertForecast): 얇은 경고 상자 */
 export function HeroAlert() {
   const m = heroAlertModel();
   if (!m) return null;
@@ -13,7 +13,7 @@ export function HeroAlert() {
     <div className="alert alert-error" role="alert">
       <HStack gap={2} vAlign="center">
         <Icon icon="warning" color="error" size="sm" />
-        <Text type="label" weight="semibold">히어로 품목 위험 알람 ({fmt(m.count)}개) — {m.team}</Text>
+        <Text type="label" weight="semibold">히어로 품목 생산 필요 알람 ({fmt(m.count)}개) — {m.team}</Text>
       </HStack>
       <ul className="alert-list">
         {m.items.map((x: {품번: string; 품명: string; available: number; heroMin: number}, i: number) => (

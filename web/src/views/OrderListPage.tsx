@@ -31,7 +31,7 @@ export function OrderListPage() {
   return (
     <PageFrame view="orders">
       {!state.loaded && rows.length === 0 ? <NoData /> : rows.length === 0 ? (
-        <Card><EmptyState headingLevel={2} title="담은 품목이 없습니다." description="발주 현황 표에서 품목을 선택해 '발주 목록에 담기'를 누르거나, 품번을 눌러 열리는 상세에서 담을 수 있습니다." /></Card>
+        <Card><EmptyState headingLevel={2} title="담은 품목이 없습니다." description="생산 필요 현황 표에서 품목을 선택해 '발주 목록에 담기'를 누르거나, 품번을 눌러 열리는 상세에서 담을 수 있습니다." /></Card>
       ) : (
         <VStack gap={3}>
           <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap">

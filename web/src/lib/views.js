@@ -41,7 +41,7 @@ export function forecastModel(){
   const brands = Array.from(new Set(baseAll.map(x=>x.brand))).filter(Boolean);
   const cnt = {위험:0,주의:0,여유:0,참고:0};
   list.forEach(x=>{ cnt[groupOf(x.grade)]++; });
-  const gradeChips = [['조치필요','발주 필요 (위험+주의)',cnt.위험+cnt.주의],['위험','위험',cnt.위험],['주의','주의',cnt.주의],['여유','여유',cnt.여유],['참고','참고',cnt.참고],['','전체',list.length]];
+  const gradeChips = [['조치필요','생산 필요 + 추천',cnt.위험+cnt.주의],['위험','생산 필요',cnt.위험],['주의','생산 추천',cnt.주의],['여유','여유',cnt.여유],['참고','참고',cnt.참고],['','전체',list.length]];
 
   const needList = list.filter(x=>x.orderQty>0 && !['휴면','단발성','데이터부족'].includes(x.grade));
   const needItems = needList.length, needQty = needList.reduce((a,x)=>a+x.orderQty,0);
@@ -209,14 +209,14 @@ export function customerTableModel(){
 
 /* 기준 설정 저장 버튼의 검사: 위험 기준(%)은 1~99 */
 export function rulesValid(r){ return r.riskPct>=1 && r.riskPct<=99; }
-export const RULES_INVALID_MSG = '위험 기준은 1~99(%) 사이여야 합니다.';
+export const RULES_INVALID_MSG = '생산 필요 기준은 1~99(%) 사이여야 합니다.';
 
 /* 히어로 품목 추가 검사 (4100행). 통과하면 {pn, val}, 아니면 {error} */
 export function heroInput(pnIn, minQty, warnQty){
   const found = state.forecast.find(x=>x.품번.toLowerCase()===pnIn.toLowerCase());
   if(!found) return {error:'해당 품번을 데이터에서 찾을 수 없습니다.'};
-  if(!(minQty>0)) return {error:'위험 수량을 입력해 주세요.'};
-  if(warnQty && warnQty<=minQty) return {error:'주의 수량은 위험 수량보다 커야 합니다.'};
+  if(!(minQty>0)) return {error:'생산 필요 수량을 입력해 주세요.'};
+  if(warnQty && warnQty<=minQty) return {error:'생산 추천 수량은 생산 필요 수량보다 커야 합니다.'};
   return {pn:found.품번, val:{minQty, warnQty}};
 }
 

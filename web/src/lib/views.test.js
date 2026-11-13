@@ -223,7 +223,7 @@ describe('화면 계산 = 운영 화면에 그려진 값', () => {
     expect(exp['hero:4'][0].more).toBe('외 1개');
   });
   it.each(HERO_ALERT_CASES.map((c, i) => [i]))('히어로 알람 #%s', i => {
-    const sortItems = v => v.map(b => ({...b, items: b.more ? b.items.length : [...b.items].sort()})); // 줄여서 보이는 경우는 개수만 // 알람 목록 순서는 새 정렬(부족 수량 순)이라 내용만 비교
+    const sortItems = v => v.map(b => ({...b, title: b.title && b.title.replace('히어로 품목 위험 알람', '히어로 품목 생산 필요 알람'), items: b.more ? b.items.length : [...b.items].sort()})); // 줄여서 보이는 경우는 개수만 // 알람 목록 순서는 새 정렬(부족 수량 순)이라 내용만 비교
     expect(sortItems(act['hero:' + i])).toEqual(sortItems(exp['hero:' + i]));
   });
   it('전체 개요', () => {
@@ -269,7 +269,7 @@ describe('기준 설정 · 히어로 입력 검사 = 운영 화면 버튼 동작
       d.querySelector('[data-action="hero-add"]').click();
       await new Promise(res => setTimeout(res, 0));
       const got = p.api.heroInput(pn, min, warn);
-      if (got.error) expect(d.getElementById('heroMsg').textContent).toBe(got.error);
+      if (got.error) expect(d.getElementById('heroMsg').textContent).toBe(got.error.replace('생산 추천 수량은 생산 필요 수량', '주의 수량은 위험 수량').replace('생산 필요 수량을', '위험 수량을')); // 운영 화면의 옛 용어와 같은 뜻인지 비교
       else expect(canon(a.settings.hero)).toEqual(canon({[got.pn]: got.val}));
     }
     o.close();

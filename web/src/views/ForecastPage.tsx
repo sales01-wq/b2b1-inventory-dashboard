@@ -27,7 +27,7 @@ import {NoData} from './NoData';
 import {BrandBadge} from './BrandBadge';
 import {useStore} from '../app/useStore';
 import {state, ui} from '../lib/store.js';
-import {getRules, groupOf, teamLabel, forecastListCsv} from '../lib/forecast.js';
+import {getRules, groupOf, STATUS_LABEL, teamLabel, forecastListCsv} from '../lib/forecast.js';
 import {coverageBands, customerShortRows, forecastModel, forecastDetail, rulesModel, warehouseRows} from '../lib/views.js';
 import * as act from '../lib/actions.js';
 import {canEditSettings, saveRules, resetRules, addHero, deleteHero} from '../data/settings.js';
@@ -79,7 +79,7 @@ function Forecast() {
                   <Text type="supporting">
                     <Text type="supporting" weight="bold">부족 수량 = 목표 재고 − 가용재고 − 입고예정</Text> (0 미만이면 0). 목표 재고는 최근 12개월(이번 달 제외) 중 <Text type="supporting" weight="bold">모든 거래처 합계 월 판매량이 가장 많았던 달</Text>의 판매량입니다.
                     가용재고는 {teamLabel()} 정상창고 기준이며 품목마다 한 번만 셉니다. 입고예정은 날짜가 지나지 않은 것만 더합니다. 반품 · 마이너스 조정은 판매와 따로 보며 목표에 넣지 않습니다.
-                    상태는 (가용재고 + 입고예정) ÷ 목표 재고로 정합니다: 부족 수량이 없으면 여유, 목표의 {getRules().riskPct}% 미만은 위험, 그 사이는 주의, 최근 12개월 판매가 없으면 참고.
+                    상태는 (가용재고 + 입고예정) ÷ 목표 재고로 정합니다: 부족 수량이 없으면 여유, 목표의 {getRules().riskPct}% 미만은 생산 필요, 그 사이는 생산 추천, 최근 12개월 판매가 없으면 참고.
                     가장 많이 팔린 달이 그다음 달의 2배 이상이면 일회성 대량 판매일 수 있어 '대량 판매 확인'으로 표시합니다 (목표에서 빼지는 않습니다). 행 앞의 화살표로 근거를 볼 수 있습니다.
                   </Text>
                 </Collapsible>
@@ -165,7 +165,7 @@ function OverstockScope() {
   );
 }
 
-/** 발주 필요 요약 + 표 내려받기 */
+/** 생산 필요 요약 + 표 내려받기 */
 function SummaryBar({m}: {m: Model}) {
   return (
     <Card>
@@ -174,13 +174,13 @@ function SummaryBar({m}: {m: Model}) {
         <Text type="label" className="summary-line">
           {ui.forecastCustomer && <Text type="supporting">{ui.forecastCustomer} 기준 · </Text>}
           {m.needItems > 0 ? (
-            <>지금 발주 필요 <b className="text-danger">{fmt(m.needItems)}개 품목</b> <Text type="supporting">/ 총</Text> <b className="text-danger">{fmt(m.needQty)}개</b></>
+            <>지금 생산 필요 <b className="text-danger">{fmt(m.needItems)}개 품목</b> <Text type="supporting">/ 총</Text> <b className="text-danger">{fmt(m.needQty)}개</b></>
           ) : (
             <b className="text-safe">지금 발주할 품목 없음</b>
           )}
         </Text>
         <HStack gap={2} wrap="wrap">
-          <Button label={`발주 필요 ${fmt(m.needItems)}개 목록에 담기`} size="sm" variant="secondary" isDisabled={m.needItems === 0}
+          <Button label={`생산 필요 ${fmt(m.needItems)}개 목록에 담기`} size="sm" variant="secondary" isDisabled={m.needItems === 0}
             onClick={() => addManyToCart(m.list.filter((x: FRow) => x.orderQty > 0 && !['휴면', '단발성', '데이터부족'].includes(x.grade)).map((x: FRow) => x.품번))} />
           <Button label="표 내려받기(CSV)" size="sm" variant="secondary" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(forecastListCsv())} />
         </HStack>
@@ -191,12 +191,12 @@ function SummaryBar({m}: {m: Model}) {
 
 /** 상태 배지: 화면에는 4단계(위험·주의·여유·참고), 세부 등급은 툴팁 */
 // 옅은 배경 + 진한 글자 (Astryx 의 error / warning / success 는 꽉 찬 색이라 표 안에서 너무 튐)
-const GRADE_VARIANT = {위험: 'red', 주의: 'yellow', 여유: 'green', 참고: 'neutral'} as const;
+const GRADE_VARIANT = {위험: 'red', 주의: 'yellow', 여유: 'green', 참고: 'neutral'} as const; // 키는 내부 등급, 화면에는 STATUS_LABEL
 export function GradeBadge({grade}: {grade: string}) {
   const g = groupOf(grade) as keyof typeof GRADE_VARIANT;
   return (
     <span title={`세부 등급: ${grade}`}>
-      <Badge variant={GRADE_VARIANT[g]} label={grade === '긴급' ? `${g} (긴급)` : g} />
+      <Badge variant={GRADE_VARIANT[g]} label={STATUS_LABEL[g]} />
     </span>
   );
 }
@@ -387,7 +387,7 @@ function MiniTable({head, rows, num}: {head: string[]; rows: ReactNode[][]; num:
 }
 
 /* ---------------- 기준 설정 (고급) · 히어로 품목 (기존 renderForecastRules) ---------------- */
-const RULE_LABEL: Record<string, string> = {riskPct: '위험 기준(%)'};
+const RULE_LABEL: Record<string, string> = {riskPct: '생산 필요 기준(%)'};
 function RulesEditor() {
   const {R, heroRows, alertN} = rulesModel();
   const cb = coverageBands();
@@ -422,8 +422,8 @@ function RulesEditor() {
     <Card>
       <Collapsible trigger={trigger} isOpen={!!ui.rulesOpen} onOpenChange={o => { act.setRulesOpen(o); setForm({...rulesModel().R}); setMsg(null); }}>
         <VStack gap={2} paddingBlockStart={3}>
-          <Text type="body"><Badge variant="red" label="위험" /> (가용재고 + 입고예정)이 목표 재고의 {num('riskPct', 64)}% 미만 · <Badge variant="yellow" label="주의" /> {R.riskPct}% 이상 ~ 100% 미만 · <Badge variant="green" label="여유" /> 100% 이상 (부족 수량 없음) · <Badge variant="neutral" label="참고" /> 최근 12개월 판매 없음</Text>
-          <Text type="supporting">현재 품목 분포 (비율 = (가용재고 + 입고예정) ÷ 목표 재고): {(cb.bands as {label: string; n: number}[]).map(b => `${b.label} ${fmt(b.n)}개`).join(' · ')} · 판매 없음 ${fmt(cb.ref)}개. 위험 기준은 이 분포를 보고 정하세요.</Text>
+          <Text type="body"><Badge variant="red" label="생산 필요" /> (가용재고 + 입고예정)이 목표 재고의 {num('riskPct', 64)}% 미만 · <Badge variant="yellow" label="생산 추천" /> {R.riskPct}% 이상 ~ 100% 미만 · <Badge variant="green" label="여유" /> 100% 이상 (부족 수량 없음) · <Badge variant="neutral" label="참고" /> 최근 12개월 판매 없음</Text>
+          <Text type="supporting">현재 품목 분포 (비율 = (가용재고 + 입고예정) ÷ 목표 재고): {(cb.bands as {label: string; n: number}[]).map(b => `${b.label} ${fmt(b.n)}개`).join(' · ')} · 판매 없음 ${fmt(cb.ref)}개. 생산 필요 기준은 이 분포를 보고 정하세요.</Text>
           {edit ? (
             <HStack gap={2} vAlign="center" wrap="wrap">
               <Button label="기준 저장" size="sm" variant="primary" onClick={save} />
@@ -434,13 +434,13 @@ function RulesEditor() {
             <Text type="supporting">기준 변경은 업데이트 권한자만 할 수 있습니다.</Text>
           )}
           <hr className="rule" />
-          <Text type="body" weight="bold"><StarIcon width={14} height={14} aria-hidden className="hero-mark" /> 히어로 품목 위험 기준 <Text type="supporting">— 대량 출고가 많은 품목은 일수 대신 <strong>수량</strong>으로 판정합니다 (예: 가용재고 30,000개 이하면 위험 + 알람)</Text></Text>
-          <Text type="supporting">가용재고는 위쪽에서 선택한 팀({ui.team}) 창고 기준입니다. 위험 수량 이하 → 위험(알람), 주의 수량 이하 → 주의, 그 외 안전.</Text>
+          <Text type="body" weight="bold"><StarIcon width={14} height={14} aria-hidden className="hero-mark" /> 히어로 품목 생산 필요 기준 <Text type="supporting">— 대량 출고가 많은 품목은 일수 대신 <strong>수량</strong>으로 판정합니다 (예: 가용재고 30,000개 이하면 위험 + 알람)</Text></Text>
+          <Text type="supporting">가용재고는 위쪽에서 선택한 팀({ui.team}) 창고 기준입니다. 생산 필요 수량 이하 → 생산 필요(알람), 생산 추천 수량 이하 → 생산 추천, 그 외 여유.</Text>
           {edit && (
             <HStack gap={2} vAlign="end" wrap="wrap">
               <TextInput label="히어로 품번" size="sm" placeholder="품번 (예: SB1344)" value={hero.pn} onChange={v => setHero(h => ({...h, pn: v}))} />
-              <NumberInput label="위험 수량(이하)" size="sm" min={1} value={hero.min} onChange={v => setHero(h => ({...h, min: v}))} />
-              <NumberInput label="주의 수량(선택)" size="sm" min={1} value={hero.warn} onChange={v => setHero(h => ({...h, warn: v}))} />
+              <NumberInput label="생산 필요 수량(이하)" size="sm" min={1} value={hero.min} onChange={v => setHero(h => ({...h, min: v}))} />
+              <NumberInput label="생산 추천 수량(선택)" size="sm" min={1} value={hero.warn} onChange={v => setHero(h => ({...h, warn: v}))} />
               <Button label="추가/수정" size="sm" variant="primary" onClick={add} />
               {heroMsg && <Text type="supporting"><span className="text-danger" role="alert">{heroMsg}</span></Text>}
             </HStack>
@@ -450,7 +450,7 @@ function RulesEditor() {
           ) : (
             <MiniTable
               num={[2, 3, 4]}
-              head={['품번', '품명', '현재 가용재고', '위험 수량(이하)', '주의 수량(이하)', '상태', '']}
+              head={['품번', '품명', '현재 가용재고', '생산 필요 수량(이하)', '생산 추천 수량(이하)', '상태', '']}
               rows={heroRows.map((h: {pn: string; h: {minQty: number; warnQty: number}; x?: {품명: string; available: number; grade: string}}) => [
                 <code>{h.pn}</code>, h.x ? h.x.품명 : '-', h.x ? fmt(h.x.available) : '-', fmt(h.h.minQty), h.h.warnQty > 0 ? fmt(h.h.warnQty) : '-',
                 h.x ? <GradeBadge grade={h.x.grade} /> : <Text type="supporting">데이터에 없음</Text>,
