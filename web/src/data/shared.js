@@ -256,10 +256,13 @@ export async function checkForNewSharedData(){
 export async function initSharedMode(){
   if(!shared.gated) return; // 로컬 파일로 열었을 때는 기존 방식
   let cfg = null;
+  shared.configProblem = null;
   try{
     const r = await fetch('/api/config', {cache:'no-store'});
     if(r.ok) cfg = await r.json();
-  }catch(_e){}
+    else shared.configProblem = `서버 함수(/api/config)가 응답하지 않습니다 (HTTP ${r.status}). 이 배포에 api 폴더가 포함됐는지 확인하세요.`;
+  }catch(_e){ shared.configProblem = '서버 함수(/api/config)를 불러오지 못했습니다. 이 배포에 api 폴더가 포함됐는지 확인하세요.'; }
+  if(cfg && !cfg.clientId) shared.configProblem = 'Vercel 환경변수 GOOGLE_CLIENT_ID 가 비어 있습니다 (Preview 환경에 설정 후 다시 배포).';
   if(!cfg || !cfg.clientId){
     shared.gated = false; emit(); // 서버 설정이 없으면 기존 업로드 방식으로 동작
     return;

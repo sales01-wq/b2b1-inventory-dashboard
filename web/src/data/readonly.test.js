@@ -31,3 +31,36 @@ describe('읽기 전용 미리보기', () => {
     expect(shared.gsStatus.text).toMatch(/읽기 전용 미리보기/);
   });
 });
+
+describe('공유 데이터 연결 진단', () => {
+  const run = async fetchImpl => {
+    vi.resetModules();
+    vi.stubGlobal('localStorage', {getItem: () => null, setItem: () => {}, removeItem: () => {}});
+    vi.stubGlobal('document', {hidden: false, addEventListener() {}, getElementById: () => null});
+    vi.stubGlobal('location', {hostname: 'preview.example', protocol: 'https:'});
+    vi.stubGlobal('fetch', fetchImpl);
+    const {shared, initSharedMode} = await import('./shared.js');
+    await initSharedMode();
+    return shared;
+  };
+  it('/api 가 없으면(404) 이유를 알려 주고 업로드 모드로', async () => {
+    const s = await run(async () => new Response('nf', {status: 404}));
+    expect(s.configProblem).toMatch(/api 폴더/); expect(s.gated).toBe(false);
+  });
+  it('GOOGLE_CLIENT_ID 가 비어 있으면 환경변수를 알려 줌', async () => {
+    const s = await run(async () => new Response(JSON.stringify({clientId: '', domain: ''}), {status: 200}));
+    expect(s.configProblem).toMatch(/GOOGLE_CLIENT_ID/);
+  });
+});
+
+describe('web/api 는 저장소 루트 api 와 같은 코드를 가리킴', () => {
+  it('모든 함수가 불러와지고 루트 api 와 같은 함수', async () => {
+    const {createRequire} = await import('node:module');
+    const req = createRequire(import.meta.url);
+    for (const f of ['config', 'data', 'me', 'settings', 'snapshot']) {
+      const shim = (await import(`../../api/${f}.js`)).default;
+      expect(typeof shim).toBe('function');
+      expect(String(shim)).toBe(String(req(`../../../api/${f}.js`))); // 같은 코드 (모듈 불러오기 방식만 다름)
+    }
+  });
+});
