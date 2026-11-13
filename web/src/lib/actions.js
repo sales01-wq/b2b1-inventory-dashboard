@@ -73,6 +73,7 @@ export function setForecastCustomer(v){ ui.forecastCustomers.clear(); if(v) ui.f
 export function toggleForecastCustomer(c, on){ if(on) ui.forecastCustomers.add(c); else ui.forecastCustomers.delete(c); ui.forecastPage=50; emit(); }
 export function clearForecastCustomers(){ ui.forecastCustomers.clear(); ui.forecastPage=50; emit(); }
 export function setForecastCustSearch(v){ ui.forecastCustSearch=v; emit(); }
+export function setForecastCategory(v){ ui.forecastCategory = v; ui.forecastPage=50; emit(); }
 export function setForecastYear(y){ ui.forecastYear=y; emit(); }
 /* 선택한 품목 (필터 · 탭을 바꿔도 유지, 다른 데이터가 들어오면 없는 품번은 자동으로 빠짐) */
 export function toggleForecastSelect(pn){ if(ui.forecastSelected.has(pn)) ui.forecastSelected.delete(pn); else ui.forecastSelected.add(pn); emit(); }
@@ -93,7 +94,7 @@ export function clearForecastPnChips(){ ui.forecastPnChips.clear(); emit(); }
 /** 개요의 신호 칸 · '전체 보기' → 발주 현황을 그 상태로 거름 (새 화면 기능).
  *  개요 숫자와 같은 품목이 보이도록 발주 현황의 다른 필터는 풀고, 그 상태에 판매 이력 없는 품목이 있으면 '판매 이력 없는 품목도 보기'를 켬 */
 export function openForecastSignal(grade){
-  ui.forecastGrade = grade; ui.forecastCustomers.clear(); ui.forecastBrand = ''; ui.forecastSearch = ''; ui.forecastPnChips.clear(); ui.forecastPage = 50;
+  ui.forecastGrade = grade; ui.forecastCustomers.clear(); ui.forecastCategory = 'all'; ui.forecastBrand = ''; ui.forecastSearch = ''; ui.forecastPnChips.clear(); ui.forecastPage = 50;
   if(state.forecast.some(x=>brandPasses(x.brand) && inSignal(x, grade) && x.sold6===0)) ui.forecastShowNoSales = true;
   emit();
 }

@@ -91,40 +91,48 @@ export function closeDetail(){ ui.detailPn = ''; emit(); }
 
 const KEY = 'inv_order_list';
 export const SCOPE_ALL = '전체 거래처 기준';
-// 저장 형식: [품번, 수량, {scope, calc}] (예전 형식 [품번, 수량] 도 읽음 → 기준 정보 없음)
+// 저장 형식: [품번, 수량, {scope, calc, inactive}] (예전 형식 [품번, 수량] · [품번, 수량, {scope, calc}] 도 읽음)
 function loadCart(){
   const qty = new Map(), meta = new Map();
-  try{ JSON.parse(localStorage.getItem(KEY)||'[]').forEach(e=>{ if(!Array.isArray(e)||!e[0]) return; qty.set(e[0], Number(e[1])||1); if(e[2]&&typeof e[2]==='object') meta.set(e[0], {scope:String(e[2].scope||''), calc:Number(e[2].calc)||0}); }); }catch(_e){}
+  try{ JSON.parse(localStorage.getItem(KEY)||'[]').forEach(e=>{ if(!Array.isArray(e)||!e[0]) return; qty.set(e[0], Number.isFinite(Number(e[1]))?Number(e[1]):1); if(e[2]&&typeof e[2]==='object') meta.set(e[0], {scope:String(e[2].scope||''), calc:Number(e[2].calc)||0, inactive:e[2].inactive?String(e[2].inactive):null}); }); }catch(_e){}
   return {qty, meta};
 }
-{ const c = loadCart(); ui.cart = c.qty; ui.cartMeta = c.meta; } // 품번 -> 발주 수량 / 품번 -> {scope: 계산 기준, calc: 담을 때 부족 수량}
+{ const c = loadCart(); ui.cart = c.qty; ui.cartMeta = c.meta; } // 품번 -> 발주 수량 / 품번 -> {scope: 계산 기준, calc: 담을 때 부족 수량, inactive: 담을 때 미판매 사유}
 function saveCart(){ try{ localStorage.setItem(KEY, JSON.stringify(Array.from(ui.cart.entries()).map(([pn,q])=>[pn,q,ui.cartMeta.get(pn)||null]))); }catch(_e){} emit(); }
 /** 지금 선택된 거래처 범위의 이름표: 없으면 '전체 거래처 기준', 있으면 '선택 거래처 기준: A, B' */
 export function currentScopeLabel(){ return ui.forecastCustomers.size>0 ? '선택 거래처 기준: '+[...ui.forecastCustomers].join(', ') : SCOPE_ALL; }
-/** 화면에 보이는 부족 수량(선택 거래처가 있으면 그 기준) */
-const shownQty = pn => { const x = scopeForecastItem(findForecast(pn), ui.forecastCustomers); return (x&&x.orderQty)||0; };
-function put(pn, calc, scope){ ui.cart.set(pn, Math.max(1, Math.round(calc))); ui.cartMeta.set(pn, {scope, calc:Math.max(0, Math.round(calc))}); }
-/** 한 품목 담기. 이미 있으면 수량 · 기준을 그대로 둠(필터를 바꿔 다시 눌러도 덮어쓰지 않음). qty · scope 를 주면 그 값(예: 품목 상세는 전체 기준)을 저장 */
+/** 담을 때 기준이 되는 항목: 전체 기준이면 전체 거래처 값, 아니면 지금 선택한 거래처 범위의 값 (화면에 보이는 값과 같음) */
+const itemFor = (pn, scope) => scopeForecastItem(findForecast(pn), scope===SCOPE_ALL ? new Set() : ui.forecastCustomers);
+/** 기본 수량: 일반 품목은 화면의 부족 수량(최소 1), 미판매 품목은 0 (과거 부족 수량은 '담을 때 부족 수량'으로만 보존) */
+const defaultQty = (calc, inactive) => inactive ? 0 : Math.max(1, calc);
+function put(pn, x, scope, qty){
+  const calc = Math.max(0, Math.round((x&&x.orderQty)||0)), inactive = (x&&x.inactiveReason)||null;
+  ui.cart.set(pn, qty!==undefined ? Math.max(0, Math.round(qty)) : defaultQty(calc, inactive));
+  ui.cartMeta.set(pn, {scope, calc, inactive});
+}
+/** 한 품목 담기. 이미 있으면 수량 · 기준을 그대로 둠(덮어쓰지 않음). 품목 상세는 scope=전체 기준으로 호출 */
 export function addToCart(pn, qty, scope){
   if(ui.cart.has(pn)) return {added:false};
-  put(pn, qty!==undefined ? qty : shownQty(pn), scope!==undefined ? scope : currentScopeLabel());
+  const sc = scope!==undefined ? scope : currentScopeLabel();
+  put(pn, itemFor(pn, sc), sc, qty);
   saveCart(); return {added:true};
 }
-/** 이미 담긴 품목은 수량을 그대로 두고 건너뜀. 새 품목은 지금 선택 범위의 부족 수량과 범위 이름을 저장. {added, existing} 반환 */
-export function addManyToCart(pns){ let added=0, existing=0; const scope = currentScopeLabel(); new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } put(pn, shownQty(pn), scope); added++; }); saveCart(); return {added, existing}; }
-export function setCartQty(pn, qty){ const v = Math.round(num(qty)); if(v>0) ui.cart.set(pn, v); else { ui.cart.delete(pn); ui.cartMeta.delete(pn); } saveCart(); } // 수동 수정: 기준 · 담을 때 수량 기록은 그대로
+/** 이미 담긴 품목은 수량을 그대로 두고 건너뜀. 새 품목은 지금 선택 범위의 부족 수량 · 범위 이름 · 미판매 사유를 저장 (미판매는 수량 0). {added, existing} 반환 */
+export function addManyToCart(pns){ let added=0, existing=0; const sc = currentScopeLabel(); new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } put(pn, itemFor(pn, sc), sc); added++; }); saveCart(); return {added, existing}; }
+/** 수동 수정. 0 이면 목록에서 빠지지만, 미판매로 담은 항목은 0 으로 남음(의도적으로 생산하려면 수량을 직접 입력) */
+export function setCartQty(pn, qty){ const v = Math.round(num(qty)); const m = ui.cartMeta.get(pn); if(v>0 || (v===0 && m && m.inactive)) ui.cart.set(pn, Math.max(0, v)); else { ui.cart.delete(pn); ui.cartMeta.delete(pn); } saveCart(); }
 export function removeFromCart(pn){ ui.cart.delete(pn); ui.cartMeta.delete(pn); saveCart(); }
 export function clearCart(){ ui.cart.clear(); ui.cartMeta.clear(); saveCart(); }
 export function cartRows(){
   return Array.from(ui.cart.entries()).map(([pn,qty])=>{ const x = findForecast(pn), m = ui.cartMeta.get(pn);
     return {pn, qty, name:x?x.품명:'', barcode:x?x.바코드:'', brand:x?x.brand:'', available:x?x.available:0, incoming:x?x.incoming:0,
-      scope: m ? m.scope : '', calc: m ? m.calc : null, edited: !!m && qty!==Math.max(1, m.calc)}; });
+      scope: m ? m.scope : '', calc: m ? m.calc : null, inactive: m ? m.inactive : null, edited: !!m && qty!==defaultQty(m.calc, m.inactive)}; });
 }
 export function cartCsv(){
   const esc = v => { const t = v==null?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
   const rows = cartRows();
-  const lines = [['품번','품명','바코드','구분','가용재고','입고예정','담을 때 부족 수량','계산 기준','발주수량'].join(',')];
-  rows.forEach(r=>lines.push([r.pn,r.name,r.barcode,r.brand,r.available,r.incoming,r.calc===null?'':r.calc,r.scope||'기준 정보 없음',r.qty].map(esc).join(',')));
+  const lines = [['품번','품명','바코드','구분','가용재고','입고예정','담을 때 부족 수량','계산 기준','담을 때 미판매 사유','발주수량'].join(',')];
+  rows.forEach(r=>lines.push([r.pn,r.name,r.barcode,r.brand,r.available,r.incoming,r.calc===null?'':r.calc,r.scope||'기준 정보 없음',r.inactive||'',r.qty].map(esc).join(',')));
   return {csv:'﻿'+lines.join('\r\n'), filename:`발주목록_${new Date().toISOString().slice(0,10)}.csv`};
 }
 /** 조회 화면으로: 이 품번 + 발주 수량으로 바코드 조회를 실행 */
@@ -140,11 +148,11 @@ function putViews(v){ try{ localStorage.setItem(VKEY, JSON.stringify(v)); }catch
 export function saveView(name){
   const n = name.trim(); if(!n) return;
   const v = savedViews().filter(x=>x.name!==n);
-  v.push({name:n, grade:ui.forecastGrade, brand:ui.forecastBrand, customers:[...ui.forecastCustomers], search:ui.forecastSearch, noSales:ui.forecastShowNoSales});
+  v.push({name:n, grade:ui.forecastGrade, brand:ui.forecastBrand, category:ui.forecastCategory, customers:[...ui.forecastCustomers], search:ui.forecastSearch, noSales:ui.forecastShowNoSales});
   putViews(v);
 }
 export function deleteView(name){ putViews(savedViews().filter(x=>x.name!==name)); }
 export function applyView(name){
   const v = savedViews().find(x=>x.name===name); if(!v) return;
-  Object.assign(ui, {forecastGrade:v.grade, forecastBrand:v.brand, forecastCustomers:new Set(v.customers||(v.customer?[v.customer]:[])), forecastSearch:v.search, forecastShowNoSales:v.noSales, forecastPage:50}); ui.forecastPnChips.clear(); emit();
+  Object.assign(ui, {forecastGrade:v.grade, forecastBrand:v.brand, forecastCategory:v.category||'all', forecastCustomers:new Set(v.customers||(v.customer?[v.customer]:[])), forecastSearch:v.search, forecastShowNoSales:v.noSales, forecastPage:50}); ui.forecastPnChips.clear(); emit();
 }

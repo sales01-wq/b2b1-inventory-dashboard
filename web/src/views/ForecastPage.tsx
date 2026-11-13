@@ -129,6 +129,10 @@ function Filters({m}: {m: Model}) {
           </HStack>
         </HStack>
         <HStack gap={2} wrap="wrap" vAlign="center">
+          <ToggleButtonGroup label="품목 구분" size="sm" value={ui.forecastCategory} onChange={v => v !== null && act.setForecastCategory(v as string)}>
+            <ToggleButton value="all" label="전체 품목" />
+            <ToggleButton value="hero" label="히어로 품목만" />
+          </ToggleButtonGroup>
           <CustomerPicker />
           <div className="grow-field">
             <TextInput label="품번 / 품명 검색" isLabelHidden size="sm" placeholder="품번 / 품명 검색" value={ui.forecastSearch} onChange={act.setForecastSearch} />

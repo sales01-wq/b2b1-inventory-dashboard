@@ -151,6 +151,27 @@ try {
   await inactiveRows.first().getByRole('button', {name: '근거 보기'}).click();
   await page.getByText(/마지막 판매일:/).first().waitFor();
   await page.getByRole('button', {name: '근거 닫기'}).first().click();
+  // 미판매 품목을 직접 담으면 수량 0 + 담을 때 부족 수량 · 미판매 사유 보존
+  const inactivePn = (await inactiveRows.first().locator('td.sticky-col code').innerText()).trim();
+  await page.getByRole('checkbox', {name: `${inactivePn} 선택`}).check();
+  await page.getByRole('button', {name: '선택 품목 발주 목록에 담기'}).click();
+  await page.getByText(/1개 담음/).waitFor();
+  await page.getByRole('button', {name: '선택 해제'}).click();
+  await page.goto(base + '/#/orders');
+  const orow = page.locator('tbody tr', {hasText: inactivePn});
+  assert.equal(await orow.getByRole('spinbutton').inputValue(), '0', '미판매 품목 기본 수량 0');
+  await orow.getByText(/담을 때 (6개월 이상 미판매|12개월 이상 미판매|판매 이력 없음)/).waitFor();
+  await orow.getByRole('spinbutton').fill('25'); await orow.getByRole('spinbutton').blur(); // 의도적으로 생산하려면 직접 입력
+  await orow.getByText('수량 수정됨').waitFor();
+  await page.goto(base + '/#/forecast');
+  await page.getByRole('tab', {name: '품목별'}).waitFor();
+  // 품목 구분 필터: 히어로 품목만 ↔ 전체 품목 (히어로 지정이 없으면 빈 목록)
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
+  await page.getByRole('button', {name: '히어로 품목만'}).click();
+  await page.getByRole('button', {name: '히어로 품목만', pressed: true}).waitFor();
+  assert.equal(await page.locator('tbody tr td.sticky-col code').count(), 0, '히어로 지정 없는데 행이 보임');
+  await page.getByRole('button', {name: '전체 품목'}).click();
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
   for (const g of [/^생산 필요 \d+$/, /^생산 추천 \d+$/]) { // 생산 필요 · 추천 필터에는 사유 표시가 있는 품목이 없음
     await page.getByRole('button', {name: g}).click();
     assert.equal(await page.locator('.inactive-note').count(), 0, '생산 필요/추천 목록에 미판매 품목');

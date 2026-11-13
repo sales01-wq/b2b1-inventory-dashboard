@@ -23,6 +23,7 @@ export const ui = {
   forecastVisiblePns: [],
   forecastPnChips: new Set(),
   forecastCustomers: new Set(), forecastCustSearch: '', // 거래처 다중 선택 (비어 있으면 전체, 여러 개면 OR)
+  forecastCategory: 'all', // 품목 구분: 'all' 전체 품목 | 'hero' 히어로 품목만 (마스크는 분류 데이터가 없어 보류)
   forecastYear: null, // 월별 판매 표시 연도 (null = 올해)
   forecastOverstockScope: 'all', // 'all' | 'b2b1' | 'emp'
   skuStatusSearch: '',

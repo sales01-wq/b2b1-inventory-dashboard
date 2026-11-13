@@ -23,7 +23,7 @@ import {useHashRoute} from '../app/useHashRoute';
 
 const SEL = '선택 거래처 기준: ';
 const scopeShort = (s: string) => (!s ? '기준 정보 없음' : s.startsWith(SEL) && s.length > SEL.length + 40 ? s.slice(0, SEL.length + 38) + '…' : s); // 전체 이름은 마우스를 올리면 보임
-interface Row {pn: string; qty: number; name: string; brand: string; available: number; incoming: number; scope: string; calc: number | null; edited: boolean}
+interface Row {pn: string; qty: number; name: string; brand: string; available: number; incoming: number; scope: string; calc: number | null; inactive: string | null; edited: boolean}
 
 /** 발주 목록: 담은 품목의 수량을 고쳐서 CSV(엑셀에서 열림)로 내려받음. 이 브라우저에만 저장됨 */
 export function OrderListPage() {
@@ -68,7 +68,7 @@ export function OrderListPage() {
                     <TableCell className="num">{fmt(r.available)}</TableCell>
                     <TableCell className="num">{fmt(r.incoming)}</TableCell>
                     <TableCell className="num muted">{r.calc !== null ? fmt(r.calc) : '-'}</TableCell>
-                    <TableCell><span className="scope-cell" title={r.scope || '기준 정보 없음'}>{scopeShort(r.scope)}</span>{r.edited && <> <Badge variant="neutral" label="수량 수정됨" /></>}</TableCell>
+                    <TableCell><span className="scope-cell" title={r.scope || '기준 정보 없음'}>{scopeShort(r.scope)}</span>{r.inactive && <> <Badge variant="neutral" label={'담을 때 ' + r.inactive} /></>}{r.edited && <> <Badge variant="neutral" label="수량 수정됨" /></>}</TableCell>
                     <TableCell><NumberInput label={`${r.pn} 발주 수량`} isLabelHidden size="sm" min={0} value={r.qty} onChange={v => setCartQty(r.pn, v ?? 0)} /></TableCell>
                     <TableCell>
                       <HStack gap={1}>
@@ -82,7 +82,7 @@ export function OrderListPage() {
             </Table>
           </Card>
           <Text type="supporting" className="scroll-hint">표는 옆으로 밀어서 볼 수 있습니다 (품번 열은 고정).</Text>
-          <Text type="supporting">발주 수량을 0 으로 하면 목록에서 빠집니다. 파일은 UTF-8(BOM)이라 엑셀에서 한글이 바로 보입니다.</Text>
+          <Text type="supporting">발주 수량을 0 으로 하면 목록에서 빠집니다 (미판매로 담은 항목은 0 으로 남으며, 생산하려면 수량을 직접 입력하세요). 파일은 UTF-8(BOM)이라 엑셀에서 한글이 바로 보입니다.</Text>
         </VStack>
       )}
     </PageFrame>

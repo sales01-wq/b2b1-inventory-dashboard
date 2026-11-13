@@ -29,6 +29,7 @@ export function forecastModel(){
   // 거래처 필터(여러 개 = OR): 고른 거래처 중 하나라도 최근 12개월 안에 산 적 있는 품목만 남기고, 그 거래처들의 판매만으로 목표 · 부족 · 상태를 다시 계산 (scopeForecastItem).
   // 품목은 한 번만 나오고 재고 · 입고예정은 품목당 한 번 그대로라 같은 재고를 거래처마다 중복해서 세지 않음
   let src = state.forecast.filter(x=>brandPasses(x.brand));
+  if(ui.forecastCategory==='hero') src = src.filter(x=>x.hero); // 품목 구분: 히어로 지정 품목만 (히어로 지정은 미판매여도 유지 → 참고/미판매에서 계속 보임)
   if(ui.forecastCustomers.size>0){
     const cut = new Date(); cut.setFullYear(cut.getFullYear()-1);
     src = src.filter(x=>(state.salesRowsByProduct.get(x.품번)||[]).some(r=>ui.forecastCustomers.has(r.거래처) && r.실적일자>=cut))

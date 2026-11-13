@@ -45,7 +45,7 @@ export function ProductDetail({go}: {go: (v: 'lookup') => void}) {
               </div>
               {x.inactiveReason && <Text type="supporting"><span className="text-warn">{x.inactiveReason}</span> · 마지막 판매일 {x.lastSale ? x.lastSale.toLocaleDateString('ko-KR') : '없음'} — 생산 필요 · 추천에서 제외 (부족 수량은 참고용)</Text>}
               <HStack gap={2} wrap="wrap">
-                <Button label="발주 목록에 담기" size="sm" onClick={() => addToCart(pn, x.orderQty > 0 ? x.orderQty : 1, SCOPE_ALL)} />
+                <Button label="발주 목록에 담기" size="sm" onClick={() => addToCart(pn, undefined, SCOPE_ALL)} />
                 <Button label="조회에서 확인" size="sm" variant="secondary" onClick={() => { lookupFor(pn, x.orderQty); lookupSearch(); closeDetail(); go('lookup'); }} />
               </HStack>
             </>

@@ -254,6 +254,12 @@ try {
   await heroMin.fill('200'); await heroMin.press('Tab');
   await page.getByRole('button', {name: '추가/수정'}).click();
   await page.getByText('히어로 품목 생산 필요 알람 (1개) — B2B1팀').waitFor();
+  // 품목 구분: 히어로 품목만 → 지정한 MT002 만, 전체 품목으로 되돌리면 원래 목록
+  const beforeHero = await page.locator('tbody tr td.sticky-col code').allInnerTexts();
+  await page.getByRole('button', {name: '히어로 품목만'}).click();
+  assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), ['MT002']);
+  await page.getByRole('button', {name: '전체 품목'}).click();
+  assert.deepEqual(await page.locator('tbody tr td.sticky-col code').allInnerTexts(), beforeHero);
   await checkNoClippedCells(page);
   // 히어로 표: 글자 칸(품명)은 왼쪽, 숫자 칸(현재 가용재고)은 오른쪽 정렬
   assert.deepEqual(await page.evaluate(() => {
