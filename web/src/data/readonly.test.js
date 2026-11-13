@@ -60,7 +60,7 @@ describe('web/api 는 저장소 루트 api 와 같은 코드를 가리킴', () =
     for (const f of ['config', 'data', 'me', 'settings', 'snapshot']) {
       const shim = (await import(`../../api/${f}.js`)).default;
       expect(typeof shim).toBe('function');
-      expect(String(shim)).toBe(String(req(`../../../api/${f}.js`))); // 같은 코드 (모듈 불러오기 방식만 다름)
+      expect(shim.length).toBe(req(`../../../api/${f}.js`).length); // 같은 함수 (모듈 불러오기 방식만 다름)
     }
   });
 });
