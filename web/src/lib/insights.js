@@ -112,7 +112,9 @@ function dupWarnings(pn){
 }
 /** 담긴 항목의 경고(자동으로 바꾸지 않고 알리기만): 그룹 안 다른 SKU 중복 · 이전 SKU · 담을 때와 달라진 대표/구성 */
 function cartWarnings(pn, m){
-  const out = [], hit = groupOfPn(pn), st = hit ? (state.groupStatus||{})[hit.id] : null, curRep = st && st.applied ? st.rep : null;
+  const out = [], hit = groupOfPn(pn);
+  if((state.groupConflicts||[]).some(c=>c.pn===pn)) out.push('이 SKU 는 여러 그룹에 속해 있어 그룹 계산에서 제외됩니다 (그룹 관리에서 충돌 해결 필요)');
+  const st = hit ? (state.groupStatus||{})[hit.id] : null, curRep = st && st.applied ? st.rep : null;
   if(hit){
     const others = hit.g.members.filter(p=>p!==pn && ui.cart.has(p));
     if(others.length) out.push(`같은 그룹(${hit.g.name||hit.id})의 다른 SKU 도 발주 목록에 있음: ${others.join(', ')}`);

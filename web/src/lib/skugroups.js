@@ -132,5 +132,5 @@ export function groupView(id){
 
 export function skuGroupsModel(){
   const groups = Object.keys(settings.skuGroups||{}).sort((a,b)=>String((settings.skuGroups[a]||{}).name).localeCompare(String((settings.skuGroups[b]||{}).name),'ko')).map(groupView).filter(Boolean);
-  return {candidates:state.loaded ? buildCandidates() : [], groups, rejectedCount:(settings.skuRejected||[]).length};
+  return {conflicts:state.groupConflicts||[], candidates:state.loaded ? buildCandidates() : [], groups, rejectedCount:(settings.skuRejected||[]).length};
 }

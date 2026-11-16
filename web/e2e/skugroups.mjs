@@ -114,6 +114,34 @@ try {
   await page.getByRole('tab', {name: /^후보 검토 1$/}).waitFor();
   await page.getByRole('button', {name: '거절 모두 되돌리기'}).click();
   await page.getByRole('tab', {name: /^후보 검토 2$/}).waitFor();
+  // SKU 충돌(겹치는 확정 그룹, 예: 서버에서 불러온 설정): 관련 그룹은 적용되지 않고 개별 SKU 로 보이며 경고가 나옴
+  const cp = await browser.newPage({viewport: {width: 1440, height: 900}});
+  await cp.addInitScript(() => localStorage.setItem('inv_settings_v1', JSON.stringify({rules: {}, hero: {}, box: {}, mask: {}, skuRejected: [], skuGroups: {
+    g1: {name: '세트 A 1', members: ['SB004', 'SB005'], rep: null, compat: []}, g2: {name: '세트 A 2', members: ['SB005', 'SB006'], rep: null, compat: []}, g3: {name: '세럼', members: ['SB001', 'SB002'], rep: null, compat: []}}})));
+  await cp.route('**/*', r => {
+    const u = r.request().url();
+    if (u.includes('papaparse.min.js')) return r.fulfill({path: require.resolve('papaparse/papaparse.min.js'), contentType: 'text/javascript'});
+    return u.startsWith(base) ? r.continue() : r.abort();
+  });
+  await cp.goto(base + '/#/data');
+  await cp.locator('input[type=file]').setInputFiles(Object.entries(files).map(([n, rows]) => ({name: n + '.csv', mimeType: 'text/csv', buffer: Buffer.from(Papa.unparse(rows))})));
+  await cp.getByRole('button', {name: '대시보드에 적용'}).click();
+  await cp.waitForURL(/#\/overview$/);
+  await cp.goto(base + '/#/skugroups');
+  await cp.getByText(/SKU 그룹 충돌 1건/).waitFor();
+  await cp.getByText(/SB005.*'세트 A 1', '세트 A 2' 2개 그룹에 속해 있습니다/).waitFor();
+  await cp.getByRole('tab', {name: /^확정 그룹 3$/}).click();
+  assert.equal(await cp.getByText('적용 안 됨', {exact: true}).count(), 2, '충돌 그룹 2개만 적용 안 됨');
+  assert.equal(await cp.getByText('생산 필요 현황에 적용 중', {exact: true}).count(), 1, '영향 없는 그룹은 적용 중');
+  await cp.getByText(/SKU 충돌 — SB005/).first().waitFor();
+  await cp.goto(base + '/#/forecast'); await cp.getByRole('tab', {name: '품목별'}).waitFor();
+  await cp.getByRole('button', {name: /^전체 \d+$/}).click();
+  await cp.getByRole('checkbox', {name: '최근 6개월 판매 이력 없는 품목도 보기'}).check();
+  const cc = await cp.locator('tbody tr td.sticky-col code').allInnerTexts();
+  for (const pn of ['SB004', 'SB005', 'SB006']) assert.ok(cc.includes(pn), pn + ' 가 개별 SKU 로 보이지 않음'); // 충돌 멤버는 개별 계산으로 계속 보임
+  assert.equal(await cp.getByText(/^그룹 2$/).count(), 1, '충돌 없는 그룹(세럼)만 그룹 표시');
+  assert.deepEqual(errors, []);
+  await cp.close();
   assert.deepEqual(errors, []);
   await page.close();
   console.log('e2e 상품 그룹 관리(1 · 2단계): 통과');

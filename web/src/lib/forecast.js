@@ -271,7 +271,7 @@ export function computeDerived(){
   state.salesRowsBySku = salesRowsByProduct; state.forecastSku = forecast.slice();
   const eff = new Map(salesRowsByProduct);
   const grouped = applyConfirmedGroups(forecast, salesRowsByProduct, eff);
-  state.salesRowsByProduct = eff; state.groupStatus = grouped.status;
+  state.salesRowsByProduct = eff; state.groupStatus = grouped.status; state.groupConflicts = grouped.conflicts;
   forecast.length = 0; forecast.push(...grouped.items);
   forecast.sort((a,b)=>{
     const order = {'위험':0,'주의':1,'안전':2,'데이터부족':3};

@@ -35,12 +35,20 @@ const BASIS = '최근 판매실적일 기준 (전체 거래처 · 실제 출하�
 export function SkuGroupsPage() {
   useStore();
   const [, rerender] = useState(0);
-  const m = state.loaded ? (skuGroupsModel() as {candidates: Cand[]; groups: GroupV[]; rejectedCount: number}) : null;
+  const m = state.loaded ? (skuGroupsModel() as {conflicts: {pn: string; groups: {id: string; name: string}[]}[]; candidates: Cand[]; groups: GroupV[]; rejectedCount: number}) : null;
   return (
     <PageFrame view="skugroups">
       {!m ? <NoData /> : (
         <VStack gap={4}>
           <Card variant="muted"><Text type="supporting">포장 개정 · 고객 전용 SKU 그룹을 검토하고 설정하는 화면입니다. <b>확정한 그룹만 생산 필요 현황에 반영됩니다</b> (한 줄로 합침): 판매 이력은 그룹 전체를 합산하고, 재고 · 입고예정은 대표 SKU 와 호환 확인한 SKU 만 포함합니다. 후보 · 거절 · 그룹 없는 SKU 는 개별 계산 그대로입니다. 이름이 비슷하다는 이유만으로 자동 확정하지 않으며, TARGET · TJX · 일반 SKU 는 서로 묶을 수 없습니다. 이미 담긴 발주 목록 항목은 그룹이 바뀌어도 자동으로 바뀌지 않고 경고만 표시됩니다.</Text></Card>
+          {m.conflicts.length > 0 && (
+            <Card role="alert">
+              <VStack gap={1}>
+                <Text type="label" weight="semibold"><span className="text-danger">⚠ SKU 그룹 충돌 {fmt(m.conflicts.length)}건 — 관련 그룹은 계산에서 제외되고 개별 SKU 로 계산됩니다</span></Text>
+                {m.conflicts.map(c => <Text key={c.pn} type="supporting"><b>{c.pn}</b> 가 {c.groups.map(g => `'${g.name || g.id}'`).join(', ')} {fmt(c.groups.length)}개 그룹에 속해 있습니다. 한 그룹에서 이 SKU 를 빼거나 그룹을 삭제하면 해결됩니다 (그룹 순서로 자동 결정하지 않음).</Text>)}
+              </VStack>
+            </Card>
+          )}
           <TabList role="tablist" size="sm" hasDivider value={subview} onChange={v => { subview = v as typeof subview; rerender(n => n + 1); }}>
             <Tab value="cand" label={`후보 검토 ${fmt(m.candidates.length)}`} panelId="sku-panel" />
             <Tab value="group" label={`확정 그룹 ${fmt(m.groups.length)}`} panelId="sku-panel" />

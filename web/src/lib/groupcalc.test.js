@@ -108,11 +108,6 @@ describe('재고 · 입고예정: 대표 + 호환 확인한 SKU 만, 한 번씩'
     x = row('SB102'); expect([x.available, x.incoming]).toEqual([35, 15]); // 25 + 40 + (−30)
     expect(x.group.members.map(m => [m.pn, m.compat, m.isRep])).toEqual([['SB101', true, false], ['SB102', false, true], ['SB103', true, false]]);
   });
-  it('한 SKU 는 한 그룹에만: 겹치면 먼저 처리한 그룹이 가져가고 나머지는 적용 안 됨', () => {
-    build(S(), SALES(), {g1: G(['SB101', 'SB102']), g2: G(['SB102', 'SB103'])});
-    expect(a.state.groupStatus.g1.applied).toBe(true); expect(a.state.groupStatus.g2.applied).toBe(false);
-    expect(a.state.forecast.map(x => x.품번).sort()).toEqual(['SB102', 'SB103']);
-  });
   it('고객 전용 섞인 그룹 · 일부 멤버가 데이터에 없음', () => {
     build([sku('SB101', NA, 1), sku('SB102', '세럼 (TARGET)', 1), sku('SB103', GL, 1)], [sale('A', 'SB101', 10, d(1))], {g1: G(['SB101', 'SB102'])});
     expect(a.state.groupStatus.g1.applied).toBe(false); expect(a.state.groupStatus.g1.reason).toMatch(/묶을 수 없는 구성/); expect(a.state.forecast.length).toBe(3);
@@ -208,5 +203,63 @@ describe('발주 목록: 대표 SKU · 그룹 스냅샷 · 중복 경고 · 자�
     build(S(), SALES(false), {g1: G(['SB101', 'SB102'])}, {hero: {SB102: {minQty: 5}}, mask: {SB102: true}});
     a.ui.forecastCategory = 'hero'; I.saveView('히어로'); a.ui.forecastCategory = 'all'; I.applyView('히어로');
     expect(a.ui.forecastCategory).toBe('hero'); expect(a.forecastModel().list.map(x => x.품번)).toEqual(['SB101']); I.deleteView('히어로'); a.ui.forecastCategory = 'all';
+  });
+});
+
+describe('SKU 가 둘 이상의 확정 그룹에 속하면: 순서와 무관하게 관련 그룹 모두 제외, 개별 계산 유지', () => {
+  const S = () => [sku('SB101', NA, 40), sku('SB102', GL, 25), sku('SB103', '세럼 (유럽)', 10), sku('SB201', '토너 (북미)', 5), sku('SB202', '토너 (글로벌)', 8)];
+  const SALES = () => [sale('A', 'SB101', 100, d(2, 10)), sale('A', 'SB102', 150, d(2, 20)), sale('A', 'SB103', 60, d(3)), sale('A', 'SB201', 30, d(2, 10)), sale('A', 'SB202', 50, d(2, 20))];
+  const snap = () => JSON.stringify(a.state.forecast.map(x => [x.품번, x.target, x.orderQty, x.grade, x.available, x.incoming, !!x.group]).sort());
+  const OVERLAP = (first, second) => ({[first]: G(['SB101', 'SB102'], {name: '세럼A'}), [second]: G(['SB102', 'SB103'], {name: '세럼B'}), g5: G(['SB201', 'SB202'], {name: '토너'})});
+  it('겹친 두 그룹은 모두 적용 안 됨(충돌 표시), 멤버는 개별 계산으로 보이고 겹치지 않는 그룹은 그대로 적용', () => {
+    build(S(), SALES(), {g5: G(['SB201', 'SB202'], {name: '토너'})}); const onlyToner = snap();
+    build(S(), SALES(), OVERLAP('g1', 'g2'));
+    expect(a.state.groupStatus.g1).toMatchObject({applied: false, conflict: true}); expect(a.state.groupStatus.g2).toMatchObject({applied: false, conflict: true});
+    expect(a.state.groupStatus.g1.reason).toMatch(/SB102/); expect(a.state.groupStatus.g5.applied).toBe(true); // 영향 없는 그룹 보존
+    expect(a.state.groupConflicts).toEqual([{pn: 'SB102', groups: [{id: 'g1', name: '세럼A'}, {id: 'g2', name: '세럼B'}]}]);
+    expect(a.state.forecast.map(x => x.품번).sort()).toEqual(['SB101', 'SB102', 'SB103', 'SB202']); // 세럼 3개는 개별, 토너는 그룹(대표 SB202) 한 줄
+    // 개별 계산 = 그룹 없이 계산한 값과 같음 (중복 계산 · 누락 없음)
+    build(S(), SALES(), {g5: G(['SB201', 'SB202'], {name: '토너'})});
+    const indiv = Object.fromEntries(a.state.forecast.map(x => [x.품번, [x.target, x.orderQty, x.available, x.incoming]]));
+    build(S(), SALES(), OVERLAP('g1', 'g2')); a.state.forecast.filter(x => ['SB101', 'SB102', 'SB103'].includes(x.품번)).forEach(x => expect([x.target, x.orderQty, x.available, x.incoming]).toEqual(indiv[x.품번]));
+    expect(a.state.forecast.every(x => !['SB101', 'SB102', 'SB103'].includes(x.품번) || x.group === undefined)).toBe(true);
+    expect(onlyToner.includes('SB202')).toBe(true);
+  });
+  it('그룹 순서를 바꿔도 결과가 완전히 같음 (id 순서 · 저장 순서와 무관)', () => {
+    build(S(), SALES(), OVERLAP('g1', 'g2')); const a1 = snap(), c1 = JSON.stringify(a.state.groupConflicts.map(c => [c.pn, c.groups.map(g => g.name).sort()]));
+    build(S(), SALES(), OVERLAP('g2', 'g1')); const a2 = snap(), c2 = JSON.stringify(a.state.groupConflicts.map(c => [c.pn, c.groups.map(g => g.name).sort()]));
+    build(S(), SALES(), OVERLAP('z9', 'a1')); const a3 = snap();
+    expect(a2).toBe(a1); expect(a3).toBe(a1); expect(c2).toBe(c1);
+    ['g1', 'g2', 'a1', 'z9'].forEach(id => { if (a.state.groupStatus[id]) expect(a.state.groupStatus[id].applied).toBe(false); });
+  });
+  it('연쇄 겹침(A-B, B-C, C-D)도 겹친 SKU 가 속한 모든 그룹을 제외', () => {
+    build([sku('SB101', NA, 1), sku('SB102', GL, 1), sku('SB103', '세럼 (유럽)', 1), sku('SB104', '세럼 (일본)', 1)], [sale('A', 'SB101', 5, d(1)), sale('A', 'SB102', 5, d(1)), sale('A', 'SB103', 5, d(1)), sale('A', 'SB104', 5, d(1))],
+      {g1: G(['SB101', 'SB102']), g2: G(['SB102', 'SB103']), g3: G(['SB103', 'SB104'])});
+    ['g1', 'g2', 'g3'].forEach(id => expect(a.state.groupStatus[id].applied).toBe(false));
+    expect(a.state.groupConflicts.map(c => c.pn)).toEqual(['SB102', 'SB103']); expect(a.state.forecast.length).toBe(4);
+  });
+  it('충돌 해결: 한 그룹에서 SKU 를 빼면 두 그룹 모두 적용, 그룹을 지워도 남은 그룹 적용', () => {
+    build(S(), SALES(), OVERLAP('g1', 'g2')); expect(a.state.groupConflicts.length).toBe(1);
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'], {name: '세럼A'}), g2: G(['SB103', 'SB101x'], {name: '세럼B'}), g5: G(['SB201', 'SB202'])}); // g2 에서 SB102 제거(남은 멤버 1개 → 적용 안 됨은 충돌 아님)
+    expect(a.state.groupConflicts).toEqual([]); expect(a.state.groupStatus.g1.applied).toBe(true); expect(a.state.groupStatus.g2.applied).toBe(false); expect(a.state.groupStatus.g2.conflict).toBeUndefined();
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'], {name: '세럼A'}), g5: G(['SB201', 'SB202'])}); // g2 삭제
+    expect(a.state.groupConflicts).toEqual([]); expect(a.state.forecast.map(x => x.품번).sort()).toEqual(['SB102', 'SB103', 'SB202']);
+  });
+  it('데이터에 없는 멤버가 겹쳐도 충돌로 처리하고, 발주 목록 항목은 그대로 + 경고만', () => {
+    a.ui.cart.clear(); a.ui.cartMeta.clear(); build(S(), SALES(), {g1: G(['SB101', 'SB102']), g5: G(['SB201', 'SB202'])});
+    I.addToCart('SB102'); const qty = a.ui.cart.get('SB102'); const meta = JSON.stringify(a.ui.cartMeta.get('SB102'));
+    build(S(), SALES(), {g1: G(['SB101', 'SB102']), g2: G(['SB102', 'GONE']), g5: G(['SB201', 'SB202'])}); // GONE 은 데이터에 없지만 SB102 가 겹침
+    expect(a.state.groupConflicts.map(c => c.pn)).toEqual(['SB102']);
+    expect(a.ui.cart.get('SB102')).toBe(qty); expect(JSON.stringify(a.ui.cartMeta.get('SB102'))).toBe(meta); expect(a.ui.cart.size).toBe(1);
+    expect(I.cartRows().find(r => r.pn === 'SB102').warnings.join()).toMatch(/여러 그룹에 속해 있어 그룹 계산에서 제외/);
+    a.ui.cart.clear(); a.ui.cartMeta.clear();
+  });
+  it('그룹 관리 화면 모델에 충돌 목록 · 그룹별 적용 안 됨 사유', async () => {
+    const G2 = await import('./skugroups.js');
+    build(S(), SALES(), OVERLAP('g1', 'g2'));
+    const m = G2.skuGroupsModel();
+    expect(m.conflicts.map(c => c.pn)).toEqual(['SB102']);
+    expect(m.groups.filter(g => ['g1', 'g2'].includes(g.id)).every(g => !g.applied && /SKU 충돌/.test(g.appliedReason))).toBe(true);
+    expect(m.groups.find(g => g.id === 'g5').applied).toBe(true);
   });
 });
