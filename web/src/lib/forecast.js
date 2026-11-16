@@ -306,7 +306,7 @@ export function groupOf(g){
 const csvEsc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
 const scopeText = x => x.scoped ? '선택 거래처 기준' : '전체 거래처 기준';
 const groupText = x => x.group ? '그룹 '+x.group.members.map(m=>m.pn+(m.isRep?'(대표)':m.compat?'(호환)':'')).join('+') : '';
-const flagText = x => x.inactiveReason ? x.inactiveReason : x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
+const flagText = x => x.provisional ? '잠정(SKU 선택 필요)' : x.inactiveReason ? x.inactiveReason : x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
 function stockCsv(rows, filename){
   const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요','기준','그룹'].join(',')];
   rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,statusLabel(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x),scopeText(x),groupText(x)].map(csvEsc).join(',')));

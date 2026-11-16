@@ -78,7 +78,8 @@ export function buildGroupItem(def, id, present, byPn, rowsBySku, custs, forceRe
   const cut6 = new Date(); cut6.setMonth(cut6.getMonth()-6);
   const sold6 = rows.reduce((s,r)=> r.실적일자>=cut6 ? s+safeNum(r.수량) : s, 0);
   const members = present.map(pn=>{ const x = byPn.get(pn); return {pn, name:x.품명, lastSale:x.lastSale||null, available:x.available, incoming:x.incoming, compat:compat.has(pn), isRep:pn===rep}; });
-  return {...R, key:'group:'+id, scoped, group:{id, name:def.name||'', auto:!!def.auto, rep, repManual:!!res.manual, repBasis:res.basis, pending:res.pending, compat:[...compat], members, missing:(def.members||[]).filter(pn=>!present.includes(pn))},
+  return {...R, key:'group:'+id, scoped, provisional:!!res.pending, // 잠정: 대표 SKU 미확정 — 재고는 임시 SKU 기준이라 부족 수량도 확정 수치가 아님
+     group:{id, name:def.name||'', auto:!!def.auto, rep, repManual:!!res.manual, repBasis:res.basis, pending:res.pending, compat:[...compat], members, missing:(def.members||[]).filter(pn=>!present.includes(pn))},
     memberPns:present, available, incoming, incomingExcluded, sold6, discontinued, lastSale:act.last, inactiveReason:act.reason, target:prof.target,
     orderQty: discontinued ? 0 : Math.max(0, prof.target - available - incoming), ratio:gr.ratio, grade:gr.grade,
     avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust,

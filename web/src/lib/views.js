@@ -97,7 +97,7 @@ export function forecastModel(){
     });
     return arr;
   };
-  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly, year, yearList, scopeLabel: ui.forecastCustomers.size>0 ? '선택 거래처 기준' : '전체 거래처 기준', scopeCount: ui.forecastCustomers.size};
+  return {list, isOverstock, brands, gradeChips, needItems, needQty, months, monthly, year, yearList, provisionalCount: list.filter(x=>x.provisional).length, scopeLabel: ui.forecastCustomers.size>0 ? '선택 거래처 기준' : '전체 거래처 기준', scopeCount: ui.forecastCustomers.size};
 }
 
 /* 펼친 행: 목표 재고 근거(월별 합계) · 거래처별 월 판매 · 최근 판매 20건 · 입고예정 · 반품 · 대량 판매 표시 */

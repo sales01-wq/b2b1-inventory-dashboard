@@ -401,3 +401,41 @@ describe('자동 그룹: 근거가 확실한 포장 개정만 승인 없이, 나
     a.settings.skuRejected = []; a.ui.cart.clear(); a.ui.cartMeta.clear();
   });
 });
+
+describe('SKU 선택 필요(고객마다 대표가 다름) 그룹: 잠정 수치 · 선택 후 재계산 · 담기 차단 · 보존', () => {
+  const S = () => [sku('SB101', NA, 40, {incoming: 10, incDate: '2999-01-01'}), sku('SB102', GL, 25, {incoming: 5, incDate: '2999-01-01'})];
+  const SALES = () => [sale('A', 'SB101', 100, d(1, 20)), sale('B', 'SB102', 70, d(1, 10))]; // 같은 달 합산 170, A=SB101 · B=SB102, 전체 최근 = SB101
+  const grp = () => a.state.forecast.find(x => x.key === 'group:g1');
+  it('임시 SKU 재고 기준의 잠정 수치로 표시(provisional), 확정 수치가 아님', () => {
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'])});
+    const x = grp(); expect(x.group.pending).not.toBeNull(); expect(x.provisional).toBe(true);
+    expect([x.group.rep, x.available, x.incoming, x.orderQty]).toEqual(['SB101', 40, 10, 120]); // 임시 SKU(전체 최근) 재고 기준
+    expect(x.group.members.find(m => m.pn === 'SB101').isRep).toBe(true); expect(a.forecastModel().provisionalCount).toBe(1);
+    a.ui._forecastCsvRows = [x]; expect(a.forecastListCsv().csv).toContain('잠정(SKU 선택 필요)');
+    a.ui.forecastCustomers = new Set(['B']); expect(a.forecastModel().list.find(r => r.key === 'group:g1').provisional).toBe(false); // 고객 1곳이면 확정
+    a.ui.forecastCustomers = new Set();
+  });
+  it('SKU 를 고르면 선택 SKU + 호환 SKU 만으로 재고 · 입고예정 · 부족 수량을 다시 계산 (미리보기는 발주 목록을 건드리지 않음)', async () => {
+    const R = await import('./groupcalc.js'); a.ui.cart.clear(); a.ui.cartMeta.clear();
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'])});
+    const p = R.rebuildGroupItem(grp(), a.ui.forecastCustomers, 'SB102'); // 담기 전 미리보기
+    expect(p).toMatchObject({품번: 'SB102', provisional: false, available: 25, incoming: 5, orderQty: 140}); expect(p.group.pending).toBeNull(); expect(p.group.repBasis).toMatch(/직접 선택/);
+    expect(a.ui.cart.size).toBe(0); expect(a.ui.cartMeta.size).toBe(0);
+    // 호환 확인: 선택 SKU + 호환만, 임시였던 SB101 이 호환이면 한 번만 (두 번 세지 않음)
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'], {compat: ['SB101', 'SB102']})});
+    const q = R.rebuildGroupItem(grp(), a.ui.forecastCustomers, 'SB102'); expect([q.available, q.incoming, q.orderQty]).toEqual([65, 15, 90]); // 25+40, 5+10
+    const t = R.rebuildGroupItem(grp(), a.ui.forecastCustomers, 'SB101'); expect([t.available, t.incoming, t.orderQty]).toEqual([65, 15, 90]); // 어느 쪽을 골라도 같은 SKU 는 한 번씩
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'])}); // 호환 없음: 임시 SKU(SB101) 재고는 들어가지 않음
+    expect(R.rebuildGroupItem(grp(), a.ui.forecastCustomers, 'SB102').available).toBe(25);
+  });
+  it('일괄 담기는 선택 필요 그룹을 막고(건너뜀), 직접 선택해 담으면 재계산 값 · 스냅샷으로 담기며 기존 항목은 그대로', () => {
+    a.ui.cart.clear(); a.ui.cartMeta.clear(); build(S().concat([sku('SB900', '토너', 5)]), SALES().concat([sale('A', 'SB900', 50, d(1))]), {g1: G(['SB101', 'SB102'])});
+    I.addManyToCart(['SB900']); I.setCartQty('SB900', 33); const before = JSON.stringify([...a.ui.cart.entries(), ...a.ui.cartMeta.entries()]);
+    const r = I.addManyToCart(['group:g1', 'SB900']); expect(r).toMatchObject({added: 0, existing: 1, pending: ['세럼']}); expect(JSON.stringify([...a.ui.cart.entries(), ...a.ui.cartMeta.entries()])).toBe(before); // 차단 + 기존 불변
+    const x = grp(); expect(I.addItemToCart(x)).toMatchObject({added: false, pending: true});
+    expect(I.addItemToCart(x, 'SB102')).toMatchObject({added: true});
+    expect(a.ui.cart.get('SB102')).toBe(140); expect(a.ui.cartMeta.get('SB102')).toMatchObject({calc: 140, group: {id: 'g1', rep: 'SB102', basis: '발주 SKU 를 직접 선택'}}); // 확정 재계산 값 저장 (임시 120 아님)
+    expect(a.ui.cart.get('SB900')).toBe(33); expect(I.addItemToCart(x, 'SB102')).toMatchObject({added: false}); expect(a.ui.cart.get('SB102')).toBe(140); // 다시 담아도 유지
+    a.ui.cart.clear(); a.ui.cartMeta.clear();
+  });
+});

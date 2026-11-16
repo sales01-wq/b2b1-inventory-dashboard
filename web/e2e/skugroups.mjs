@@ -88,7 +88,12 @@ try {
   await page.locator('tr', {has: page.getByText('SKU 선택 필요', {exact: true})}).getByRole('button', {name: '근거 보기'}).click();
   await page.getByText(/SKU 선택 필요: 고객마다 최근에 판 SKU 가 달라/).waitFor();
   const sel = page.getByRole('combobox', {name: '발주할 SKU 선택'}).or(page.getByLabel('발주할 SKU 선택')).first();
+  await page.getByText('잠정', {exact: true}).first().waitFor(); // 선택 전 부족 수량은 잠정 표시
+  await page.getByText(/잠정 \(SKU 미선택\)/).waitFor();
   await sel.click(); await page.getByRole('option', {name: /^SB005/}).click();
+  await page.getByText(/선택 SKU SB005 기준 재계산 \(담기 전 확인\)/).waitFor(); // 담기 전 재계산 미리보기
+  await page.getByText('부족 수량 (확정)').waitFor();
+  await page.getByRole('button', {name: /선택한 SKU 로 발주 목록에 담기 \(부족 수량 \d/}).waitFor();
   await page.getByRole('button', {name: '선택한 SKU 로 발주 목록에 담기'}).click();
   await page.getByText(/SB005 를 담았습니다/).waitFor();
   await page.goto(base + '/#/orders');

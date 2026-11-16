@@ -37,6 +37,7 @@ import {fmt} from '../lib/format';
 import {ProductLink} from './ProductLink';
 import {addItemToCart, addManyToCart, applyView, deleteView, saveView, savedViews} from '../lib/insights.js';
 import {useDragScroll} from '../app/useDragScroll';
+import {rebuildGroupItem} from '../lib/groupcalc.js';
 import {Popover} from '@astryxdesign/core/Popover';
 import {saveCsv} from '../lib/saveCsv';
 
@@ -192,6 +193,7 @@ function SummaryBar({m}: {m: Model}) {
           <Button label={`생산 필요 ${fmt(m.needItems)}개 목록에 담기`} size="sm" variant="secondary" isDisabled={m.needItems === 0}
             onClick={() => { const r = addManyToCart(m.list.filter((x: FRow) => x.orderQty > 0 && !['휴면', '단발성', '데이터부족'].includes(x.grade)).map((x: FRow) => x.key || x.품번)); setMsg(r.pending.length ? `${fmt(r.pending.length)}개 그룹은 SKU 선택이 필요해 건너뜀` : ''); }} />
           {msg && <Text type="supporting"><span className="text-warn" role="status">{msg}</span></Text>}
+          {m.provisionalCount > 0 && <Text type="supporting">잠정 수치 {fmt(m.provisionalCount)}개 포함 (SKU 선택 필요 그룹 — 위 부족 수량 합계에 임시 SKU 기준이 섞여 있음)</Text>}
           <Button label="표 내려받기(CSV)" size="sm" variant="secondary" icon={<Icon icon="arrowDown" />} onClick={() => saveCsv(forecastListCsv())} />
         </HStack>
       </HStack>
@@ -214,7 +216,7 @@ export function GradeBadge({grade}: {grade: string}) {
 interface Spike {month: {y: number; m: number}; qty: number; second: number; customers: {cust: string; qty: number}[]; oneMonth: boolean}
 interface Peak {month: {y: number; m: number}; qty: number; customers: {cust: string; qty: number}[]}
 interface GroupInfo {id: string; name: string; auto: boolean; repBasis: string; pending: {reason: string; candidates: string[]; perCustomer: {cust: string; pn: string | null; last: Date}[]} | null; rep: string; repManual: boolean; compat: string[]; members: {pn: string; name: string; lastSale: Date | null; available: number; incoming: number; compat: boolean; isRep: boolean}[]; missing: string[]}
-interface FRow {key?: string; group?: GroupInfo; mask?: boolean; lastSale: Date | null; inactiveReason: string | null; scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
+interface FRow {provisional?: boolean; key?: string; group?: GroupInfo; mask?: boolean; lastSale: Date | null; inactiveReason: string | null; scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
 
 // 열 너비(px): 고정 레이아웃. 품번/품명 칸은 넓게(품명은 줄바꿈), 숫자 칸은 촘촘하게. 넓은 화면에서는 앞 4칸이 함께 고정됨
 const W = {pn: 278, grade: 100, avail: 76, short: 88, month: 50};
@@ -272,8 +274,8 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
                   </HStack>
                 </TableCell>
                 <TableCell className="fc-s fc-s2"><GradeBadge grade={x.grade} />{x.inactiveReason && <span className="inactive-note">{x.inactiveReason}</span>}</TableCell>
-                <TableCell className="num fc-s fc-s3">{fmt(x.available)}</TableCell>
-                <TableCell className={'fc-s fc-s4 ' + (x.orderQty > 0 && !x.inactiveReason ? 'num short-qty' : 'num muted')}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}</TableCell>
+                <TableCell className="num fc-s fc-s3">{fmt(x.available)}{x.provisional && <span className="inactive-note" title="대표 SKU 미확정: 임시 SKU 의 재고">임시</span>}</TableCell>
+                <TableCell className={'fc-s fc-s4 ' + (x.provisional ? 'num muted prov-qty' : x.orderQty > 0 && !x.inactiveReason ? 'num short-qty' : 'num muted')}>{x.orderQty > 0 ? fmt(x.orderQty) : '-'}{x.provisional && <span className="inactive-note" title="SKU 를 고르기 전의 잠정 수치입니다">잠정</span>}</TableCell>
                 {m.months.map((mm: {y: number; m: number}, i: number) => {
                   const isPeak = !!x.peak && x.peak.month.y === mm.y && x.peak.month.m === mm.m;
                   return <TableCell key={i} className={'num dense ' + (isFuture(mm) ? 'muted future' : 'muted') + (isPeak ? ' peak-month' : '')}><span title={isPeak ? '부족 수량의 목표 재고가 된 달' : undefined}>{mv[i] ? fmt(mv[i]) : '-'}</span></TableCell>;
@@ -376,6 +378,7 @@ const ym = (d: {y: number; m: number}) => `${String(d.y).slice(2)}.${d.m + 1}`;
 function Detail({x}: {x: FRow}) {
   const [chosen, setChosen] = useState('');
   const [addMsg, setAddMsg] = useState('');
+  const preview = x.group && x.group.pending && chosen ? rebuildGroupItem(x, ui.forecastCustomers, chosen) : null; // 고른 SKU 로 다시 계산 (담기 전 미리보기, 발주 목록은 건드리지 않음)
   const d = forecastDetail(x);
   const wh = warehouseRows(x.품번);
   const ml = state.scheduleMonthLabels;
@@ -393,10 +396,17 @@ function Detail({x}: {x: FRow}) {
             <>{m.pn}{m.isRep && !x.group!.pending && <> <Badge variant="green" label="대표" /></>}</>, m.name || '-', m.lastSale ? m.lastSale.toLocaleDateString('ko-KR') : '판매 이력 없음', fmt(m.available), m.incoming ? fmt(m.incoming) : '-',
             m.isRep ? (x.group!.pending ? '반영 (임시)' : '반영 (대표)') : m.compat ? '반영 (호환 확인)' : '미반영 (별도 표시)'])} />
           {x.group.missing.length > 0 && <Text type="supporting">현재 데이터에 없는 멤버: {x.group.missing.join(', ')}</Text>}
+          {x.group.pending && preview && (
+            <MiniTable num={[1]} head={[`선택 SKU ${chosen} 기준 재계산 (담기 전 확인)`, '수량']} rows={[
+              ['목표 재고', fmt(preview.target)],
+              [preview.group.compat.length ? `− 가용재고 (${chosen} + 호환 확인 ${preview.group.compat.join(', ')})` : `− 가용재고 (${chosen} 만)`, fmt(preview.available)],
+              ['− 입고예정 (유효)', fmt(preview.incoming)],
+              [<strong>부족 수량 (확정)</strong>, <strong>{fmt(preview.orderQty)}</strong>]]} />
+          )}
           {x.group.pending && (
             <HStack gap={2} vAlign="end" wrap="wrap">
               <Selector label="발주할 SKU 선택" size="sm" value={chosen || '__none__'} options={[{value: '__none__', label: 'SKU 선택…'}, ...x.group.members.map(m => ({value: m.pn, label: `${m.pn} · ${m.name || ''}`}))]} onChange={v => setChosen(v === '__none__' ? '' : (v as string))} />
-              <Button label="선택한 SKU 로 발주 목록에 담기" size="sm" variant="secondary" isDisabled={!chosen} onClick={() => { const r = addItemToCart(x, chosen); setAddMsg(r.added ? `${chosen} 를 담았습니다${r.warnings.length ? ' · ⚠ ' + r.warnings.join(' / ') : ''}` : '이미 발주 목록에 있습니다 (수량 유지)'); }} />
+              <Button label={preview ? `선택한 SKU 로 발주 목록에 담기 (부족 수량 ${fmt(preview.orderQty)})` : '선택한 SKU 로 발주 목록에 담기'} size="sm" variant="secondary" isDisabled={!chosen} onClick={() => { const r = addItemToCart(x, chosen); setAddMsg(r.added ? `${chosen} 를 담았습니다${r.warnings.length ? ' · ⚠ ' + r.warnings.join(' / ') : ''}` : '이미 발주 목록에 있습니다 (수량 유지)'); }} />
               {addMsg && <Text type="supporting"><span role="status">{addMsg}</span></Text>}
             </HStack>
           )}
@@ -404,7 +414,7 @@ function Detail({x}: {x: FRow}) {
       )}
       <VStack gap={2}>
         <HStack gap={2} vAlign="center" wrap="wrap"><BrandBadge brand={x.brand} />{x.mask && <Badge variant="neutral" label="마스크" />}{x.hero && <Badge variant="neutral" label="히어로" />}<Button label="발주 목록에 담기" size="sm" variant="secondary" isDisabled={x.orderQty <= 0 || !!(x.group && x.group.pending)} onClick={() => addItemToCart(x)} /></HStack>
-        <Heading level={4}>부족 수량 근거 · {x.scoped ? '선택 거래처 기준' : '전체 거래처 기준'}</Heading>
+        <Heading level={4}>부족 수량 근거 · {x.scoped ? '선택 거래처 기준' : '전체 거래처 기준'}{x.provisional ? ' · 잠정 (SKU 미선택)' : ''}</Heading>
         <MiniTable num={[1]} head={['항목', '수량']} rows={[
           [x.scoped ? '목표 재고 (선택 거래처의 최근 12개월 월 최대 판매)' : '목표 재고 (최근 12개월 월 최대 판매)', fmt(x.target)],
           [x.group ? '− 가용재고 (대표 + 호환 확인 SKU)' : '− 가용재고', fmt(x.available)],
