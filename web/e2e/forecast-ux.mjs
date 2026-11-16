@@ -143,7 +143,7 @@ try {
   await page.locator('tr', {has: page.getByText('SB001', {exact: true})}).getByRole('button', {name: '근거 닫기'}).click();
 
   // 미판매(6개월 이상) 품목: 별도 필터 · 사유 표시 · 마지막 판매일 · 생산 필요/추천 아님
-  await page.getByRole('button', {name: /^미판매 \d+$/}).click();
+  await page.getByRole('button', {name: /^6개월 미판매 \d+$/}).click();
   const inactiveRows = page.locator('tbody tr').filter({has: page.locator('.inactive-note')});
   assert.ok((await inactiveRows.count()) > 0, '미판매 품목 없음');
   assert.equal(await page.locator('tbody tr td.fc-s2').filter({hasText: /생산 필요|생산 추천/}).count(), 0, '미판매 품목이 생산 필요/추천으로 보임');

@@ -480,7 +480,7 @@ try {
   assert.deepEqual(await phone.page.evaluate(() => [...document.querySelectorAll('[role=main] [aria-label="상태"] button, [role=main] [aria-label="브랜드"] button')]
     .filter(b => b.checkVisibility()) // 닫힌 머리글 '필터' 팝업 안의 브랜드 버튼은 제외
     .filter(b => { const r = b.getBoundingClientRect(); return r.left < 0 || r.right > innerWidth + 0.5; }).map(b => b.textContent)), []);
-  assert.equal(await phone.page.locator('[aria-label="상태"] button:visible').count(), 8); // 생산 필요+추천 · 생산 필요 · 생산 추천 · 여유 · 참고 · 미판매 · 전체 · 과잉재고
+  assert.equal(await phone.page.locator('[aria-label="상태"] button:visible').count(), 9); // 생산 필요+추천 · 생산 필요 · 생산 추천 · 여유 · 참고 · 미판매 · 전체 · 과잉재고
   await phone.page.getByRole('button', {name: '과잉재고'}).click();
   await phone.page.getByRole('button', {name: '과잉재고', pressed: true}).waitFor();
   await phone.page.getByRole('button', {name: /^생산 필요 \+ 추천/}).click();

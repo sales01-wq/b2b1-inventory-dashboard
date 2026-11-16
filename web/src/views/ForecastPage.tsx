@@ -32,12 +32,13 @@ import {state, ui} from '../lib/store.js';
 import {getRules, groupOf, STATUS_LABEL, teamLabel, forecastListCsv} from '../lib/forecast.js';
 import {coverageBands, customerShortRows, forecastModel, forecastDetail, rulesModel, warehouseRows} from '../lib/views.js';
 import * as act from '../lib/actions.js';
-import {canEditSettings, saveRules, resetRules, addHero, deleteHero, addMaskCodes, removeMaskCode, clearMaskCodes} from '../data/settings.js';
+import {canEditSettings, saveRules, resetRules, addHero, deleteHero, addMaskCodes, removeMaskCode, clearMaskCodes, rejectSkuCandidate} from '../data/settings.js';
 import {fmt} from '../lib/format';
 import {ProductLink} from './ProductLink';
-import {addItemToCart, addManyToCart, applyView, deleteView, saveView, savedViews} from '../lib/insights.js';
+import {cartStatusFor, addItemToCart, addManyToCart, applyView, deleteView, saveView, savedViews} from '../lib/insights.js';
 import {useDragScroll} from '../app/useDragScroll';
 import {rebuildGroupItem} from '../lib/groupcalc.js';
+import {downloadSelectedXlsx} from '../lib/exportXlsx.js';
 import {Popover} from '@astryxdesign/core/Popover';
 import {saveCsv} from '../lib/saveCsv';
 
@@ -262,14 +263,15 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
                   <HStack gap={1} vAlign="start" wrap="nowrap">
                     <CheckboxInput label={`${x.품번} 선택`} isLabelHidden size="sm" value={ui.forecastSelected.has(id)} onChange={() => act.toggleForecastSelect(id)} />
                     <IconButton label={open ? '근거 닫기' : '근거 보기'} size="sm" variant="ghost" icon={<Icon icon={open ? 'chevronDown' : 'chevronRight'} />} onClick={() => act.toggleForecastDetail(id)} />
-                    <VStack gap={0}>
-                      <HStack gap={1} vAlign="center">
+                    <VStack gap={0} className="pn-box">
+                      <HStack gap={1} vAlign="center" wrap="wrap">
                         <ProductLink pn={x.품번} className="nowrap" />
                         {x.group && <span title={`${x.group.auto ? '자동' : '수동'} 상품 그룹: ${x.group.name || x.group.id} — 판매 이력 합산 · ${x.group.members.length}개 SKU`}><Badge variant="blue" label={`${x.group.auto ? '자동 ' : ''}그룹 ${x.group.members.length}`} /></span>}
                         {x.group && x.group.pending && <span title={x.group.pending.reason}><Badge variant="yellow" label="SKU 선택 필요" /></span>}
                         {x.hero && <span className="hero-mark" title="히어로 품목: 수량 기준으로 판정" role="img" aria-label="히어로 품목"><StarIcon width={14} height={14} aria-hidden /></span>}
                       </HStack>
                       <span className="pn-name pn-wrap">{x.품명}</span>
+                      <CartNote x={x} />
                     </VStack>
                   </HStack>
                 </TableCell>
@@ -312,6 +314,7 @@ function SelectionBar() {
             const r = addManyToCart(picked);
             setMsg(`${fmt(r.added)}개 담음${r.existing > 0 ? `, ${fmt(r.existing)}개는 이미 있어 수량 유지` : ''}${r.pending.length > 0 ? ` · ⚠ ${fmt(r.pending.length)}개 그룹은 고객마다 SKU 가 달라 건너뜀 (행을 펼쳐 SKU 선택 후 담기)` : ''}${r.warnings.length > 0 ? ` · ⚠ ${r.warnings.join(' / ')}` : ''}`);
           }} />
+          <Button label="선택 품목 엑셀 다운로드" size="sm" variant="secondary" icon={<Icon icon="arrowDown" />} onClick={async () => { try { const f = await downloadSelectedXlsx(); setMsg(`${f} 을(를) 내려받았습니다`); } catch (e) { setMsg('엑셀 파일을 만들지 못했습니다: ' + (e as Error).message); } }} />
           <Button label="선택 해제" size="sm" variant="ghost" onClick={() => { act.clearForecastSelect(); setMsg(''); }} />
         </HStack>
       </HStack>
@@ -372,6 +375,27 @@ function YearPicker({m}: {m: Model}) {
   );
 }
 
+const SEL = '선택 거래처 기준: ';
+const scopeShort = (s: string) => (!s ? '기준 정보 없음' : s.startsWith(SEL) && s.length > SEL.length + 24 ? s.slice(0, SEL.length + 22) + '…' : s);
+interface CartEntry {pn: string; qty: number; isDisplayed: boolean; scope: string; sameScope: boolean; edited: boolean; calc: number | null; noMeta: boolean; group: {rep: string; members: string[]; name: string} | null}
+
+/** 이 행(그룹이면 멤버 전체)이 발주 목록에 들어 있는지: 저장 수량 · 수동 수정 · 담을 때 계산 범위가 지금 범위와 같은지 (읽기 전용) */
+function CartNote({x}: {x: FRow}) {
+  const list: CartEntry[] = cartStatusFor(x);
+  if (list.length === 0) return null;
+  return (
+    <span className="cart-note">
+      {list.slice(0, 2).map(e => (
+        <span key={e.pn} title={`발주 목록 ${e.pn} · ${fmt(e.qty)}개${e.edited ? ' (수동 수정)' : ''} · 담을 때 계산 기준: ${e.scope || '기준 정보 없음'}${e.group ? ` · 담을 때 그룹 대표 ${e.group.rep}` : ''}`}>
+          <Badge variant={e.noMeta ? 'neutral' : e.sameScope ? 'green' : 'yellow'} label={`${e.isDisplayed ? '' : e.pn + ' '}발주 ${fmt(e.qty)}개${e.edited ? ' · 수정됨' : ''}`} />
+          <span className="cart-scope">{e.noMeta ? '범위 정보 없음' : e.sameScope ? '현재 범위' : '다른 범위: ' + scopeShort(e.scope)}</span>
+        </span>
+      ))}
+      {list.length > 2 && <span className="cart-scope">외 {list.length - 2}개</span>}
+    </span>
+  );
+}
+
 const ym = (d: {y: number; m: number}) => `${String(d.y).slice(2)}.${d.m + 1}`;
 
 /** 펼친 행: 부족 수량 근거 · 대량 판매 확인 · 거래처별 월 판매 · 창고별 재고 · 입고예정 · 최근 판매 */
@@ -380,6 +404,7 @@ function Detail({x}: {x: FRow}) {
   const [addMsg, setAddMsg] = useState('');
   const preview = x.group && x.group.pending && chosen ? rebuildGroupItem(x, ui.forecastCustomers, chosen) : null; // 고른 SKU 로 다시 계산 (담기 전 미리보기, 발주 목록은 건드리지 않음)
   const d = forecastDetail(x);
+  const cartList: CartEntry[] = cartStatusFor(x);
   const wh = warehouseRows(x.품번);
   const ml = state.scheduleMonthLabels;
   const sp = x.spike;
@@ -396,6 +421,15 @@ function Detail({x}: {x: FRow}) {
             <>{m.pn}{m.isRep && !x.group!.pending && <> <Badge variant="green" label="대표" /></>}</>, m.name || '-', m.lastSale ? m.lastSale.toLocaleDateString('ko-KR') : '판매 이력 없음', fmt(m.available), m.incoming ? fmt(m.incoming) : '-',
             m.isRep ? (x.group!.pending ? '반영 (임시)' : '반영 (대표)') : m.compat ? '반영 (호환 확인)' : '미반영 (별도 표시)'])} />
           {x.group.missing.length > 0 && <Text type="supporting">현재 데이터에 없는 멤버: {x.group.missing.join(', ')}</Text>}
+          {x.group.auto && (
+            <HStack gap={2} vAlign="center" wrap="wrap">
+              {canEditSettings()
+                ? <Button label="자동 그룹 제외" size="sm" variant="ghost" onClick={async () => { const r = await rejectSkuCandidate(x.group!.members.map(m => m.pn)); setAddMsg(r.error || ''); }} />
+                : <Text type="supporting">자동 그룹 제외는 업데이트 권한자만 할 수 있습니다.</Text>}
+              <Text type="supporting">잘못 묶였다면 제외하세요. 개별 SKU 로 계산되고 같은 조합은 다시 자동 그룹이 되지 않습니다 (발주 목록 항목은 바뀌지 않음).</Text>
+              {!x.group.pending && addMsg && <Text type="supporting"><span className="text-danger" role="alert">{addMsg}</span></Text>}
+            </HStack>
+          )}
           {x.group.pending && preview && (
             <MiniTable num={[1]} head={[`선택 SKU ${chosen} 기준 재계산 (담기 전 확인)`, '수량']} rows={[
               ['목표 재고', fmt(preview.target)],
@@ -410,6 +444,15 @@ function Detail({x}: {x: FRow}) {
               {addMsg && <Text type="supporting"><span role="status">{addMsg}</span></Text>}
             </HStack>
           )}
+        </VStack>
+      )}
+      {cartList.length > 0 && (
+        <VStack gap={2}>
+          <Heading level={4}>발주 목록 현황 (읽기 전용)</Heading>
+          <MiniTable num={[1, 4]} head={['SKU', '저장 수량', '수동 수정', '담을 때 계산 기준', '담을 때 부족 수량', '현재 범위와 비교']} rows={cartList.map(e => [
+            <>{e.pn}{e.isDisplayed && <> <Badge variant="neutral" label="표시 SKU" /></>}</>, fmt(e.qty), e.edited ? '예' : '아니오', e.scope || '기준 정보 없음', e.calc === null ? '-' : fmt(e.calc),
+            e.noMeta ? '범위 정보 없음' : e.sameScope ? '같음 (현재 범위)' : '다름 (다른 거래처 범위)'])} />
+          <Text type="supporting">발주 목록 항목은 필터 · 그룹이 바뀌어도 자동으로 바뀌거나 합쳐지지 않습니다. 수정은 발주 목록 화면에서 하세요.</Text>
         </VStack>
       )}
       <VStack gap={2}>

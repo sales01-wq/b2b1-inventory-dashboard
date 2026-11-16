@@ -1,5 +1,5 @@
-// 상품 그룹 관리 확인 (npm run e2e:skugroups): 자동 그룹(승인 없이) · 이름만 같은 후보는 수동 검토 · TARGET 분리 · 고객별 대표 SKU ·
-// 선택 필요(고객마다 다름) 담기 차단/직접 선택 · 자동 그룹 제외/수동 전환 · 발주 목록 보존 · SKU 충돌 경고를 실제 Chromium 에서 확인합니다.
+// 자동 SKU 그룹 확인 (npm run e2e:skugroups): 별도 관리 페이지 없이 자동 그룹 · TARGET 분리 · 고객별 대표 SKU · 선택 필요 담기 차단/직접 선택 ·
+// 펼친 상세의 '자동 그룹 제외'(새로고침 후에도 유지) · 3개월/6개월 미판매 필터 · 이름 줄바꿈 · 발주 목록 현황 · 엑셀 다운로드 · 충돌 경고를 Chromium 에서 확인합니다.
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {createServer} from 'vite';
@@ -56,16 +56,7 @@ try {
   await page.getByText('자동 그룹 2', {exact: true}).waitFor();
   assert.equal(await page.getByText(/자동 그룹 \d/).count(), 1);
 
-  await page.goto(base + '/#/skugroups');
-  await page.getByText(/바코드\(또는 마스터 규격\)가 일치하는 SKU 는 승인 없이 자동 그룹/).waitFor();
-  await page.getByRole('tab', {name: /^후보 검토 1$/}).waitFor(); // 세럼(이름만 일치)만 수동 검토
-  await page.getByRole('tab', {name: /^자동 그룹 1$/}).click();
-  await page.getByRole('heading', {name: '세트 A'}).waitFor();
-  await page.getByText('자동 그룹', {exact: true}).first().waitFor();
-  await page.getByText('생산 필요 현황에 적용 중').waitFor();
-  await page.getByText(/고객별 대표 SKU/).waitFor();
-  await page.getByText('고객마다 대표 SKU 가 다름 (담기 전 선택)').waitFor(); // A상사=SB004, B유통=SB005
-  await page.getByRole('cell', {name: 'A상사'}).waitFor(); await page.getByRole('cell', {name: 'B유통'}).waitFor();
+  assert.equal(await page.locator('a[href="#/skugroups"]').count(), 0, '상품 그룹 관리 메뉴 없음');
 
   // 생산 필요 현황: 전체 고객은 선택 필요 → 일괄 담기 차단, 고객 1곳 선택하면 그 고객의 SKU
   await page.goto(base + '/#/forecast'); await page.getByRole('tab', {name: '품목별'}).waitFor();
@@ -101,33 +92,35 @@ try {
   await orow.getByText(/담을 때 그룹: 세트 A · 대표 SB005 · SKU 2개/).waitFor();
   const qty = await orow.getByRole('spinbutton').inputValue();
 
-  // 자동 그룹 → 수동 그룹으로 전환(수정): 대표 직접 지정 (고객과 무관), 기존 발주 항목 그대로
-  await page.goto(base + '/#/skugroups');
-  await page.getByRole('tab', {name: /^자동 그룹 1$/}).click();
-  await page.getByRole('button', {name: '수동 그룹으로 전환(수정)'}).click();
-  await page.getByRole('tab', {name: /^확정 그룹 1$/}).waitFor(); await page.getByText('수동 그룹', {exact: true}).first().waitFor();
-  await page.getByRole('tab', {name: /^자동 그룹 0$/}).waitFor();
-  await page.locator('tr', {has: page.getByText('SB004', {exact: true})}).getByRole('button', {name: '대표로 지정'}).click();
-  await page.getByText('대표 SB004 (직접 지정)').first().waitFor();
+  // 발주 목록 현황: 담은 SKU(SB005)가 현재 범위(전체)로 담겼음을 행에서 확인, 거래처 범위를 바꾸면 '다른 범위'로 구분 (발주 목록은 그대로)
   await page.goto(base + '/#/forecast'); await page.getByRole('tab', {name: '품목별'}).waitFor();
   await page.getByRole('button', {name: /^전체 \d+$/}).click();
-  assert.equal(await page.getByText('SKU 선택 필요', {exact: true}).count(), 0, '수동 대표는 고객과 무관하게 우선');
+  const grow = page.locator('tbody tr', {has: page.getByText('세트 A', {exact: false})}).first();
+  await grow.locator('.cart-note').getByText(/발주 \d+개/).waitFor();
+  await pickCustomers(page, ['A상사']);
+  await page.locator('.cart-note').getByText(/다른 범위/).first().waitFor();
+  await page.getByRole('button', {name: '모두 해제'}).first().click();
   await page.goto(base + '/#/orders');
   assert.equal(await page.locator('tbody tr', {hasText: 'SB005'}).getByRole('spinbutton').inputValue(), qty, '기존 발주 수량 유지');
-  await page.locator('tbody tr', {hasText: 'SB005'}).getByText(/담을 때 대표 SKU\(SB005\)와 현재 대표\(SB004\)가 다릅니다/).waitFor();
 
-  // 수동 그룹 삭제 → 자동 그룹이 다시 생김 → 자동 그룹 제외 → 개별 SKU (거절은 다시 제안되지 않음)
-  await page.goto(base + '/#/skugroups');
-  await page.getByRole('tab', {name: /^확정 그룹 1$/}).click();
-  page.once('dialog', d => d.accept());
-  await page.getByRole('button', {name: '그룹 삭제'}).click();
-  await page.getByRole('tab', {name: /^자동 그룹 1$/}).click();
+  // 자동 그룹 제외: 펼친 상세의 버튼 → 개별 SKU 로 계산, 새로고침 후에도 유지, 발주 목록 항목 유지
+  await page.goto(base + '/#/forecast'); await page.getByRole('tab', {name: '품목별'}).waitFor();
+  await page.getByRole('button', {name: /^전체 \d+$/}).click();
+  const toggle = page.locator('tr', {has: page.getByText('SKU 선택 필요', {exact: true})}).getByRole('button', {name: /^근거 (보기|닫기)$/});
+  if ((await toggle.getAttribute('aria-label') ?? await toggle.innerText()).includes('보기')) await toggle.click();
   await page.getByRole('button', {name: '자동 그룹 제외'}).click();
-  await page.getByRole('tab', {name: /^자동 그룹 0$/}).waitFor();
+  await page.waitForFunction(() => !document.body.innerText.includes('SKU 선택 필요'));
   const after = await listCodes(page);
   assert.ok(after.includes('SB004') && after.includes('SB005'), '제외하면 개별 SKU 로 계산');
+  assert.ok(JSON.parse(await page.evaluate(() => localStorage.getItem('inv_settings_v1'))).skuRejected.length > 0, '제외 목록 저장됨');
+  await page.reload(); await page.goto(base + '/#/data');
+  await page.locator('input[type=file]').setInputFiles(Object.entries(files).map(([n, rows]) => ({name: n + '.csv', mimeType: 'text/csv', buffer: Buffer.from(Papa.unparse(rows))})));
+  await page.getByRole('button', {name: '대시보드에 적용'}).click(); await page.waitForURL(/#\/overview$/);
+  const afterReload = await listCodes(page);
+  assert.ok(afterReload.includes('SB004') && afterReload.includes('SB005'), '제외는 새로고침 후에도 유지(다시 제안되지 않음)');
   await page.goto(base + '/#/orders');
-  assert.equal(await page.locator('tbody tr').count(), 1, '발주 목록 항목 유지');
+  assert.equal((await page.locator('tbody tr', {hasText: 'SB005'}).count()), 1, '발주 목록 항목 유지');
+  assert.equal(JSON.parse(await page.evaluate(() => localStorage.getItem('inv_order_list'))).length, 1, '발주 목록 저장 항목 1개');
   assert.deepEqual(errors, []);
   await page.close();
 
@@ -135,15 +128,10 @@ try {
   const c = await open(() => localStorage.setItem('inv_settings_v1', JSON.stringify({rules: {}, hero: {}, box: {}, mask: {}, skuRejected: [], skuGroups: {
     g1: {name: '세트 A 1', members: ['SB004', 'SB005'], rep: null, compat: []}, g2: {name: '세트 A 2', members: ['SB005', 'SB006'], rep: null, compat: []}, g3: {name: '세럼', members: ['SB001', 'SB002'], rep: null, compat: []}}})));
   const cp = c.page;
-  await cp.goto(base + '/#/skugroups');
-  await cp.getByText(/SKU 그룹 충돌 1건/).waitFor();
-  await cp.getByText(/SB005.*'세트 A 1', '세트 A 2' 2개 그룹에 속해 있습니다/).waitFor();
-  await cp.getByRole('tab', {name: /^확정 그룹 3$/}).click();
-  assert.equal(await cp.getByText('적용 안 됨', {exact: true}).count(), 2, '충돌 그룹 2개만 적용 안 됨');
   const cc = await listCodes(cp);
-  for (const pn of ['SB004', 'SB005', 'SB006']) assert.ok(cc.includes(pn), pn + ' 가 개별 SKU 로 보이지 않음');
+  for (const pn of ['SB004', 'SB005', 'SB006']) assert.ok(cc.includes(pn), pn + ' 가 개별 SKU 로 보이지 않음'); // 충돌 그룹은 적용되지 않음
   assert.equal(await cp.getByText(/^그룹 2$/).count(), 1, '충돌 없는 그룹(세럼)만 그룹 표시');
   assert.deepEqual(c.errors, []);
   await cp.close();
-  console.log('e2e 상품 그룹 관리(자동 그룹 · 고객별 대표 SKU): 통과');
+  console.log('e2e 자동 SKU 그룹(고객별 대표 SKU · 자동 그룹 제외 · 충돌): 통과');
 } finally { await browser.close(); await server.close(); }

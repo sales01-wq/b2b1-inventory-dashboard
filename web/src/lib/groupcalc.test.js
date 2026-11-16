@@ -321,13 +321,11 @@ describe('SKU 가 둘 이상의 확정 그룹에 속하면: 순서와 무관하�
     expect(I.cartRows().find(r => r.pn === 'SB102').warnings.join()).toMatch(/여러 그룹에 속해 있어 그룹 계산에서 제외/);
     a.ui.cart.clear(); a.ui.cartMeta.clear();
   });
-  it('그룹 관리 화면 모델에 충돌 목록 · 그룹별 적용 안 됨 사유', async () => {
-    const G2 = await import('./skugroups.js');
+  it('충돌 목록 · 그룹별 적용 안 됨 사유가 계산 상태에 남음 (경고 · 발주 목록 표시에 사용)', () => {
     build(S(), SALES(), OVERLAP('g1', 'g2'));
-    const m = G2.skuGroupsModel();
-    expect(m.conflicts.map(c => c.pn)).toEqual(['SB102']);
-    expect(m.groups.filter(g => ['g1', 'g2'].includes(g.id)).every(g => !g.applied && /SKU 충돌/.test(g.appliedReason))).toBe(true);
-    expect(m.groups.find(g => g.id === 'g5').applied).toBe(true);
+    expect(a.state.groupConflicts.map(c => c.pn)).toEqual(['SB102']);
+    expect(['g1', 'g2'].every(id => !a.state.groupStatus[id].applied && /SKU 충돌/.test(a.state.groupStatus[id].reason))).toBe(true);
+    expect(a.state.groupStatus.g5.applied).toBe(true);
   });
 });
 
@@ -344,8 +342,8 @@ describe('자동 그룹: 근거가 확실한 포장 개정만 승인 없이, 나
     expect(a.state.forecast.map(x => x.품번)).toEqual(expect.arrayContaining(['SB201', 'SB202'])); // 로션은 개별 그대로
     expect(a.state.forecast.length).toBe(3); // 세럼 1 + 로션 2
     expect(Object.values(a.state.groupStatus).filter(s => s.auto && s.applied).length).toBe(1);
-    expect(SG.skuGroupsModel().candidates.map(c => c.core)).toEqual(['로션']); // 후보 목록에는 검토가 필요한 것만 (자동 그룹은 제외)
-    expect(SG.skuGroupsModel().autoGroups.length).toBe(1);
+    expect(SG.buildCandidates().filter(c => !c.auto).map(c => c.core)).toEqual(['로션']); // 자동 그룹이 아닌 후보(이름만 일치)는 개별로 남음
+    expect(Object.keys(a.state.autoGroupDefs).length).toBe(1);
   });
   it('TARGET · TJX · 일반은 서로 섞이지 않음: 같은 종류끼리만 자동 그룹', () => {
     build([sku('SB101', '세럼 (북미)', 1, {barcode: BC('21')}), sku('SB102', '세럼 (글로벌)', 1, {barcode: BC('21', '-1')}),
@@ -362,12 +360,12 @@ describe('자동 그룹: 근거가 확실한 포장 개정만 승인 없이, 나
       sku('SB301', '앰플 (북미)', 1, {barcode: BC('33')}), sku('SB302', '앰플 (TARGET)', 1, {barcode: BC('33', '-1')})], // 일반과 TARGET 이 같은 바코드
       SALES(['SB101', 'SB102', 'SB103', 'SB201', 'SB202', 'SB301', 'SB302']), {});
     expect(Object.keys(a.state.autoGroupDefs)).toEqual([]); expect(a.state.forecast.length).toBe(7); // 전부 개별 계산 유지
-    const c = SG.skuGroupsModel().candidates; expect(c.length).toBeGreaterThan(0); c.forEach(x => expect(x.auto).toBe(false));
+    const c = SG.buildCandidates(); expect(c.length).toBeGreaterThan(0); c.forEach(x => expect(x.auto).toBe(false));
     expect(c.find(x => x.core === '세럼').warnings.join()).toMatch(/상품 정보 충돌/); expect(c.find(x => x.core === '크림').warnings.join()).toMatch(/알 수 없는 괄호 표기/);
     // 마스터 규격이 서로 다르면 자동 아님
     build([sku('SB401', '로션 (북미)', 1, {barcode: BC('41')}), sku('SB402', '로션 (글로벌)', 1, {barcode: BC('41', '-1')})], SALES(['SB401', 'SB402']), {});
     a.state.productMaster = [{품번: 'SB401', 제품W: 5, 제품D: 5, 제품H: 9, 제품무게g: 100, 인입수: 10}, {품번: 'SB402', 제품W: 5, 제품D: 5, 제품H: 12, 제품무게g: 100, 인입수: 10}]; a.computeDerived();
-    expect(Object.keys(a.state.autoGroupDefs)).toEqual([]); expect(SG.skuGroupsModel().candidates[0].strength).toBe('확인 필요');
+    expect(Object.keys(a.state.autoGroupDefs)).toEqual([]); expect(SG.buildCandidates()[0].strength).toBe('확인 필요');
   });
   it('수동 그룹 · 거절 규칙 · 기존 설정 보존: 수동 그룹 멤버는 자동 그룹에서 빠지고, 거절한 후보는 자동 그룹이 되지 않음, 수동 대표 · 호환은 그대로', () => {
     const S = () => [sku('SB101', '세럼 (북미)', 10, {barcode: BC('51')}), sku('SB102', '세럼 (글로벌)', 20, {barcode: BC('51', '-1')}), sku('SB103', '세럼 (유럽)', 30, {barcode: BC('51', '-2')})];

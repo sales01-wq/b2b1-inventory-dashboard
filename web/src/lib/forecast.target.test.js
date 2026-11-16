@@ -111,7 +111,7 @@ describe('화면 용어', () => {
     expect(item('SB002').grade).toBe('위험');
     a.ui._forecastCsvRows = [item('SB002')];
     expect(a.forecastListCsv().csv).toContain(',생산 필요,');
-    expect(a.gradeChips === undefined && a.forecastModel().gradeChips.map(c => c[1])).toEqual(['생산 필요 + 추천', '생산 필요', '생산 추천', '여유', '참고', '미판매', '전체']);
+    expect(a.gradeChips === undefined && a.forecastModel().gradeChips.map(c => c[1])).toEqual(['생산 필요 + 추천', '생산 필요', '생산 추천', '여유', '참고', '6개월 미판매', '3개월 미판매', '전체']);
   });
 });
 

@@ -120,6 +120,9 @@ export function lastSaleInfo(rows){
 
 /** 선택 거래처 기준 재계산 (분석용 추정치): 고른 거래처들의 판매만으로 월별 합계 → 목표 → 부족 · 상태를 다시 계산.
  *  가용재고 · 입고예정은 품목당 한 번 그대로 (거래처에 배분하지 않고, 거래처별 부족을 따로 구해 더하지도 않음). 선택이 없으면 전체 거래처 기준 항목 그대로 */
+/** 3개월 미판매(보기용 필터): 이번 달 + 앞선 2개월(달력 기준)에 실제 판매(양수 · 유효 날짜 · 선택 거래처 범위 · 그룹은 멤버 전체)가 없음. 상태 · 부족 수량 · 알람은 바꾸지 않음 */
+export function noSale3(x){ const n = new Date(), c = new Date(n.getFullYear(), n.getMonth()-2, 1); return !x.lastSale || x.lastSale < c; }
+
 /** 항목의 판매 줄: 그룹이면 멤버 전체, 아니면 그 SKU 의 판매 줄 */
 export const rowsOfItem = x => x.memberPns ? x.memberPns.flatMap(pn=>(state.salesRowsBySku.get(pn)||[])) : (state.salesRowsByProduct.get(x.품번)||[]);
 

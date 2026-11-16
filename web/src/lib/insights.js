@@ -173,6 +173,14 @@ export function findByKey(k){ return state.forecast.find(x=>(x.key||x.품번)===
 export function setCartQty(pn, qty){ const v = Math.round(num(qty)); const m = ui.cartMeta.get(pn); if(v>0 || (v===0 && m && m.inactive)) ui.cart.set(pn, Math.max(0, v)); else { ui.cart.delete(pn); ui.cartMeta.delete(pn); } saveCart(); }
 export function removeFromCart(pn){ ui.cart.delete(pn); ui.cartMeta.delete(pn); saveCart(); }
 export function clearCart(){ ui.cart.clear(); ui.cartMeta.clear(); saveCart(); }
+/** 생산 필요 현황 행(그룹이면 멤버 전체)이 발주 목록에 어떻게 들어 있는지: SKU · 저장 수량 · 수동 수정 여부 · 담을 때 계산 기준과 현재 범위와의 일치 (읽기 전용, 항목을 바꾸지 않음) */
+export function cartStatusFor(x){
+  const pns = x.memberPns || [x.품번], cur = currentScopeLabel();
+  return pns.filter(pn=>ui.cart.has(pn)).map(pn=>{
+    const m = ui.cartMeta.get(pn)||null, qty = ui.cart.get(pn);
+    return {pn, qty, isDisplayed:pn===x.품번, scope:m?m.scope:'', sameScope:!!m && m.scope===cur, edited:!!m && qty!==defaultQty(m.calc, m.inactive), calc:m?m.calc:null, inactive:m?m.inactive:null, group:m&&m.group||null, noMeta:!m};
+  });
+}
 export function cartRows(){
   return Array.from(ui.cart.entries()).map(([pn,qty])=>{ const x = findForecast(pn), m = ui.cartMeta.get(pn);
     return {pn, qty, name:x?x.품명:'', barcode:x?x.바코드:'', brand:x?x.brand:'', available:x?x.available:0, incoming:x?x.incoming:0,

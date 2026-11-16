@@ -5,7 +5,7 @@ import {computeDerived} from '../lib/forecast.js';
 import {shared, setSharedBar} from './shared.js';
 import {READ_ONLY} from '../app/defaults';
 import {rulesValid, RULES_INVALID_MSG, heroInput, maskInput} from '../lib/views.js';
-import {validateMembers, candidateKey} from '../lib/skugroups.js';
+import {candidateKey} from '../lib/skugroups.js';
 
 export function canEditSettings(){ return typeof shared==='undefined' || !shared.active || !!(shared.user && shared.user.isUpdater); }
 
@@ -160,8 +160,8 @@ export async function clearMaskCodes(){
   await persistMask();
 }
 
-/* ---------- 상품 그룹 관리 (1단계: 설정만 저장, 생산 필요 계산에는 아직 반영하지 않음) ----------
-   그룹마다 한 줄 kind 'skugroup' (key = 그룹 id, 값 {name, members, rep, compat}), 거절한 후보는 kind 'skureject' (60개씩 묶음 g0, g1...) */
+/* ---------- 자동 그룹 제외 (생산 필요 현황 펼친 행의 버튼) ----------
+   제외한 후보 키(정렬한 품번을 + 로 이은 값)는 kind 'skureject' 에 60개씩 묶어 g0, g1... 줄로 저장. 이미 저장된 수동 그룹(skugroup) · 대표 지정 · 호환 설정은 그대로 읽어서 계산에 씀 */
 export const REJECT_CHUNK = 60;
 async function persistRejected(){
   const list = [...new Set(settings.skuRejected)];
@@ -173,48 +173,10 @@ async function persistRejected(){
   if(ok) settings.skuRejectedKeys = keys;
   localSettingsSave(); return ok;
 }
-const cleanGroup = g => {
-  const members = [...new Set((g.members||[]).map(String))];
-  return {name:String(g.name||'').trim().slice(0,80), members, rep: g.rep && members.includes(g.rep) ? g.rep : null, compat:[...new Set((g.compat||[]).filter(pn=>members.includes(pn) && pn!==g.rep))]};
-};
-const takenBy = (pns, exceptId) => { const hit = []; Object.entries(settings.skuGroups).forEach(([id,g])=>{ if(id!==exceptId) (g.members||[]).forEach(pn=>{ if(pns.includes(pn)) hit.push(`${pn}(→ ${g.name||id})`); }); }); return hit; };
-/** 새 그룹 만들기 (후보 승인 · 직접 만들기). 대표 rep=null 이면 자동(최근 판매실적일 기준). {id} 또는 {errors} */
-export async function createSkuGroup(g){
-  if(!canEditSettings()) return {errors:['업데이트 권한자만 바꿀 수 있습니다.']};
-  const c = cleanGroup(g); const v = validateMembers(c.members);
-  const errors = [...v.errors]; const dup = takenBy(c.members); if(dup.length) errors.push('이미 다른 그룹에 속한 품번: '+dup.join(', '));
-  if(!c.name) errors.push('그룹 이름을 입력해 주세요.');
-  if(errors.length) return {errors};
-  const id = 'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-  settings.skuGroups[id] = c; computeDerived(); emit(); // 확정 그룹은 생산 필요 계산에 바로 반영
-  await persistSetting('skugroup', id, c);
-  return {id};
-}
-/** 그룹 수정(이름 · 멤버 · 대표 · 호환). 검사에 실패하면 바꾸지 않음 */
-export async function updateSkuGroup(id, patch){
-  if(!canEditSettings()) return {errors:['업데이트 권한자만 바꿀 수 있습니다.']};
-  const cur = settings.skuGroups[id]; if(!cur) return {errors:['그룹을 찾을 수 없습니다.']};
-  const c = cleanGroup({...cur, ...patch}); const v = validateMembers(c.members.filter(pn=>(state.forecastSku||state.forecast).some(x=>x.품번===pn)));
-  const errors = v.errors.filter(e=>/묶을 수 없습니다|2개 이상/.test(e)); const dup = takenBy(c.members, id); if(dup.length) errors.push('이미 다른 그룹에 속한 품번: '+dup.join(', '));
-  if(c.members.length<2) errors.push('2개 이상의 품번이 필요합니다.');
-  if(errors.length) return {errors:[...new Set(errors)]};
-  settings.skuGroups[id] = c; computeDerived(); emit();
-  await persistSetting('skugroup', id, c);
-  return {id};
-}
-export async function deleteSkuGroup(id){
-  if(!canEditSettings()) return;
-  delete settings.skuGroups[id]; computeDerived(); emit();
-  await persistSetting('skugroup', id, null);
-}
-/** 후보 거절: 같은 후보를 다시 제안하지 않음 (구성이 달라지면 새 후보로 다시 나옴) */
+/** 자동 그룹 제외: 같은 후보는 다시 자동 그룹이 되지 않음 (구성이 달라지면 새 후보). 업데이트 권한자만. {ok} 또는 {error} */
 export async function rejectSkuCandidate(pns){
-  if(!canEditSettings()) return;
-  settings.skuRejected = [...new Set([...settings.skuRejected, candidateKey(pns)])]; computeDerived(); emit(); // 거절하면 자동 그룹에서도 빠짐
-  await persistRejected();
-}
-export async function clearSkuRejected(){
-  if(!canEditSettings()) return;
-  settings.skuRejected = []; computeDerived(); emit();
-  await persistRejected();
+  if(!canEditSettings()) return {error:'업데이트 권한자만 바꿀 수 있습니다.'};
+  settings.skuRejected = [...new Set([...settings.skuRejected, candidateKey(pns)])]; computeDerived(); emit();
+  const ok = await persistRejected();
+  return ok ? {ok:true} : {error:'서버에 저장하지 못했습니다 (이 브라우저에는 저장됨).'};
 }

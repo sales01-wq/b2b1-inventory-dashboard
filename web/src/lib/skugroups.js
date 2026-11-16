@@ -1,10 +1,9 @@
 // 상품 그룹(포장 개정 · 고객 전용 SKU) — 1단계: 후보 검토 · 수동 그룹 관리 · 대표 SKU · 재고 호환 설정.
-// 이 모듈은 후보 · 검토 · 그룹 설정(순수 계산)만 담당하고, 확정된 그룹을 계산에 반영하는 일은 groupcalc.js 가 합니다.
+// 이 모듈은 이름 해석 · 자동 그룹 후보 · 묶기 검사(순수 계산)만 담당하고, 그룹을 계산에 반영하는 일은 groupcalc.js 가 합니다 (별도 관리 화면 없음).
 // 이름이 비슷하다는 것만으로 그룹을 확정하지 않음: 후보만 만들고, 사람이 승인해야 settings.skuGroups 에 저장됩니다.
 import {state, ui, settings} from './store.js';
 import {baseBarcode} from './lookup.js';
 import {lastSaleInfo, safeNum} from './forecast.js';
-import {repsByCustomer, resolveRep} from './groupcalc.js';
 
 /* ---- 이름 해석: 괄호 표기에서 지역 · 고객 전용 표기를 읽고, 그것을 뺀 '핵심 이름' 만들기 ---- */
 export const REGION_WORDS = ['북미', '유럽', '글로벌', '미국', '캐나다', '일본', '중국', '아시아', '국내', '내수', '수출', 'global', 'na', 'eu', 'usa', 'us'];
@@ -113,39 +112,4 @@ export function buildCandidates(){
 /** 자동 그룹 정의 {id: 'auto:'+후보키, name, members, auto:true}. 수동 그룹 · 거절한 후보는 이미 제외됨 */
 export function autoGroupDefs(){
   return buildCandidates().filter(c=>c.auto).map(c=>({id:'auto:'+c.key, key:c.key, name:(c.infos[0].title||c.core)+(c.variant!=='일반'?` (${c.variant})`:''), members:c.infos.map(i=>i.pn), rep:null, compat:[], auto:true}));
-}
-
-/** 확정 그룹 보기용: 대표 SKU(수동 지정이 우선, 없으면 자동 제안), SKU별 최근 판매실적일 · 재고 · 입고예정, 호환 설정, 경고 */
-export function groupView(id){
-  const g = (settings.skuGroups||{})[id] || (state.autoGroupDefs||{})[id]; if(!g) return null;
-  const byPn = new Map((state.forecastSku||state.forecast).map(x=>[x.품번,x]));
-  const infos = (g.members||[]).map(pn=>byPn.get(pn) ? skuInfo(byPn.get(pn)) : {pn, name:'(현재 데이터에 없음)', barcode:'', lastSale:null, qty3:0, available:0, incoming:0, missing:true, variant:'-'});
-  const auto = suggestRep(infos.filter(i=>!i.missing));
-  const manual = g.rep && g.members.includes(g.rep) ? g.rep : null;
-  const presentPns = infos.filter(i=>!i.missing).map(i=>i.pn);
-  const by = repsByCustomer(presentPns, state.salesRowsBySku||state.salesRowsByProduct); // 고객별 최근 판매 SKU
-  const res = resolveRep(g, presentPns, new Set(), by);
-  const rep = manual || res.pn || auto.pn; // 선택 필요(고객마다 다름)면 임시로 전체 기준 최근 판매 SKU 를 표시
-  const repInfo = infos.find(i=>i.pn===rep) || null;
-  const compat = new Set((g.compat||[]).filter(pn=>pn!==rep && g.members.includes(pn)));
-  const warnings = [];
-  if(!rep) warnings.push(auto.reason);
-  if(res.pending && !manual) warnings.push(res.pending.reason);
-  if(manual && repInfo && !repInfo.lastSale) warnings.push('수동 지정한 대표 SKU 에 판매 이력이 없습니다 (새 포장 버전이면 정상)');
-  if(manual && auto.pn && manual!==auto.pn) warnings.push(`수동 지정(${manual})이 최근 판매실적일 기준 자동 제안(${auto.pn})과 다릅니다`);
-  if(infos.some(i=>i.missing)) warnings.push('현재 데이터에 없는 멤버가 있습니다');
-  const inCart = infos.filter(i=>ui.cart && ui.cart.has(i.pn)).map(i=>({pn:i.pn, qty:ui.cart.get(i.pn)}));
-  if(inCart.length) warnings.push('발주 목록에 이미 담긴 멤버가 있습니다 — 그룹을 바꿔도 담긴 항목과 수량은 자동으로 바뀌지 않습니다: '+inCart.map(c=>`${c.pn}(${c.qty})`).join(', '));
-  const v = validateMembers(g.members.filter(pn=>byPn.has(pn)));
-  if(!v.ok && infos.length>=2 && v.errors.some(e=>/묶을 수 없습니다/.test(e))) warnings.push(...v.errors.filter(e=>/묶을 수 없습니다/.test(e)));
-  const prevStock = infos.filter(i=>i.pn!==rep && !i.missing).map(i=>({pn:i.pn, available:i.available, incoming:i.incoming, included:compat.has(i.pn)}));
-  const st = (state.groupStatus||{})[id] || null; // 생산 필요 현황 계산에 실제로 반영 중인지 (2단계)
-  return {id, applied:!!(st&&st.applied), appliedReason:st&&!st.applied?st.reason:'', name:g.name||'', members:infos, rep, repManual:!!manual, auto, isAuto:!!g.auto, pending:manual?null:res.pending, byCustomer:[...by.entries()].map(([cust,e])=>({cust, pn:e.pn, tie:e.tie, last:e.last})).sort((x,y)=>y.last-x.last), compat, warnings, prevStock, repStock: repInfo ? {available:repInfo.available, incoming:repInfo.incoming} : null};
-}
-
-export function skuGroupsModel(){
-  const autoIds = Object.keys(state.autoGroupDefs||{}).sort((a,b)=>String(state.autoGroupDefs[a].name).localeCompare(String(state.autoGroupDefs[b].name),'ko'));
-  const autoGroups = autoIds.map(groupView).filter(Boolean);
-  const groups = Object.keys(settings.skuGroups||{}).sort((a,b)=>String((settings.skuGroups[a]||{}).name).localeCompare(String((settings.skuGroups[b]||{}).name),'ko')).map(groupView).filter(Boolean);
-  return {conflicts:state.groupConflicts||[], candidates:state.loaded ? buildCandidates().filter(c=>!c.auto) : [], autoGroups, groups, rejectedCount:(settings.skuRejected||[]).length};
 }

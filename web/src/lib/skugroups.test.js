@@ -99,27 +99,6 @@ describe('묶기 검사', () => {
   });
 });
 
-describe('확정 그룹 보기: 대표 · 재고 호환 · 경고', () => {
-  const mk = (rep, compat = []) => { a.settings.skuGroups = {g1: {name: '세럼', members: ['A', 'B', 'C'], rep, compat}}; return G.groupView('g1'); };
-  it('자동 대표(최근 판매실적일), 수동 지정이 우선, 이전 SKU 재고는 따로 · 호환 확인한 것만 included', () => {
-    setup([item('A', '세럼 (북미)', {lastSale: D(40), available: 50, incoming: 5}), item('B', '세럼 (글로벌)', {lastSale: D(3), available: 7, incoming: 2}), item('C', '세럼 (북미/유럽)', {lastSale: null, available: 90})]);
-    let v = mk(null); expect(v).toMatchObject({rep: 'B', repManual: false});
-    expect(v.prevStock.map(p => [p.pn, p.available, p.included])).toEqual([['A', 50, false], ['C', 90, false]]); // 기본은 합치지 않음
-    v = mk('C', ['A', 'B', 'C']); // 판매 이력 없는 새 버전을 수동 대표로
-    expect(v).toMatchObject({rep: 'C', repManual: true}); expect(v.warnings.join()).toMatch(/판매 이력이 없습니다/); expect(v.warnings.join()).toMatch(/자동 제안\(B\)/);
-    expect([...v.compat].sort()).toEqual(['A', 'B']); // 대표 본인은 호환 목록에서 제외
-    expect(v.prevStock.every(p => p.included)).toBe(true);
-    v = mk('Z'); expect(v.rep).toBe('B'); // 멤버가 아닌 수동 값은 무시
-  });
-  it('발주 목록에 담긴 멤버가 있으면 자동 변경 없이 경고만', async () => {
-    await import('./insights.js'); // 발주 목록 상태(ui.cart)를 만드는 모듈
-    setup([item('A', '세럼 (북미)', {lastSale: D(3)}), item('B', '세럼 (글로벌)', {lastSale: D(1)}), item('C', '세럼 (유럽)')]);
-    a.ui.cart.clear(); a.ui.cart.set('A', 120);
-    const v = mk(null); expect(v.warnings.join()).toMatch(/발주 목록에 이미 담긴 멤버.*A\(120\)/);
-    expect(a.ui.cart.get('A')).toBe(120); a.ui.cart.clear();
-  });
-});
-
 describe('후보 · 거절 · 그룹 없는 SKU 는 계산에 영향 없음', () => {
   it('후보가 있고 거절해도 forecast 결과(부족 수량 · 상태 · 목표)가 그대로', async () => {
     const {makeSheets} = await import('./__fixtures__/sheets.js');

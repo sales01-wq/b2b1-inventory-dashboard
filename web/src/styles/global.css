@@ -328,3 +328,12 @@ code.pn-lg { font-size: 0.9375rem; font-weight: 600; }
 .inactive-note { display: block; margin-top: 2px; font-size: 0.75rem; line-height: 1.2; color: var(--color-text-secondary); white-space: normal; }
 .warn-cell { color: light-dark(#a16207, #fbbf24); }
 .prov-qty { font-style: italic; opacity: 0.8; }
+
+/* 품명은 말줄임 · 잘림 없이 전체 표시 (한글은 단어 단위, 긴 영문은 칸 폭에서 줄바꿈), 행 높이는 자동 */
+.fc-table td.sticky-col { overflow: visible; white-space: normal; max-width: none; vertical-align: middle; }
+.fc-table td { vertical-align: middle; }
+.pn-box { min-width: 0; flex: 1 1 auto; }
+.fc-table .pn-name { max-width: none; overflow: visible; text-overflow: clip; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+.pn-wrap { display: block; word-break: keep-all; overflow-wrap: anywhere; }
+.cart-note { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 2px; }
+.cart-scope { font-size: 0.75rem; color: var(--color-text-secondary); }
