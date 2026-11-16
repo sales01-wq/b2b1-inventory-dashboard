@@ -2,6 +2,7 @@
 // 없는 데이터(재고 이력, 원가 · 재고금액, 품목별 리드타임)는 만들어 내지 않습니다.
 import {state, ui, settings} from './store.js';
 import {brandPasses, brandOf, QUARTER_DAYS, scopeForecastItem} from './forecast.js';
+import {rebuildGroupItem} from './groupcalc.js';
 import {emit} from './store.js';
 import {num} from './parse.js';
 
@@ -96,7 +97,7 @@ export const SCOPE_ALL = '전체 거래처 기준';
 // 저장 형식: [품번, 수량, {scope, calc, inactive, group}] (group = 담을 때 그룹 구성 스냅샷; 예전 형식도 읽음)
 function loadCart(){
   const qty = new Map(), meta = new Map();
-  try{ JSON.parse(localStorage.getItem(KEY)||'[]').forEach(e=>{ if(!Array.isArray(e)||!e[0]) return; qty.set(e[0], Number.isFinite(Number(e[1]))?Number(e[1]):1); if(e[2]&&typeof e[2]==='object') meta.set(e[0], {scope:String(e[2].scope||''), calc:Number(e[2].calc)||0, inactive:e[2].inactive?String(e[2].inactive):null, group:e[2].group&&typeof e[2].group==='object'?{id:String(e[2].group.id||''), name:String(e[2].group.name||''), rep:String(e[2].group.rep||''), members:(e[2].group.members||[]).map(String), compat:(e[2].group.compat||[]).map(String)}:null}); }); }catch(_e){}
+  try{ JSON.parse(localStorage.getItem(KEY)||'[]').forEach(e=>{ if(!Array.isArray(e)||!e[0]) return; qty.set(e[0], Number.isFinite(Number(e[1]))?Number(e[1]):1); if(e[2]&&typeof e[2]==='object') meta.set(e[0], {scope:String(e[2].scope||''), calc:Number(e[2].calc)||0, inactive:e[2].inactive?String(e[2].inactive):null, group:e[2].group&&typeof e[2].group==='object'?{id:String(e[2].group.id||''), name:String(e[2].group.name||''), rep:String(e[2].group.rep||''), members:(e[2].group.members||[]).map(String), compat:(e[2].group.compat||[]).map(String), auto:!!e[2].group.auto, basis:String(e[2].group.basis||'')}:null}); }); }catch(_e){}
   return {qty, meta};
 }
 { const c = loadCart(); ui.cart = c.qty; ui.cartMeta = c.meta; } // 품번 -> 발주 수량 / 품번 -> {scope: 계산 기준, calc: 담을 때 부족 수량, inactive: 담을 때 미판매 사유}
@@ -104,7 +105,7 @@ function saveCart(){ try{ localStorage.setItem(KEY, JSON.stringify(Array.from(ui
 /** 지금 선택된 거래처 범위의 이름표: 없으면 '전체 거래처 기준', 있으면 '선택 거래처 기준: A, B' */
 export function currentScopeLabel(){ return ui.forecastCustomers.size>0 ? '선택 거래처 기준: '+[...ui.forecastCustomers].join(', ') : SCOPE_ALL; }
 /** 이 품번이 속한 확정 그룹 {id, g} (없으면 null) */
-export function groupOfPn(pn){ const gs = settings.skuGroups||{}; const id = Object.keys(gs).find(k=>(gs[k].members||[]).includes(pn)); return id ? {id, g:gs[id]} : null; }
+export function groupOfPn(pn){ const gs = {...(state.autoGroupDefs||{}), ...(settings.skuGroups||{})}; const id = Object.keys(gs).find(k=>(gs[k].members||[]).includes(pn)); return id ? {id, g:gs[id]} : null; }
 function dupWarnings(pn){
   const hit = groupOfPn(pn); if(!hit) return [];
   const others = hit.g.members.filter(p=>p!==pn && ui.cart.has(p));
@@ -121,7 +122,7 @@ function cartWarnings(pn, m){
     if(curRep && curRep!==pn) out.push(`그룹의 이전 SKU 입니다 (현재 대표 ${curRep})`);
   }
   if(m && m.group){
-    const now = hit && hit.id===m.group.id ? hit.g.members : null;
+    const now = hit && (hit.id===m.group.id || [...hit.g.members].sort().join()===[...m.group.members].sort().join()) ? hit.g.members : null; // 자동 → 수동 전환처럼 id 가 바뀌어도 같은 구성이면 같은 그룹으로 봄
     if(!now) out.push(`담을 때 그룹(${m.group.name||m.group.id})이 지금은 없습니다`);
     else {
       if(curRep && m.group.rep && curRep!==m.group.rep) out.push(`담을 때 대표 SKU(${m.group.rep})와 현재 대표(${curRep})가 다릅니다`);
@@ -137,18 +138,37 @@ const defaultQty = (calc, inactive) => inactive ? 0 : Math.max(1, calc);
 function put(pn, x, scope, qty){
   const calc = Math.max(0, Math.round((x&&x.orderQty)||0)), inactive = (x&&x.inactiveReason)||null;
   ui.cart.set(pn, qty!==undefined ? Math.max(0, Math.round(qty)) : defaultQty(calc, inactive));
-  ui.cartMeta.set(pn, {scope, calc, inactive, group: x&&x.group ? {id:x.group.id, name:x.group.name, rep:x.group.rep, members:x.group.members.map(m=>m.pn), compat:[...x.group.compat]} : null});
+  ui.cartMeta.set(pn, {scope, calc, inactive, group: x&&x.group ? {id:x.group.id, name:x.group.name, rep:x.group.rep, members:x.group.members.map(m=>m.pn), compat:[...x.group.compat], auto:!!x.group.auto, basis:x.group.repBasis||''} : null});
 }
 /** 한 품목 담기. 이미 있으면 수량 · 기준을 그대로 둠(덮어쓰지 않음). 품목 상세는 scope=전체 기준으로 호출 */
 export function addToCart(pn, qty, scope){
   if(ui.cart.has(pn)) return {added:false, warnings:[]};
   const sc = scope!==undefined ? scope : currentScopeLabel();
-  const warnings = dupWarnings(pn); // 같은 그룹의 다른 SKU 가 이미 담겨 있으면 알리기만 함 (합치거나 지우지 않음)
-  put(pn, itemFor(pn, sc), sc, qty);
+  const x = itemFor(pn, sc);
+  if(x && x.group && x.group.pending) return {added:false, pending:true, warnings:[]}; // 고객마다 SKU 가 달라 선택 필요 — 선택 전에는 담지 않음
+  const key = (x && x.품번) || pn; // 거래처 범위에 따라 대표 SKU 가 달라질 수 있어 화면에 보이는 SKU 로 담음
+  if(key!==pn && ui.cart.has(key)) return {added:false, warnings:[]};
+  const warnings = dupWarnings(key); // 같은 그룹의 다른 SKU 가 이미 담겨 있으면 알리기만 함 (합치거나 지우지 않음)
+  put(key, x, sc, qty);
   saveCart(); return {added:true, warnings};
 }
+/** 화면에 보이는 항목(x, 현재 거래처 범위로 계산됨)을 담는다. 그룹은 대표 SKU 로 담고, SKU 선택이 필요한 그룹은 chosenPn 을 골라야 담김 */
+export function addItemToCart(x, chosenPn){
+  let item = x;
+  if(x.group && chosenPn && (chosenPn!==x.group.rep || x.group.pending)) item = rebuildGroupItem(x, ui.forecastCustomers, chosenPn);
+  if(item.group && item.group.pending) return {added:false, pending:true, warnings:[]};
+  const pn = item.품번; if(ui.cart.has(pn)) return {added:false, warnings:[]};
+  const warnings = dupWarnings(pn); put(pn, item, currentScopeLabel()); saveCart(); return {added:true, warnings};
+}
 /** 이미 담긴 품목은 수량을 그대로 두고 건너뜀. 새 품목은 지금 선택 범위의 부족 수량 · 범위 이름 · 미판매 사유를 저장 (미판매는 수량 0). {added, existing} 반환 */
-export function addManyToCart(pns){ let added=0, existing=0; const warnings=[]; const sc = currentScopeLabel(); new Set(pns).forEach(pn=>{ if(ui.cart.has(pn)){ existing++; return; } warnings.push(...dupWarnings(pn)); put(pn, itemFor(pn, sc), sc); added++; }); saveCart(); return {added, existing, warnings}; }
+export function addManyToCart(keys){ let added=0, existing=0; const warnings=[], pending=[]; const sc = currentScopeLabel(); new Set(keys).forEach(k=>{
+  const base = findByKey(k); if(!base) return;
+  const x = scopeForecastItem(base, ui.forecastCustomers);
+  if(x.group && x.group.pending){ pending.push(x.group.name||x.품번); return; } // 고객마다 SKU 가 달라 선택 필요 — 건너뜀
+  if(ui.cart.has(x.품번)){ existing++; return; }
+  warnings.push(...dupWarnings(x.품번)); put(x.품번, x, sc); added++; }); saveCart(); return {added, existing, warnings, pending}; }
+/** 선택 · 펼침 식별자(그룹 = group:id, 그 밖 = 품번)로 항목 찾기 */
+export function findByKey(k){ return state.forecast.find(x=>(x.key||x.품번)===k) || findForecast(k); }
 /** 수동 수정. 0 이면 목록에서 빠지지만, 미판매로 담은 항목은 0 으로 남음(의도적으로 생산하려면 수량을 직접 입력) */
 export function setCartQty(pn, qty){ const v = Math.round(num(qty)); const m = ui.cartMeta.get(pn); if(v>0 || (v===0 && m && m.inactive)) ui.cart.set(pn, Math.max(0, v)); else { ui.cart.delete(pn); ui.cartMeta.delete(pn); } saveCart(); }
 export function removeFromCart(pn){ ui.cart.delete(pn); ui.cartMeta.delete(pn); saveCart(); }

@@ -152,9 +152,9 @@ describe('거래처 다중 선택 · 연도별 월 판매 · 일괄 선택 · �
     expect([...a.ui.forecastSelected].sort()).toEqual(['SB002', 'SB004', 'SB005']);
     ins.setCartQty('SB002', 7);
     const r = ins.addManyToCart([...a.ui.forecastSelected]);
-    expect(r).toEqual({added: 2, existing: 1, warnings: []});
+    expect(r).toEqual({added: 2, existing: 1, warnings: [], pending: []});
     expect(a.ui.cart.get('SB002')).toBe(7); // 이미 담긴 수량 유지
-    expect(ins.addManyToCart(['SB002', 'SB005'])).toEqual({added: 0, existing: 2, warnings: []});
+    expect(ins.addManyToCart(['SB002', 'SB005'])).toEqual({added: 0, existing: 2, warnings: [], pending: []});
     a.clearForecastSelect(); expect(a.ui.forecastSelected.size).toBe(0);
     a.ui.cart.clear(); a.ui.forecastGrade = ''; a.ui.forecastCustomers = new Set();
   });
@@ -269,7 +269,7 @@ describe('발주 목록에 담을 때 부족 수량 · 계산 기준 저장', ()
     ins.setCartQty('SB005', 150); // 수동 수정
     a.ui.forecastCustomers = new Set(); a.forecastModel(); // 필터 전환
     expect(ins.addToCart('SB005')).toEqual({added: false, warnings: []}); // 다시 담기 = 무시
-    expect(ins.addManyToCart(['SB005'])).toEqual({added: 0, existing: 1, warnings: []});
+    expect(ins.addManyToCart(['SB005'])).toEqual({added: 0, existing: 1, warnings: [], pending: []});
     expect(a.ui.cart.get('SB005')).toBe(150); expect(meta('SB005')).toEqual({scope: '선택 거래처 기준: A', calc: 100, inactive: null, group: null});
     const r = ins.cartRows().find(x => x.pn === 'SB005');
     expect(r).toMatchObject({qty: 150, calc: 100, scope: '선택 거래처 기준: A', edited: true});

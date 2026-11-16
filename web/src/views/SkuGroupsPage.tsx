@@ -24,9 +24,9 @@ import {fmt} from '../lib/format';
 
 interface Info {title?: string; pn: string; name: string; barcode: string; lastSale: Date | null; available: number; incoming: number; variant?: string; spec?: string | null; missing?: boolean}
 interface Cand {key: string; core: string; variant: string; infos: Info[]; sameBarcode: boolean; sameSpec: boolean; specDiffers: boolean; warnings: string[]; strength: string; rep: {pn: string | null; reason: string}}
-interface GroupV {applied: boolean; appliedReason: string; id: string; name: string; members: Info[]; rep: string | null; repManual: boolean; auto: {pn: string | null; reason: string}; compat: Set<string>; warnings: string[]; prevStock: {pn: string; available: number; incoming: number; included: boolean}[]}
+interface GroupV {isAuto: boolean; pending: {reason: string} | null; byCustomer: {cust: string; pn: string | null; tie: string[] | null; last: Date}[]; applied: boolean; appliedReason: string; id: string; name: string; members: Info[]; rep: string | null; repManual: boolean; auto: {pn: string | null; reason: string}; compat: Set<string>; warnings: string[]; prevStock: {pn: string; available: number; incoming: number; included: boolean}[]}
 
-let subview: 'cand' | 'group' = 'cand';
+let subview: 'cand' | 'auto' | 'group' = 'cand';
 const day = (d: Date | null) => (d ? d.toLocaleDateString('ko-KR') : '판매 이력 없음');
 const STRENGTH = {'근거 있음': 'green', '이름만 일치': 'yellow', '확인 필요': 'red'} as const;
 const BASIS = '최근 판매실적일 기준 (전체 거래처 · 실제 출하일 아님)';
@@ -35,12 +35,12 @@ const BASIS = '최근 판매실적일 기준 (전체 거래처 · 실제 출하�
 export function SkuGroupsPage() {
   useStore();
   const [, rerender] = useState(0);
-  const m = state.loaded ? (skuGroupsModel() as {conflicts: {pn: string; groups: {id: string; name: string}[]}[]; candidates: Cand[]; groups: GroupV[]; rejectedCount: number}) : null;
+  const m = state.loaded ? (skuGroupsModel() as {conflicts: {pn: string; groups: {id: string; name: string}[]}[]; candidates: Cand[]; autoGroups: GroupV[]; groups: GroupV[]; rejectedCount: number}) : null;
   return (
     <PageFrame view="skugroups">
       {!m ? <NoData /> : (
         <VStack gap={4}>
-          <Card variant="muted"><Text type="supporting">포장 개정 · 고객 전용 SKU 그룹을 검토하고 설정하는 화면입니다. <b>확정한 그룹만 생산 필요 현황에 반영됩니다</b> (한 줄로 합침): 판매 이력은 그룹 전체를 합산하고, 재고 · 입고예정은 대표 SKU 와 호환 확인한 SKU 만 포함합니다. 후보 · 거절 · 그룹 없는 SKU 는 개별 계산 그대로입니다. 이름이 비슷하다는 이유만으로 자동 확정하지 않으며, TARGET · TJX · 일반 SKU 는 서로 묶을 수 없습니다. 이미 담긴 발주 목록 항목은 그룹이 바뀌어도 자동으로 바뀌지 않고 경고만 표시됩니다.</Text></Card>
+          <Card variant="muted"><Text type="supporting">포장 개정 · 고객 전용 SKU 그룹 화면입니다. <b>같은 이름 · 같은 고객 전용 종류에 바코드(또는 마스터 규격)가 일치하는 SKU 는 승인 없이 자동 그룹</b>이 되고, 이름만 같거나 충돌 · 알 수 없는 표기는 후보로 남아 직접 검토합니다. 그룹은 생산 필요 현황에 한 줄로 합쳐지며, 판매 이력은 그룹 전체를 합산하고 재고 · 입고예정은 대표 SKU 와 호환 확인한 SKU 만 포함합니다. 대표 SKU 는 고객별 최근 판매실적일로 정하고(고객 1곳을 고르면 그 고객의 SKU), 고객마다 달라 정할 수 없으면 담기 전에 SKU 를 선택해야 합니다. 자동 그룹은 제외하거나 수동 그룹으로 바꿔 고칠 수 있습니다. 이름이 비슷하다는 이유만으로 자동 확정하지 않으며, TARGET · TJX · 일반 SKU 는 서로 묶을 수 없습니다. 이미 담긴 발주 목록 항목은 그룹이 바뀌어도 자동으로 바뀌지 않고 경고만 표시됩니다.</Text></Card>
           {m.conflicts.length > 0 && (
             <Card role="alert">
               <VStack gap={1}>
@@ -51,10 +51,11 @@ export function SkuGroupsPage() {
           )}
           <TabList role="tablist" size="sm" hasDivider value={subview} onChange={v => { subview = v as typeof subview; rerender(n => n + 1); }}>
             <Tab value="cand" label={`후보 검토 ${fmt(m.candidates.length)}`} panelId="sku-panel" />
+            <Tab value="auto" label={`자동 그룹 ${fmt(m.autoGroups.length)}`} panelId="sku-panel" />
             <Tab value="group" label={`확정 그룹 ${fmt(m.groups.length)}`} panelId="sku-panel" />
           </TabList>
-          <div id="sku-panel" role="tabpanel" aria-label={subview === 'cand' ? '후보 검토' : '확정 그룹'}>
-            {subview === 'cand' ? <Candidates list={m.candidates} rejected={m.rejectedCount} /> : <Groups list={m.groups} />}
+          <div id="sku-panel" role="tabpanel" aria-label={subview === 'cand' ? '후보 검토' : subview === 'auto' ? '자동 그룹' : '확정 그룹'}>
+            {subview === 'cand' ? <Candidates list={m.candidates} rejected={m.rejectedCount} /> : subview === 'auto' ? <AutoGroups list={m.autoGroups} go={() => { subview = 'group'; rerender(n => n + 1); }} /> : <Groups list={m.groups} />}
           </div>
         </VStack>
       )}
@@ -207,11 +208,13 @@ function GroupCard({g, edit}: {g: GroupV; edit: boolean}) {
           <HStack gap={2} vAlign="end" wrap="wrap">
             <div style={{width: 260}}><TextInput label="그룹 이름" size="sm" value={name} isDisabled={!edit} onChange={setName} onKeyDown={e => { if (e.key === 'Enter') apply({name}); }} onBlur={() => { if (name.trim() && name !== g.name) apply({name}); }} /></div>
             {g.applied ? <Badge variant="green" label="생산 필요 현황에 적용 중" /> : <Badge variant="red" label="적용 안 됨" />}
-            {g.repManual ? <Badge variant="blue" label={`대표 ${g.rep} (직접 지정)`} /> : g.rep ? <Badge variant="green" label={`대표 ${g.rep} (자동)`} /> : <Badge variant="red" label="대표 SKU 없음" />}
+            <Badge variant="blue" label="수동 그룹" />
+            {g.repManual ? <Badge variant="blue" label={`대표 ${g.rep} (직접 지정)`} /> : g.pending ? <Badge variant="yellow" label="고객마다 대표 SKU 가 다름 (담기 전 선택)" /> : g.rep ? <Badge variant="green" label={`대표 ${g.rep} (자동 · 전체 기준)`} /> : <Badge variant="red" label="대표 SKU 없음" />}
           </HStack>
           {edit && <Button label="그룹 삭제" size="sm" variant="ghost" onClick={() => { if (window.confirm(`'${g.name}' 그룹을 삭제할까요? (SKU 와 판매 이력은 그대로입니다)`)) deleteSkuGroup(g.id); }} />}
         </HStack>
-        <Text type="supporting">대표 SKU 자동 판정: {BASIS}. 판매 이력이 없는 새 포장 버전은 직접 지정하세요.</Text>
+        <Text type="supporting">대표 SKU 자동 판정: 고객별 {BASIS}. 직접 지정하면 모든 고객에 우선 적용됩니다. 판매 이력이 없는 새 포장 버전은 직접 지정하세요.</Text>
+        <CustomerReps g={g} />
         {!g.applied && g.appliedReason && <Text type="supporting"><span className="text-warn">⚠ {g.appliedReason}</span></Text>}
         {g.warnings.map(w => <Text key={w} type="supporting"><span className="text-warn">⚠ {w}</span></Text>)}
         <MemberTable infos={g.members} head="호환"
@@ -239,3 +242,60 @@ function GroupCard({g, edit}: {g: GroupV; edit: boolean}) {
     </Card>
   );
 }
+
+/** 고객별 대표 SKU: 그 고객의 최근 판매실적일이 가장 늦은 SKU (다른 고객의 판매는 쓰지 않음) */
+function CustomerReps({g}: {g: GroupV}) {
+  if (g.byCustomer.length === 0) return <Text type="supporting">고객별 판매 이력이 없습니다.</Text>;
+  const shown = g.byCustomer.slice(0, 10);
+  return (
+    <VStack gap={1}>
+      <Text type="supporting" weight="medium">고객별 대표 SKU (고객별 최근 판매실적일 기준 · 실제 출하일 아님)</Text>
+      <Card padding={0}>
+        <Table className="mini-table" density="compact" dividers="rows">
+          <TableHeader><TableRow><TableHeaderCell>고객</TableHeaderCell><TableHeaderCell>최근 판매 SKU</TableHeaderCell><TableHeaderCell>최근 판매실적일</TableHeaderCell></TableRow></TableHeader>
+          <TableBody>{shown.map(c => <TableRow key={c.cust}><TableCell>{c.cust}</TableCell><TableCell>{c.pn || <span className="text-warn">동률 ({(c.tie || []).join(', ')}) — 선택 필요</span>}</TableCell><TableCell>{c.last.toLocaleDateString('ko-KR')}</TableCell></TableRow>)}</TableBody>
+        </Table>
+      </Card>
+      {g.byCustomer.length > shown.length && <Text type="supporting">외 {fmt(g.byCustomer.length - shown.length)}곳</Text>}
+    </VStack>
+  );
+}
+
+/* ---------------- 자동 그룹 (승인 없이 적용, 제외 · 수동 전환으로 고침) ---------------- */
+function AutoGroups({list, go}: {list: GroupV[]; go: () => void}) {
+  const edit = canEditSettings();
+  const [errors, setErrors] = useState<string[]>([]);
+  if (list.length === 0) return <Card><EmptyState isCompact headingLevel={3} title="자동 그룹이 없습니다." description="같은 이름 · 같은 고객 전용 종류에 바코드(또는 마스터 규격)가 일치하는 SKU 가 2개 이상 있으면 자동으로 묶입니다." /></Card>;
+  return (
+    <VStack gap={3}>
+      <Errors list={errors} />
+      {list.map(g => (
+        <ErrorBoundary key={g.id} resetKey={g.id} title="이 자동 그룹을 표시하지 못했습니다.">
+          <Card>
+            <VStack gap={2}>
+              <HStack gap={2} vAlign="center" wrap="wrap" hAlign="between">
+                <HStack gap={2} vAlign="center" wrap="wrap">
+                  <Heading level={3}>{g.name}</Heading>
+                  <Badge variant="neutral" label="자동 그룹" />
+                  {g.applied ? <Badge variant="green" label="생산 필요 현황에 적용 중" /> : <Badge variant="red" label="적용 안 됨" />}
+                  {g.pending && <Badge variant="yellow" label="고객마다 대표 SKU 가 다름 (담기 전 선택)" />}
+                </HStack>
+                {edit && (
+                  <HStack gap={2}>
+                    <Button label="수동 그룹으로 전환(수정)" size="sm" variant="secondary" onClick={async () => { const r = await createSkuGroup({name: g.name, members: g.members.map(i => i.pn), rep: null, compat: []}); setErrors(r.errors || []); if (r.id) go(); }} />
+                    <Button label="자동 그룹 제외" size="sm" variant="ghost" onClick={() => rejectSkuCandidate(g.members.map(i => i.pn))} />
+                  </HStack>
+                )}
+              </HStack>
+              {!g.applied && g.appliedReason && <Text type="supporting"><span className="text-warn">⚠ {g.appliedReason}</span></Text>}
+              <MemberTable infos={g.members} head="" cell={() => null} role={i => (i.pn === g.rep && !g.pending ? <Badge variant="green" label="대표 (전체 기준)" /> : <span className="muted">-</span>)} />
+              <CustomerReps g={g} />
+              <Text type="supporting">자동 그룹은 대표 SKU 의 재고 · 입고예정만 계산에 넣고(다른 SKU 재고는 합치지 않음), 재고 호환 · 대표 직접 지정이 필요하면 '수동 그룹으로 전환' 해서 고치세요. 제외하면 개별 SKU 로 계산되고 같은 후보는 다시 자동 그룹이 되지 않습니다.</Text>
+            </VStack>
+          </Card>
+        </ErrorBoundary>
+      ))}
+    </VStack>
+  );
+}
+

@@ -2,7 +2,7 @@
 // 식은 index.html 과 같게 유지합니다. 결과는 views.test.js 가 운영 화면에 그려진 값과 비교합니다.
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
-import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, usableAvailable, getRules, scopeForecastItem} from './forecast.js';
+import {brandPasses, groupOf, quarterLabel, scopedAvailable, salesDetailFor, usableAvailable, getRules, scopeForecastItem, rowsOfItem} from './forecast.js';
 import {productList, buildSkuStatusData, buildPivotRows} from './sales.js';
 import {detectSheetType, findHeaderRow, SHEET_SIGNATURES, teamFromName, teamFromRows} from './parse.js';
 import {boxInfoFor, baseBarcode, buildExportRows, incomingItemsFor, shortDate} from './lookup.js';
@@ -33,7 +33,7 @@ export function forecastModel(){
   if(ui.forecastCategory==='hero') src = src.filter(x=>x.hero); // 품목 구분: 히어로 지정 품목만 (히어로 지정은 미판매여도 유지 → 참고/미판매에서 계속 보임)
   if(ui.forecastCustomers.size>0){
     const cut = new Date(); cut.setFullYear(cut.getFullYear()-1);
-    src = src.filter(x=>(state.salesRowsByProduct.get(x.품번)||[]).some(r=>ui.forecastCustomers.has(r.거래처) && r.실적일자>=cut))
+    src = src.filter(x=>rowsOfItem(x).some(r=>ui.forecastCustomers.has(r.거래처) && r.실적일자>=cut))
       .map(x=>scopeForecastItem(x, ui.forecastCustomers));
   }
   // 과잉재고는 정의상 '최근 6개월간 판매 이력이 없는 품목'만 대상이라, 판매이력 필터와 상관없이 그 품목들을 포함시킴
@@ -79,7 +79,8 @@ export function forecastModel(){
   } else if(isOverstock){
     list.sort((a,b)=> b.available - a.available); // 재고 많은 순
   }
-  ui.forecastVisiblePns = list.map(x=>x.품번); ui._forecastCsvRows = list; // 전체 선택 대상 (필터링된 전체, 더보기 이전 포함)
+  // 선택 · 펼침의 식별자: 그룹은 id 기반(고객 선택으로 대표 SKU 가 바뀌어도 같은 행)
+  ui.forecastVisiblePns = list.map(x=>x.key||x.품번); ui._forecastCsvRows = list; // 전체 선택 대상 (필터링된 전체, 더보기 이전 포함)
 
   // 월별 판매: 선택한 연도의 1~12월 (기본 올해). 거래처를 골랐으면 그 거래처들 합계. 반품 · 마이너스는 제외 (목표 계산과 같은 기준)
   const years = new Set([new Date().getFullYear()]);
@@ -89,7 +90,7 @@ export function forecastModel(){
   const months = Array.from({length:12}, (_,m)=>({y:year, m}));
   const monthly = x=>{
     const arr = months.map(()=>0);
-    (state.salesRowsByProduct.get(x.품번)||[]).forEach(r=>{
+    rowsOfItem(x).forEach(r=>{
       if(ui.forecastCustomers.size>0 && !ui.forecastCustomers.has(r.거래처)) return;
       const d=r.실적일자, q=Number(r.수량);
       if(d.getFullYear()===year && q>0 && Number.isFinite(q)) arr[d.getMonth()]+=q;
@@ -120,7 +121,7 @@ export function customerShortRows(){
   state.forecast.forEach(x=>{
     if(!brandPasses(x.brand)) return;
     const seen = new Map();
-    (state.salesRowsByProduct.get(x.품번)||[]).forEach(r=>{ if(r.실적일자>=cut && r.수량>0 && r.거래처){ const d = seen.get(r.거래처); if(!d || r.실적일자>d) seen.set(r.거래처, r.실적일자); } });
+    rowsOfItem(x).forEach(r=>{ if(r.실적일자>=cut && r.수량>0 && r.거래처){ const d = seen.get(r.거래처); if(!d || r.실적일자>d) seen.set(r.거래처, r.실적일자); } });
     seen.forEach((last,cust)=>{
       let c = by.get(cust); if(!c){ c = {cust, items:0, short:0, last:null}; by.set(cust,c); }
       c.items++; if(x.orderQty>0 && x.grade!=='데이터부족') c.short++;

@@ -2,7 +2,7 @@
 import {afterAll, beforeAll, describe, expect, it, vi} from 'vitest';
 import {NOW, loadPort} from './__fixtures__/harness.js';
 
-let a, I;
+let a, I, SG;
 const N = new Date(NOW), y = N.getFullYear(), mo = N.getMonth();
 const d = (back, day = 10) => new Date(y, mo - back, day);
 const sale = (cust, pn, qty, when) => ({거래처: cust, 품번: pn, 품명: pn, 수량: qty, 실적일자: when, 금액: 0});
@@ -23,7 +23,7 @@ const NA = '세럼 (북미)', GL = '세럼 (글로벌)';
 beforeAll(async () => {
   vi.useFakeTimers({toFake: ['Date']}); vi.setSystemTime(NOW);
   const mem = new Map(); globalThis.localStorage = {getItem: k => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: k => mem.delete(k)};
-  a = (await loadPort()).api; I = await import('./insights.js');
+  a = (await loadPort()).api; I = await import('./insights.js'); SG = await import('./skugroups.js');
 });
 afterAll(() => vi.useRealTimers());
 
@@ -58,23 +58,90 @@ describe('판매 합산 · 12개월 월 최대', () => {
   });
 });
 
-describe('거래처 필터: 선택 거래처의 판매만, 대표 SKU 는 고정', () => {
-  it('선택 거래처 합산 · 대표는 전체 거래처 기준 그대로', () => {
-    // C 는 오래된 SB101 만 샀고, 최근 판매(전체)는 SB102 → 대표 SB102 고정
-    build([sku('SB101', NA, 0), sku('SB102', GL, 0)], [sale('C', 'SB101', 80, d(2)), sale('C', 'SB101', 60, d(2, 20)), sale('A', 'SB102', 300, d(1))], {g1: G(['SB101', 'SB102'])});
-    expect(row('SB102').group.rep).toBe('SB102'); expect(row('SB102').target).toBe(300);
+describe('거래처 필터: 선택 거래처의 판매만 합산', () => {
+  it('선택 거래처의 멤버 합산 판매로 목표 계산 (대표 SKU 는 고객별로 따로 판정 — 아래 describe)', () => {
+    build([sku('SB101', NA, 0), sku('SB102', GL, 0)], [sale('C', 'SB101', 80, d(2)), sale('C', 'SB101', 60, d(2, 20)), sale('A', 'SB102', 300, d(1))], {g1: G(['SB101', 'SB102'], {rep: 'SB102'})}); // 수동 대표 SB102 로 고정해 합산만 확인
     a.ui.forecastCustomers = new Set(['C']); let m = a.forecastModel(); let x = m.list.find(r => r.품번 === 'SB102');
-    expect(x.group.rep).toBe('SB102'); expect([x.target, x.scoped]).toEqual([140, true]); // C 의 SB101 판매 합계 (대표 SKU 와 다른 멤버의 판매)
+    expect([x.target, x.scoped, x.group.rep]).toEqual([140, true, 'SB102']); // C 의 SB101 판매 합계
     a.ui.forecastCustomers = new Set(['A']); x = a.forecastModel().list.find(r => r.품번 === 'SB102'); expect(x.target).toBe(300);
     a.ui.forecastCustomers = new Set(['A', 'C']); x = a.forecastModel().list.find(r => r.품번 === 'SB102'); expect(x.target).toBe(300); // 월 최대: 2달 전 C 140, 1달 전 A 300
     a.ui.forecastCustomers = new Set(['Z']); expect(a.forecastModel().list.some(r => r.품번 === 'SB102')).toBe(false); // 그 거래처가 안 산 그룹은 안 보임
-    // 월별 열(올해)도 선택 거래처의 멤버 합산
     a.ui.forecastCustomers = new Set(['C']); m = a.forecastModel(); const idx = d(2).getFullYear() === m.year ? d(2).getMonth() : -1;
-    if (idx >= 0) expect(m.monthly(m.list.find(r => r.품번 === 'SB102'))[idx]).toBe(140);
+    if (idx >= 0) expect(m.monthly(m.list.find(r => r.품번 === 'SB102'))[idx]).toBe(140); // 월별 열도 선택 거래처의 멤버 합산
     a.ui.forecastCustomers = new Set();
   });
 });
 
+describe('대표 SKU 는 고객별 최근 판매실적일 기준 (자동 판정)', () => {
+  // A: SB101 이 최근, B: SB102 가 최근, C: SB101 이 최근(오래전), D: 판매 이력 없음
+  const S = () => [sku('SB101', NA, 40), sku('SB102', GL, 25)];
+  const SALES = () => [sale('A', 'SB101', 100, d(1, 20)), sale('A', 'SB102', 50, d(3)), sale('B', 'SB102', 70, d(1, 10)), sale('B', 'SB101', 30, d(4)), sale('C', 'SB101', 20, d(5))];
+  const pick = (...c) => { a.ui.forecastCustomers = new Set(c); const x = a.forecastModel().list.find(r => r.key === 'group:g1'); a.ui.forecastCustomers = new Set(); return x; };
+  it('고객 1곳 선택: 그 고객의 가장 최근 판매 SKU 가 대표 (표시 · 재고 · 발주 대상)', () => {
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'])});
+    expect(pick('A')).toMatchObject({품번: 'SB101', available: 40}); expect(pick('A').group.pending).toBeNull();
+    expect(pick('B')).toMatchObject({품번: 'SB102', available: 25}); // 같은 그룹 · 같은 행(key)이지만 고객이 바뀌면 대표 SKU 와 재고가 바뀜
+    expect(pick('A').group.repBasis).toMatch(/A 의 최근 판매실적일 기준/);
+    expect(pick('C')).toMatchObject({품번: 'SB101'}); // 오래전이어도 그 고객 기준
+  });
+  it('여러 고객 · 전체: 고객들의 SKU 가 모두 같을 때만 대표, 다르면 선택 필요(임시 표시, 담기 차단)', () => {
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'])});
+    expect(pick('A', 'C')).toMatchObject({품번: 'SB101'}); expect(pick('A', 'C').group.pending).toBeNull(); // 둘 다 SB101
+    const amb = pick('A', 'B'); expect(amb.group.pending.reason).toMatch(/고객마다 최근에 판 SKU 가 달라/); expect(amb.group.pending.perCustomer.map(p => [p.cust, p.pn]).sort()).toEqual([['A', 'SB101'], ['B', 'SB102']]);
+    const all = a.state.forecast.find(x => x.key === 'group:g1'); expect(all.group.pending).not.toBeNull(); // 전체 고객: A · B · C 중 서로 다름
+    expect(all.품번).toBe('SB101'); // 임시 표시(전체 기준 최근 판매 SKU)일 뿐, 대표로 확정되지 않음
+  });
+  it('판매 이력이 없는 고객: 다른 고객의 SKU 를 대신 쓰지 않고 선택 필요, 여러 고객 선택 시에는 이력 없는 고객은 무시', () => {
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'])});
+    const base = a.state.forecast.find(x => x.key === 'group:g1');
+    const z = a.scopeForecastItem(base, new Set(['D'])); expect(z.group.pending.reason).toMatch(/D 의 이 그룹 판매 이력이 없어/); expect(z.group.rep).toBeTruthy();
+    expect(pick('A', 'D')).toMatchObject({품번: 'SB101'}); // D 는 이력이 없어 판정에서 빠지고 A 의 SKU 로 확정되지 않음? → A 만 남아 SB101
+    expect(a.forecastModel().list.length).toBeGreaterThan(0);
+  });
+  it('최근 12개월에 사지 않은 옛 고객은 전체 판정을 모호하게 만들지 않음', () => {
+    build(S(), [sale('A', 'SB101', 100, d(1)), sale('OLD', 'SB102', 40, d(20))], {g1: G(['SB101', 'SB102'])});
+    expect(a.state.forecast.find(x => x.key === 'group:g1')).toMatchObject({품번: 'SB101'}); expect(a.state.forecast.find(x => x.key === 'group:g1').group.pending).toBeNull();
+  });
+  it('같은 날짜면 그 고객의 직전 3개월 판매량, 그래도 같으면 선택 필요', () => {
+    build(S(), [sale('A', 'SB101', 10, d(1, 15)), sale('A', 'SB102', 90, d(1, 15))], {g1: G(['SB101', 'SB102'])}); expect(pick('A')).toMatchObject({품번: 'SB102'});
+    build(S(), [sale('A', 'SB101', 50, d(1, 15)), sale('A', 'SB102', 50, d(1, 15))], {g1: G(['SB101', 'SB102'])}); expect(pick('A').group.pending.reason).toMatch(/동률|같고 직전 3개월/);
+  });
+  it('수동 대표 지정은 고객과 무관하게 우선 (기존 수동 설정 보존)', () => {
+    build(S(), SALES(), {g1: G(['SB101', 'SB102'], {rep: 'SB102'})});
+    expect(pick('A')).toMatchObject({품번: 'SB102'}); expect(pick('A').group.repManual).toBe(true); expect(pick('A', 'B').group.pending).toBeNull();
+  });
+  it('재고 · 입고예정은 대표 SKU 만 (호환 확인한 SKU 는 더함), 고객별 대표에 따라 달라지지만 같은 SKU 를 두 번 세지 않음', () => {
+    build([sku('SB101', NA, 40, {incoming: 10, incDate: '2999-01-01'}), sku('SB102', GL, 25, {incoming: 5, incDate: '2999-01-01'})], SALES(), {g1: G(['SB101', 'SB102'], {compat: ['SB101', 'SB102']})});
+    const a1 = pick('A'); expect([a1.available, a1.incoming]).toEqual([65, 15]); // 대표 SB101 + 호환 SB102 (한 번씩)
+    build([sku('SB101', NA, 40, {incoming: 10, incDate: '2999-01-01'}), sku('SB102', GL, 25, {incoming: 5, incDate: '2999-01-01'})], SALES(), {g1: G(['SB101', 'SB102'])});
+    expect([pick('A').available, pick('B').available]).toEqual([40, 25]);
+  });
+});
+
+describe('발주 목록: 고객별 대표 SKU 로 담기 · 선택 필요 · 기존 항목 보존', () => {
+  const S = () => [sku('SB101', NA, 40), sku('SB102', GL, 25)];
+  const SALES = () => [sale('A', 'SB101', 100, d(1, 20)), sale('B', 'SB102', 70, d(1, 10))];
+  it('고객 1곳 선택하면 그 고객의 SKU 로 담김, 선택 필요 그룹은 담기 차단 · 직접 선택하면 담김', () => {
+    a.ui.cart.clear(); a.ui.cartMeta.clear(); build(S(), SALES(), {g1: G(['SB101', 'SB102'])});
+    a.ui.forecastCustomers = new Set(['B']); let r = I.addManyToCart(['group:g1']); a.ui.forecastCustomers = new Set();
+    expect(r).toMatchObject({added: 1, pending: []}); expect(a.ui.cart.has('SB102')).toBe(true); expect(a.ui.cartMeta.get('SB102').group).toMatchObject({id: 'g1', rep: 'SB102', auto: false}); expect(a.ui.cartMeta.get('SB102').group.basis).toMatch(/B 의 최근 판매실적일/);
+    a.ui.cart.clear(); a.ui.cartMeta.clear();
+    r = I.addManyToCart(['group:g1']); // 전체 고객: A=SB101, B=SB102 → 선택 필요
+    expect(r).toMatchObject({added: 0, pending: ['세럼']}); expect(a.ui.cart.size).toBe(0);
+    const x = a.state.forecast.find(v => v.key === 'group:g1');
+    expect(I.addItemToCart(x)).toMatchObject({added: false, pending: true}); expect(a.ui.cart.size).toBe(0);
+    expect(I.addItemToCart(x, 'SB101')).toMatchObject({added: true}); expect(a.ui.cart.get('SB101')).toBeGreaterThan(0); expect(a.ui.cartMeta.get('SB101').group.basis).toMatch(/직접 선택/);
+    a.ui.cart.clear(); a.ui.cartMeta.clear();
+  });
+  it('고객을 바꾸거나 대표가 달라져도 기존 항목 · 수량 · 수동 수정은 그대로, 같은 그룹 중복은 경고만', () => {
+    a.ui.cart.clear(); a.ui.cartMeta.clear(); build(S(), SALES(), {g1: G(['SB101', 'SB102'])});
+    a.ui.forecastCustomers = new Set(['A']); I.addManyToCart(['group:g1']); I.setCartQty('SB101', 77);
+    a.ui.forecastCustomers = new Set(['B']); const r = I.addManyToCart(['group:g1']); a.ui.forecastCustomers = new Set(); // B 의 SKU = SB102 → 같은 그룹의 SB101 이 이미 있음
+    expect(r.added).toBe(1); expect(r.warnings.join()).toMatch(/같은 그룹\(세럼\)의 다른 SKU 가 이미 발주 목록에 있습니다 — SB101/);
+    expect(a.ui.cart.get('SB101')).toBe(77); expect(a.ui.cart.size).toBe(2); expect(a.ui.cartMeta.get('SB101').group.rep).toBe('SB101');
+    a.ui.cart.clear(); a.ui.cartMeta.clear();
+  });
+});
 describe('대표 SKU: 자동(최근 판매실적일) · 수동 · 정할 수 없으면 개별 계산', () => {
   it('판매 이력 없는 새 버전을 수동 대표로: 표시 품번 · 재고는 그 SKU, 판매는 멤버 합산', () => {
     build([sku('SB101', NA, 40), sku('SB102', GL, 25), sku('SB103', '세럼 (신규 글로벌)', 7, {incoming: 50, incDate: '2999-01-01'})], [sale('A', 'SB101', 100, d(2)), sale('A', 'SB102', 60, d(2, 20))], {g1: G(['SB101', 'SB102', 'SB103'], {rep: 'SB103'})});
@@ -83,11 +150,10 @@ describe('대표 SKU: 자동(최근 판매실적일) · 수동 · 정할 수 없
     expect(a.state.forecast.some(r => ['SB101', 'SB102'].includes(r.품번))).toBe(false);
     expect(x.inactiveReason).toBeNull(); // 합친 판매 이력으로 판정 (대표 SKU 자체는 판매 없음)
   });
-  it('자동 대표를 정할 수 없으면(동률 · 판매 전무) 그룹을 적용하지 않고 개별 계산 + 사유', () => {
+  it('대표를 정할 수 없으면(동률 · 판매 전무) 그룹은 적용하되 SKU 선택 필요로 표시 (임시로 전체 기준 최근 판매 SKU 를 보여 줌)', () => {
     build([sku('SB101', NA, 0), sku('SB102', GL, 0)], [sale('A', 'SB101', 10, d(2)), sale('A', 'SB102', 10, d(2))], {g1: G(['SB101', 'SB102'])});
-    expect(a.state.groupStatus.g1).toMatchObject({applied: false}); expect(a.state.groupStatus.g1.reason).toMatch(/대표 SKU/);
-    expect(a.state.forecast.map(x => x.품번).sort()).toEqual(['SB101', 'SB102']);
-    build([sku('SB101', NA, 0), sku('SB102', GL, 0)], [], {g1: G(['SB101', 'SB102'])}); expect(a.state.groupStatus.g1.applied).toBe(false);
+    expect(a.state.groupStatus.g1).toMatchObject({applied: true, pending: true}); expect(a.state.forecast.find(x => x.key === 'group:g1').group.pending).not.toBeNull();
+    build([sku('SB101', NA, 0), sku('SB102', GL, 0)], [], {g1: G(['SB101', 'SB102'])}); expect(a.state.groupStatus.g1).toMatchObject({applied: true, pending: true});
   });
   it('대표가 바뀌어도(새 판매) 재계산되고 개별 항목은 그대로', () => {
     const S = [sku('SB101', NA, 40), sku('SB102', GL, 25)];
@@ -151,9 +217,10 @@ describe('히어로 · 마스크는 그룹 단위, 요약 · 상태 건수에 �
     const m = a.forecastModel();
     expect(m.list.length).toBe(2); expect([m.needItems, m.needQty]).toEqual([2, 200 + 50]); // 그룹 200 (월 합산 최대) + 토너 50
     expect(m.gradeChips.find(c => c[0] === '').at(2)).toBe(2);
+    expect(a.ui._forecastCsvRows.length).toBe(m.list.length); expect(a.forecastListCsv().csv).toMatch(/그룹 SB101\+SB102\(대표\)/); // CSV 대상 = 화면 목록, 그룹 열
     const ov = a.overviewModel(); expect(ov.total).toBe(2);
     expect(a.customerShortRows().find(r => r.cust === 'A')).toMatchObject({items: 2, short: 2});
-    expect(a.ui.forecastVisiblePns.slice().sort()).toEqual(m.list.map(x => x.품번).sort());
+    expect(a.ui.forecastVisiblePns.slice().sort()).toEqual(m.list.map(x => x.key || x.품번).sort()); // 선택 식별자: 그룹은 group:id
   });
 });
 
@@ -261,5 +328,76 @@ describe('SKU 가 둘 이상의 확정 그룹에 속하면: 순서와 무관하�
     expect(m.conflicts.map(c => c.pn)).toEqual(['SB102']);
     expect(m.groups.filter(g => ['g1', 'g2'].includes(g.id)).every(g => !g.applied && /SKU 충돌/.test(g.appliedReason))).toBe(true);
     expect(m.groups.find(g => g.id === 'g5').applied).toBe(true);
+  });
+});
+
+describe('자동 그룹: 근거가 확실한 포장 개정만 승인 없이, 나머지는 검토', () => {
+  const BC = (n, suffix = '') => '88000000' + n + suffix;
+  const keys = () => a.state.forecast.map(x => x.key || x.품번).sort();
+  const SALES = pns => pns.map((pn, i) => sale('A', pn, 50, d(2, 10 + i)));
+  it('같은 핵심 이름 · 같은 바코드(접미사 제외) · 지역 표기만 다른 SKU 는 자동 그룹, 이름만 같은 SKU 는 자동 아님', () => {
+    build([sku('SB101', '세럼 (북미)', 10, {barcode: BC('01')}), sku('SB102', '세럼 (북미/유럽)', 10, {barcode: BC('01', '-1')}), sku('SB103', '세럼 (글로벌)', 10, {barcode: BC('01', '-2')}),
+      sku('SB201', '로션 (북미)', 5, {barcode: BC('11')}), sku('SB202', '로션 (글로벌)', 5, {barcode: BC('12')})], SALES(['SB101', 'SB102', 'SB103', 'SB201', 'SB202']), {});
+    expect(Object.keys(a.state.autoGroupDefs)).toHaveLength(1); // 세럼만 (로션은 바코드가 달라 이름만 일치 → 수동 검토)
+    const g = a.state.forecast.find(x => x.key && x.key.startsWith('group:auto:'));
+    expect(g.group.auto).toBe(true); expect(g.group.members.map(m => m.pn).sort()).toEqual(['SB101', 'SB102', 'SB103']); expect(g.memberPns.length).toBe(3);
+    expect(a.state.forecast.map(x => x.품번)).toEqual(expect.arrayContaining(['SB201', 'SB202'])); // 로션은 개별 그대로
+    expect(a.state.forecast.length).toBe(3); // 세럼 1 + 로션 2
+    expect(Object.values(a.state.groupStatus).filter(s => s.auto && s.applied).length).toBe(1);
+    expect(SG.skuGroupsModel().candidates.map(c => c.core)).toEqual(['로션']); // 후보 목록에는 검토가 필요한 것만 (자동 그룹은 제외)
+    expect(SG.skuGroupsModel().autoGroups.length).toBe(1);
+  });
+  it('TARGET · TJX · 일반은 서로 섞이지 않음: 같은 종류끼리만 자동 그룹', () => {
+    build([sku('SB101', '세럼 (북미)', 1, {barcode: BC('21')}), sku('SB102', '세럼 (글로벌)', 1, {barcode: BC('21', '-1')}),
+      sku('SB201', '세럼 (TARGET)', 1, {barcode: BC('22')}), sku('SB202', '세럼 (TARGET 북미)', 1, {barcode: BC('22', '-1')}),
+      sku('SB301', '세럼 (TJX)', 1, {barcode: BC('23')}), sku('SB302', '세럼 (TJX 글로벌)', 1, {barcode: BC('23', '-1')})], SALES(['SB101', 'SB102', 'SB201', 'SB202', 'SB301', 'SB302']), {});
+    const defs = Object.values(a.state.autoGroupDefs);
+    expect(defs.map(g => g.members.slice().sort().join('+')).sort()).toEqual(['SB101+SB102', 'SB201+SB202', 'SB301+SB302']);
+    expect(defs.map(g => g.name).sort()).toEqual(['세럼', '세럼 (TARGET)', '세럼 (TJX)']);
+    expect(a.state.forecast.length).toBe(3);
+  });
+  it('자동 그룹 충돌 · 상품 정보 충돌은 자동 적용 안 함: 같은 바코드를 이름이 다른 상품이 씀, 규격 불일치, 알 수 없는 표기, TARGET 이 일반과 같은 바코드', () => {
+    build([sku('SB101', '세럼 (북미)', 1, {barcode: BC('31')}), sku('SB102', '세럼 (글로벌)', 1, {barcode: BC('31', '-1')}), sku('SB103', '토너', 1, {barcode: BC('31', '-2')}), // 같은 바코드를 다른 이름 상품도 사용
+      sku('SB201', '크림 (북미)', 1, {barcode: BC('32')}), sku('SB202', '크림 (한정판)', 1, {barcode: BC('32', '-1')}), // 알 수 없는 표기
+      sku('SB301', '앰플 (북미)', 1, {barcode: BC('33')}), sku('SB302', '앰플 (TARGET)', 1, {barcode: BC('33', '-1')})], // 일반과 TARGET 이 같은 바코드
+      SALES(['SB101', 'SB102', 'SB103', 'SB201', 'SB202', 'SB301', 'SB302']), {});
+    expect(Object.keys(a.state.autoGroupDefs)).toEqual([]); expect(a.state.forecast.length).toBe(7); // 전부 개별 계산 유지
+    const c = SG.skuGroupsModel().candidates; expect(c.length).toBeGreaterThan(0); c.forEach(x => expect(x.auto).toBe(false));
+    expect(c.find(x => x.core === '세럼').warnings.join()).toMatch(/상품 정보 충돌/); expect(c.find(x => x.core === '크림').warnings.join()).toMatch(/알 수 없는 괄호 표기/);
+    // 마스터 규격이 서로 다르면 자동 아님
+    build([sku('SB401', '로션 (북미)', 1, {barcode: BC('41')}), sku('SB402', '로션 (글로벌)', 1, {barcode: BC('41', '-1')})], SALES(['SB401', 'SB402']), {});
+    a.state.productMaster = [{품번: 'SB401', 제품W: 5, 제품D: 5, 제품H: 9, 제품무게g: 100, 인입수: 10}, {품번: 'SB402', 제품W: 5, 제품D: 5, 제품H: 12, 제품무게g: 100, 인입수: 10}]; a.computeDerived();
+    expect(Object.keys(a.state.autoGroupDefs)).toEqual([]); expect(SG.skuGroupsModel().candidates[0].strength).toBe('확인 필요');
+  });
+  it('수동 그룹 · 거절 규칙 · 기존 설정 보존: 수동 그룹 멤버는 자동 그룹에서 빠지고, 거절한 후보는 자동 그룹이 되지 않음, 수동 대표 · 호환은 그대로', () => {
+    const S = () => [sku('SB101', '세럼 (북미)', 10, {barcode: BC('51')}), sku('SB102', '세럼 (글로벌)', 20, {barcode: BC('51', '-1')}), sku('SB103', '세럼 (유럽)', 30, {barcode: BC('51', '-2')})];
+    build(S(), SALES(['SB101', 'SB102', 'SB103']), {}); expect(Object.keys(a.state.autoGroupDefs).length).toBe(1);
+    // 수동 그룹 {SB101,SB102}(대표 수동, 호환) 이 있으면 SB103 은 혼자 → 자동 그룹 없음, 수동 설정 그대로
+    build(S(), SALES(['SB101', 'SB102', 'SB103']), {g1: G(['SB101', 'SB102'], {rep: 'SB101', compat: ['SB102']})});
+    expect(Object.keys(a.state.autoGroupDefs)).toEqual([]); const x = row('SB101'); expect([x.group.auto, x.group.repManual, x.available]).toEqual([false, true, 30]); // 10 + 호환 20
+    expect(a.state.forecast.map(v => v.품번).sort()).toEqual(['SB101', 'SB103']);
+    // 거절하면 자동 그룹이 되지 않음 → 세 SKU 개별
+    a.settings.skuRejected = [SG.candidateKey(['SB101', 'SB102', 'SB103'])]; build(S(), SALES(['SB101', 'SB102', 'SB103']), {}); a.settings.skuRejected = ['SB101+SB102+SB103'];
+    a.computeDerived(); expect(a.state.forecast.length).toBe(3); expect(Object.keys(a.state.autoGroupDefs)).toEqual([]);
+    a.settings.skuRejected = [];
+  });
+  it('자동 그룹도 중복 없이: 판매 · 재고 한 번씩, 자동 그룹은 대표 재고만, 개별 SKU 항목은 보존', () => {
+    build([sku('SB101', '세럼 (북미)', 10, {barcode: BC('61'), incoming: 4, incDate: '2999-01-01'}), sku('SB102', '세럼 (글로벌)', 20, {barcode: BC('61', '-1'), incoming: 6, incDate: '2999-01-01'})],
+      [sale('A', 'SB101', 100, d(2, 10)), sale('A', 'SB102', 150, d(2, 20))], {});
+    const g = a.state.forecast[0]; expect(a.state.forecast.length).toBe(1);
+    expect([g.target, g.group.rep, g.available, g.incoming, g.orderQty]).toEqual([250, 'SB102', 20, 6, 224]); // 대표(최근 SB102) 재고만
+    expect(g.monthTotals.reduce((s, v) => s + v, 0)).toBe(250); expect(a.state.forecastSku.length).toBe(2);
+  });
+  it('자동 그룹이 생기거나 사라져도 기존 발주 목록 항목 · 수량 · 스냅샷은 그대로 (경고만)', () => {
+    a.ui.cart.clear(); a.ui.cartMeta.clear();
+    const S = () => [sku('SB101', '세럼 (북미)', 10, {barcode: BC('71')}), sku('SB102', '세럼 (글로벌)', 20, {barcode: BC('71', '-1')})];
+    build(S().map(s => ({...s, barcode: s.barcode.replace('-1', '9')})), SALES(['SB101', 'SB102']), {}); // 바코드가 달라 자동 그룹 없음 → 개별로 담기
+    I.addManyToCart(['SB101']); I.setCartQty('SB101', 55); const meta = JSON.stringify(a.ui.cartMeta.get('SB101'));
+    build(S(), SALES(['SB101', 'SB102']), {}); // 이제 자동 그룹 (대표 SB102)
+    expect(a.state.forecast.length).toBe(1); expect(a.ui.cart.get('SB101')).toBe(55); expect(JSON.stringify(a.ui.cartMeta.get('SB101'))).toBe(meta);
+    expect(I.cartRows().find(r => r.pn === 'SB101').warnings.join()).toMatch(/그룹의 이전 SKU 입니다 \(현재 대표 SB102\)/);
+    const r = I.addManyToCart(['group:auto:SB101+SB102']); expect(r.warnings.join()).toMatch(/같은 그룹\(세럼\)의 다른 SKU 가 이미 발주 목록에 있습니다 — SB101/); expect(a.ui.cart.get('SB101')).toBe(55);
+    a.settings.skuRejected = ['SB101+SB102']; a.computeDerived(); expect(a.state.forecast.length).toBe(2); expect(a.ui.cart.get('SB101')).toBe(55); expect(a.ui.cart.size).toBe(2); // 제외해도 그대로
+    a.settings.skuRejected = []; a.ui.cart.clear(); a.ui.cartMeta.clear();
   });
 });

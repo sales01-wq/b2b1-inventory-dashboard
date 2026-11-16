@@ -2,7 +2,7 @@
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
 import {parseDateStr} from './parse.js';
-import {applyConfirmedGroups} from './groupcalc.js'; // 확정된 상품 그룹 반영 (순환 import 이지만 계산 시점에만 호출)
+import {applyConfirmedGroups, rebuildGroupItem} from './groupcalc.js'; // 상품 그룹(수동 확정 + 자동) 반영 (순환 import 이지만 계산 시점에만 호출)
 
 /* ---------------- Derived computations ---------------- */
 export function quarterLabel(d){ return `${d.getFullYear()} Q${Math.ceil((d.getMonth()+1)/3)}`; }
@@ -120,9 +120,13 @@ export function lastSaleInfo(rows){
 
 /** 선택 거래처 기준 재계산 (분석용 추정치): 고른 거래처들의 판매만으로 월별 합계 → 목표 → 부족 · 상태를 다시 계산.
  *  가용재고 · 입고예정은 품목당 한 번 그대로 (거래처에 배분하지 않고, 거래처별 부족을 따로 구해 더하지도 않음). 선택이 없으면 전체 거래처 기준 항목 그대로 */
+/** 항목의 판매 줄: 그룹이면 멤버 전체, 아니면 그 SKU 의 판매 줄 */
+export const rowsOfItem = x => x.memberPns ? x.memberPns.flatMap(pn=>(state.salesRowsBySku.get(pn)||[])) : (state.salesRowsByProduct.get(x.품번)||[]);
+
 export function scopeForecastItem(x, custs){
   if(!x || !custs || custs.size===0) return x;
-  const rows = (state.salesRowsByProduct.get(x.품번)||[]).filter(r=>custs.has(r.거래처));
+  if(x.group) return rebuildGroupItem(x, custs); // 그룹: 선택 거래처의 판매 · 대표 SKU(고객별)를 다시 판정
+  const rows = rowsOfItem(x).filter(r=>custs.has(r.거래처));
   const prof = salesProfile(rows);
   const cut6 = new Date(); cut6.setMonth(cut6.getMonth()-6);
   const sold6 = rows.reduce((s,r)=> r.실적일자>=cut6 ? s+safeNum(r.수량) : s, 0);
@@ -269,9 +273,9 @@ export function computeDerived(){
   });
   // 확정된 상품 그룹: 그룹은 대표 SKU 한 줄로 합치고(판매는 합산, 재고는 대표 + 호환 SKU), 나머지 SKU 는 개별 항목(forecastSku)으로만 남김
   state.salesRowsBySku = salesRowsByProduct; state.forecastSku = forecast.slice();
-  const eff = new Map(salesRowsByProduct);
-  const grouped = applyConfirmedGroups(forecast, salesRowsByProduct, eff);
-  state.salesRowsByProduct = eff; state.groupStatus = grouped.status; state.groupConflicts = grouped.conflicts;
+  state.autoGroupDefs = {}; // 자동 그룹 판정이 개별 SKU 항목을 읽으므로 먼저 비움
+  const grouped = applyConfirmedGroups(forecast, salesRowsByProduct);
+  state.groupStatus = grouped.status; state.groupConflicts = grouped.conflicts; state.autoGroupDefs = grouped.autoDefs;
   forecast.length = 0; forecast.push(...grouped.items);
   forecast.sort((a,b)=>{
     const order = {'위험':0,'주의':1,'안전':2,'데이터부족':3};

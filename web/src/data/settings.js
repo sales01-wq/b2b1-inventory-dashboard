@@ -54,10 +54,10 @@ export async function loadRemoteSettings(){
       else if(it.kind==='skureject' && Array.isArray(it.value)){ skuRejectedKeys.push(it.key); skuRejected.push(...it.value.map(String)); } // 거절한 후보 목록(묶음 줄)
       else if(it.kind==='mask' && Array.isArray(it.value)){ maskKeys.push(it.key); it.value.forEach(pn=>{ if(pn) mask[String(pn)] = true; }); } // 마스크: 여러 품번을 한 줄(최대 120개)에 묶어 저장
     });
-    const before = JSON.stringify({r:settings.rules, h:settings.hero, m:settings.mask, g:settings.skuGroups});
+    const before = JSON.stringify({r:settings.rules, h:settings.hero, m:settings.mask, g:settings.skuGroups, j:settings.skuRejected});
     settings.rules = rules; settings.hero = hero; settings.box = box; settings.mask = mask; settings.maskKeys = maskKeys; settings.skuGroups = skuGroups; settings.skuRejected = skuRejected; settings.skuRejectedKeys = skuRejectedKeys;
     localSettingsSave(); applyBoxSettings();
-    if(state.loaded && before !== JSON.stringify({r:rules, h:hero, m:mask, g:skuGroups})){ computeDerived(); emit(); }
+    if(state.loaded && before !== JSON.stringify({r:rules, h:hero, m:mask, g:skuGroups, j:skuRejected})){ computeDerived(); emit(); }
     else if(state.loaded){ emit(); } // port: renderAll / renderForecastRules 대신 emit
   }catch(_e){}
 }
@@ -210,11 +210,11 @@ export async function deleteSkuGroup(id){
 /** 후보 거절: 같은 후보를 다시 제안하지 않음 (구성이 달라지면 새 후보로 다시 나옴) */
 export async function rejectSkuCandidate(pns){
   if(!canEditSettings()) return;
-  settings.skuRejected = [...new Set([...settings.skuRejected, candidateKey(pns)])]; emit();
+  settings.skuRejected = [...new Set([...settings.skuRejected, candidateKey(pns)])]; computeDerived(); emit(); // 거절하면 자동 그룹에서도 빠짐
   await persistRejected();
 }
 export async function clearSkuRejected(){
   if(!canEditSettings()) return;
-  settings.skuRejected = []; emit();
+  settings.skuRejected = []; computeDerived(); emit();
   await persistRejected();
 }
