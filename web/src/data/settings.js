@@ -5,10 +5,11 @@ import {computeDerived} from '../lib/forecast.js';
 import {shared, setSharedBar} from './shared.js';
 import {READ_ONLY} from '../app/defaults';
 import {rulesValid, RULES_INVALID_MSG, heroInput, maskInput} from '../lib/views.js';
+import {validateMembers, candidateKey} from '../lib/skugroups.js';
 
 export function canEditSettings(){ return typeof shared==='undefined' || !shared.active || !!(shared.user && shared.user.isUpdater); }
 
-export function localSettingsSave(){ try{ localStorage.setItem('inv_settings_v1', JSON.stringify({rules:settings.rules, hero:settings.hero, box:settings.box, mask:settings.mask})); }catch(_e){} }
+export function localSettingsSave(){ try{ localStorage.setItem('inv_settings_v1', JSON.stringify({rules:settings.rules, hero:settings.hero, box:settings.box, mask:settings.mask, skuGroups:settings.skuGroups, skuRejected:settings.skuRejected})); }catch(_e){} }
 
 export function applyBoxSettings(){
   ui.manualBoxInfo.clear();
@@ -18,7 +19,7 @@ export function applyBoxSettings(){
 export function settingsLoadLocal(){
   try{
     const o = JSON.parse(localStorage.getItem('inv_settings_v1')||'null');
-    if(o){ settings.rules = o.rules||{}; settings.hero = o.hero||{}; settings.box = o.box||{}; settings.mask = o.mask||{}; }
+    if(o){ settings.rules = o.rules||{}; settings.hero = o.hero||{}; settings.box = o.box||{}; settings.mask = o.mask||{}; settings.skuGroups = o.skuGroups||{}; settings.skuRejected = o.skuRejected||[]; }
   }catch(_e){}
   applyBoxSettings();
 }
@@ -44,15 +45,17 @@ export async function loadRemoteSettings(){
     const r = await fetch('/api/settings', {headers:{Authorization:'Bearer '+shared.token}});
     if(!r.ok) return;
     const j = await r.json();
-    const rules = {}, hero = {}, box = {}, mask = {}, maskKeys = [];
+    const rules = {}, hero = {}, box = {}, mask = {}, maskKeys = [], skuGroups = {}, skuRejected = [], skuRejectedKeys = [];
     (j.items||[]).forEach(it=>{
       if(it.kind==='rules' && it.key==='main') Object.assign(rules, it.value||{});
       else if(it.kind==='hero' && it.value) hero[it.key] = it.value;
       else if(it.kind==='box' && it.value) box[it.key] = it.value;
+      else if(it.kind==='skugroup' && it.value && Array.isArray(it.value.members)) skuGroups[it.key] = it.value; // 상품 그룹: 그룹마다 한 줄
+      else if(it.kind==='skureject' && Array.isArray(it.value)){ skuRejectedKeys.push(it.key); skuRejected.push(...it.value.map(String)); } // 거절한 후보 목록(묶음 줄)
       else if(it.kind==='mask' && Array.isArray(it.value)){ maskKeys.push(it.key); it.value.forEach(pn=>{ if(pn) mask[String(pn)] = true; }); } // 마스크: 여러 품번을 한 줄(최대 120개)에 묶어 저장
     });
     const before = JSON.stringify({r:settings.rules, h:settings.hero, m:settings.mask});
-    settings.rules = rules; settings.hero = hero; settings.box = box; settings.mask = mask; settings.maskKeys = maskKeys;
+    settings.rules = rules; settings.hero = hero; settings.box = box; settings.mask = mask; settings.maskKeys = maskKeys; settings.skuGroups = skuGroups; settings.skuRejected = skuRejected; settings.skuRejectedKeys = skuRejectedKeys;
     localSettingsSave(); applyBoxSettings();
     if(state.loaded && before !== JSON.stringify({r:rules, h:hero, m:mask})){ computeDerived(); emit(); }
     else if(state.loaded){ emit(); } // port: renderAll / renderForecastRules 대신 emit
@@ -155,4 +158,63 @@ export async function clearMaskCodes(){
   settings.mask = {};
   ui.rulesOpen = true; computeDerived(); emit();
   await persistMask();
+}
+
+/* ---------- 상품 그룹 관리 (1단계: 설정만 저장, 생산 필요 계산에는 아직 반영하지 않음) ----------
+   그룹마다 한 줄 kind 'skugroup' (key = 그룹 id, 값 {name, members, rep, compat}), 거절한 후보는 kind 'skureject' (60개씩 묶음 g0, g1...) */
+export const REJECT_CHUNK = 60;
+async function persistRejected(){
+  const list = [...new Set(settings.skuRejected)];
+  const chunks = []; for(let i=0;i<list.length;i+=REJECT_CHUNK) chunks.push(list.slice(i,i+REJECT_CHUNK));
+  const keys = chunks.map((_,i)=>'g'+i), old = settings.skuRejectedKeys||[];
+  let ok = true;
+  for(let i=0;i<chunks.length;i++){ const r = await persistSetting('skureject', keys[i], chunks[i]); ok = ok && !!r.ok; }
+  for(const k of old){ if(!keys.includes(k)){ const r = await persistSetting('skureject', k, null); ok = ok && !!r.ok; } }
+  if(ok) settings.skuRejectedKeys = keys;
+  localSettingsSave(); return ok;
+}
+const cleanGroup = g => {
+  const members = [...new Set((g.members||[]).map(String))];
+  return {name:String(g.name||'').trim().slice(0,80), members, rep: g.rep && members.includes(g.rep) ? g.rep : null, compat:[...new Set((g.compat||[]).filter(pn=>members.includes(pn) && pn!==g.rep))]};
+};
+const takenBy = (pns, exceptId) => { const hit = []; Object.entries(settings.skuGroups).forEach(([id,g])=>{ if(id!==exceptId) (g.members||[]).forEach(pn=>{ if(pns.includes(pn)) hit.push(`${pn}(→ ${g.name||id})`); }); }); return hit; };
+/** 새 그룹 만들기 (후보 승인 · 직접 만들기). 대표 rep=null 이면 자동(최근 판매실적일 기준). {id} 또는 {errors} */
+export async function createSkuGroup(g){
+  if(!canEditSettings()) return {errors:['업데이트 권한자만 바꿀 수 있습니다.']};
+  const c = cleanGroup(g); const v = validateMembers(c.members);
+  const errors = [...v.errors]; const dup = takenBy(c.members); if(dup.length) errors.push('이미 다른 그룹에 속한 품번: '+dup.join(', '));
+  if(!c.name) errors.push('그룹 이름을 입력해 주세요.');
+  if(errors.length) return {errors};
+  const id = 'g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  settings.skuGroups[id] = c; emit();
+  await persistSetting('skugroup', id, c);
+  return {id};
+}
+/** 그룹 수정(이름 · 멤버 · 대표 · 호환). 검사에 실패하면 바꾸지 않음 */
+export async function updateSkuGroup(id, patch){
+  if(!canEditSettings()) return {errors:['업데이트 권한자만 바꿀 수 있습니다.']};
+  const cur = settings.skuGroups[id]; if(!cur) return {errors:['그룹을 찾을 수 없습니다.']};
+  const c = cleanGroup({...cur, ...patch}); const v = validateMembers(c.members.filter(pn=>state.forecast.some(x=>x.품번===pn)));
+  const errors = v.errors.filter(e=>/묶을 수 없습니다|2개 이상/.test(e)); const dup = takenBy(c.members, id); if(dup.length) errors.push('이미 다른 그룹에 속한 품번: '+dup.join(', '));
+  if(c.members.length<2) errors.push('2개 이상의 품번이 필요합니다.');
+  if(errors.length) return {errors:[...new Set(errors)]};
+  settings.skuGroups[id] = c; emit();
+  await persistSetting('skugroup', id, c);
+  return {id};
+}
+export async function deleteSkuGroup(id){
+  if(!canEditSettings()) return;
+  delete settings.skuGroups[id]; emit();
+  await persistSetting('skugroup', id, null);
+}
+/** 후보 거절: 같은 후보를 다시 제안하지 않음 (구성이 달라지면 새 후보로 다시 나옴) */
+export async function rejectSkuCandidate(pns){
+  if(!canEditSettings()) return;
+  settings.skuRejected = [...new Set([...settings.skuRejected, candidateKey(pns)])]; emit();
+  await persistRejected();
+}
+export async function clearSkuRejected(){
+  if(!canEditSettings()) return;
+  settings.skuRejected = []; emit();
+  await persistRejected();
 }

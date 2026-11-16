@@ -8,6 +8,7 @@ import {
   ShoppingCartIcon,
   UserGroupIcon,
   HeartIcon,
+  Squares2X2Icon,
 } from '@heroicons/react/24/outline';
 import {
   ChartPieIcon as ChartPieSolid,
@@ -18,6 +19,7 @@ import {
   ShoppingCartIcon as CartSolid,
   UserGroupIcon as UserGroupSolid,
   HeartIcon as HeartSolid,
+  Squares2X2Icon as SquaresSolid,
 } from '@heroicons/react/24/solid';
 
 type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
@@ -26,7 +28,7 @@ type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
  * 기존 index.html 의 탭(data-view)과 1:1 로 대응합니다.
  * id 값은 기존 view id 와 동일하게 유지합니다 (overview / forecast / customer / lookup / data).
  */
-export type ViewId = 'overview' | 'forecast' | 'customer' | 'lookup' | 'data' | 'customers' | 'health' | 'orders';
+export type ViewId = 'overview' | 'forecast' | 'customer' | 'lookup' | 'data' | 'customers' | 'health' | 'orders' | 'skugroups';
 
 export interface RouteDef {
   id: ViewId;
@@ -85,6 +87,14 @@ export const ROUTES: RouteDef[] = [
     section: '업무 도구',
     icon: ShoppingCartIcon,
     selectedIcon: CartSolid,
+  },
+  {
+    id: 'skugroups',
+    label: '상품 그룹 관리',
+    description: '포장 개정 · 고객 전용 SKU 그룹 후보를 검토하고 대표 SKU · 재고 호환을 설정합니다 (계산에는 아직 반영 전).',
+    section: '업무 도구',
+    icon: Squares2X2Icon,
+    selectedIcon: SquaresSolid,
   },
   {
     id: 'lookup',

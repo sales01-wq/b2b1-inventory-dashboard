@@ -39,6 +39,7 @@ const LookupPage = page(() => import('../views/LookupPage'), 'LookupPage');
 const DataPage = page(() => import('../views/DataPage'), 'DataPage');
 const OrderListPage = page(() => import('../views/OrderListPage'), 'OrderListPage');
 const CustomerAnalysisPage = page(() => import('../views/CustomerAnalysisPage'), 'CustomerAnalysisPage');
+const SkuGroupsPage = page(() => import('../views/SkuGroupsPage'), 'SkuGroupsPage');
 const InventoryHealthPage = page(() => import('../views/InventoryHealthPage'), 'InventoryHealthPage');
 
 const SECTIONS: RouteDef['section'][] = ['현황', '업무 도구', '데이터'];
@@ -52,6 +53,7 @@ const PAGES: Record<ViewId, ComponentType> = {
   orders: OrderListPage,
   customers: CustomerAnalysisPage,
   health: InventoryHealthPage,
+  skugroups: SkuGroupsPage,
 };
 
 // 기존 index.html 의 시작 순서: settingsLoadLocal() → renderAll() → initSharedMode()

@@ -59,7 +59,7 @@ export const ui = {
 };
 
 /** @type {Record<string, any>} 기존 전역 객체 — 화면(TS)에서 자유롭게 읽도록 */
-export const settings = {rules:{}, hero:{}, box:{}, mask:{}, maskKeys:[]}; // mask: 마스크 품목 {품번: true} (히어로처럼 직접 관리)
+export const settings = {rules:{}, hero:{}, box:{}, mask:{}, maskKeys:[], skuGroups:{}, skuRejected:[], skuRejectedKeys:[]}; // mask: 마스크 품목 {품번: true} (히어로처럼 직접 관리)
 
 // port: React 화면 연결 — 계산 함수나 데이터 처리가 상태를 바꾼 뒤 emit() 하면 화면이 다시 그려집니다.
 const listeners = new Set();
