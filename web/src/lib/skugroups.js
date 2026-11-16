@@ -1,5 +1,5 @@
 // 상품 그룹(포장 개정 · 고객 전용 SKU) — 1단계: 후보 검토 · 수동 그룹 관리 · 대표 SKU · 재고 호환 설정.
-// 이 모듈은 생산 필요 현황의 계산(목표 · 부족 · 상태 · 발주 목록)을 바꾸지 않습니다 (2단계에서 확정된 그룹만 반영 예정).
+// 이 모듈은 후보 · 검토 · 그룹 설정(순수 계산)만 담당하고, 확정된 그룹을 계산에 반영하는 일은 groupcalc.js 가 합니다.
 // 이름이 비슷하다는 것만으로 그룹을 확정하지 않음: 후보만 만들고, 사람이 승인해야 settings.skuGroups 에 저장됩니다.
 import {state, ui, settings} from './store.js';
 import {baseBarcode} from './lookup.js';
@@ -22,10 +22,11 @@ export function parseSkuName(name){
     return ' ';
   });
   CUSTOMER_TAGS.forEach(t=>{ if(t.re.test(rest)){ if(!customer.includes(t.key)) customer.push(t.key); rest = rest.replace(new RegExp(t.re.source,'ig'),' '); } }); // 괄호 밖 표기
-  const core = rest.replace(/\s+/g,' ').trim().toLowerCase();
+  const title = rest.replace(/\s+/g,' ').trim(); // 표기를 뺀 원래 대소문자 이름 (그룹 이름 기본값)
+  const core = title.toLowerCase();
   const cs = [...new Set(customer)];
   const variant = cs.length>1 ? '충돌' : cs.length===1 ? cs[0] : '일반';
-  return {core, region, customer:cs, unknown:[...new Set(unknown)], variant};
+  return {core, title, region, customer:cs, unknown:[...new Set(unknown)], variant};
 }
 
 const specOf = pn => {
@@ -37,7 +38,7 @@ const specOf = pn => {
 /** 품목 하나의 식별 정보 (현재 데이터 기준) */
 export function skuInfo(x){
   const p = parseSkuName(x.품명);
-  const rows = state.salesRowsByProduct.get(x.품번)||[];
+  const rows = (state.salesRowsBySku||state.salesRowsByProduct).get(x.품번)||[]; // 그룹 합산 전 개별 SKU 판매 줄
   const c3 = new Date(); c3.setMonth(c3.getMonth()-3);
   const qty3 = rows.reduce((s,r)=> (r.실적일자 instanceof Date && r.실적일자>=c3 && Number(r.수량)>0) ? s+Number(r.수량) : s, 0);
   return {pn:x.품번, name:x.품명, barcode:x.바코드||'', base:baseBarcode(x.바코드||''), brand:x.brand, ...p, spec:specOf(x.품번),
@@ -62,7 +63,7 @@ export function suggestRep(infos){
 /** 묶을 수 있는지 검사: 고객 전용(TARGET · TJX)은 서로 · 일반 SKU 와 섞지 않음, 표기가 충돌하는 SKU 는 거절 */
 export function validateMembers(pns){
   const errors = [];
-  const byPn = new Map(state.forecast.map(x=>[x.품번,x]));
+  const byPn = new Map((state.forecastSku||state.forecast).map(x=>[x.품번,x]));
   const infos = [];
   [...new Set(pns)].forEach(pn=>{ const x = byPn.get(pn); if(!x) errors.push(`${pn}: 현재 데이터에 없는 품번입니다.`); else infos.push(skuInfo(x)); });
   if(infos.length<2 && errors.length===0) errors.push('2개 이상의 품번이 필요합니다.');
@@ -79,7 +80,7 @@ export function buildCandidates(){
   const taken = new Set(); Object.values(settings.skuGroups||{}).forEach(g=>(g.members||[]).forEach(pn=>taken.add(pn)));
   const rejected = new Set(settings.skuRejected||[]);
   const buckets = new Map();
-  state.forecast.forEach(x=>{
+  (state.forecastSku||state.forecast).forEach(x=>{
     if(taken.has(x.품번)) return;
     const i = skuInfo(x);
     if(!i.core || i.variant==='충돌') return; // 이름이 비었거나 표기가 충돌하면 후보로 올리지 않음
@@ -108,7 +109,7 @@ export function buildCandidates(){
 /** 확정 그룹 보기용: 대표 SKU(수동 지정이 우선, 없으면 자동 제안), SKU별 최근 판매실적일 · 재고 · 입고예정, 호환 설정, 경고 */
 export function groupView(id){
   const g = (settings.skuGroups||{})[id]; if(!g) return null;
-  const byPn = new Map(state.forecast.map(x=>[x.품번,x]));
+  const byPn = new Map((state.forecastSku||state.forecast).map(x=>[x.품번,x]));
   const infos = (g.members||[]).map(pn=>byPn.get(pn) ? skuInfo(byPn.get(pn)) : {pn, name:'(현재 데이터에 없음)', barcode:'', lastSale:null, qty3:0, available:0, incoming:0, missing:true, variant:'-'});
   const auto = suggestRep(infos.filter(i=>!i.missing));
   const manual = g.rep && g.members.includes(g.rep) ? g.rep : null;
@@ -125,7 +126,8 @@ export function groupView(id){
   const v = validateMembers(g.members.filter(pn=>byPn.has(pn)));
   if(!v.ok && infos.length>=2 && v.errors.some(e=>/묶을 수 없습니다/.test(e))) warnings.push(...v.errors.filter(e=>/묶을 수 없습니다/.test(e)));
   const prevStock = infos.filter(i=>i.pn!==rep && !i.missing).map(i=>({pn:i.pn, available:i.available, incoming:i.incoming, included:compat.has(i.pn)}));
-  return {id, name:g.name||'', members:infos, rep, repManual:!!manual, auto, compat, warnings, prevStock, repStock: repInfo ? {available:repInfo.available, incoming:repInfo.incoming} : null};
+  const st = (state.groupStatus||{})[id] || null; // 생산 필요 현황 계산에 실제로 반영 중인지 (2단계)
+  return {id, applied:!!(st&&st.applied), appliedReason:st&&!st.applied?st.reason:'', name:g.name||'', members:infos, rep, repManual:!!manual, auto, compat, warnings, prevStock, repStock: repInfo ? {available:repInfo.available, incoming:repInfo.incoming} : null};
 }
 
 export function skuGroupsModel(){

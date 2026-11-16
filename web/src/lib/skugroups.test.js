@@ -7,8 +7,8 @@ const D = back => new Date(new Date(NOW).getFullYear(), new Date(NOW).getMonth()
 const item = (pn, name, extra = {}) => ({품번: pn, 품명: name, 바코드: '', brand: '성분에디터', available: 10, incoming: 0, lastSale: null, hero: false, mask: false, ...extra});
 const sale = (cust, qty, when) => ({거래처: cust, 수량: qty, 실적일자: when});
 function setup(items, sales = {}, master = {}) {
-  a.state.forecast = items; a.state.loaded = true;
-  a.state.salesRowsByProduct = new Map(Object.entries(sales));
+  a.state.forecast = items; a.state.forecastSku = items; a.state.loaded = true; a.state.groupStatus = {};
+  a.state.salesRowsByProduct = new Map(Object.entries(sales)); a.state.salesRowsBySku = a.state.salesRowsByProduct;
   a.state.masterByProduct = new Map(Object.entries(master));
   a.settings.skuGroups = {}; a.settings.skuRejected = [];
 }
@@ -120,17 +120,18 @@ describe('확정 그룹 보기: 대표 · 재고 호환 · 경고', () => {
   });
 });
 
-describe('1단계는 계산을 바꾸지 않음', () => {
-  it('그룹을 확정 · 대표 지정 · 호환 설정해도 forecast 결과(부족 수량 · 상태 · 목표)가 그대로', async () => {
+describe('후보 · 거절 · 그룹 없는 SKU 는 계산에 영향 없음', () => {
+  it('후보가 있고 거절해도 forecast 결과(부족 수량 · 상태 · 목표)가 그대로', async () => {
     const {makeSheets} = await import('./__fixtures__/sheets.js');
     const sh = makeSheets(NOW);
     a.state.inventory = a.parseInventory(sh.inventory); a.state.schedule = a.parseSchedule(sh.schedule); a.state.scheduleMonthLabels = a.state.schedule.monthLabels;
     a.state.salesByTeam = {B2B1팀: a.parseSales(sh.sales1), B2B2팀: a.parseSales(sh.sales2)}; a.state.sales = a.salesForTeam();
-    a.state.expiry = a.parseExpiry(sh.expiry); a.state.productMaster = a.parseProductMaster(sh.productMaster); a.settings.skuGroups = {}; a.computeDerived();
+    a.state.expiry = a.parseExpiry(sh.expiry); a.state.productMaster = a.parseProductMaster(sh.productMaster); a.settings.skuGroups = {}; a.settings.skuRejected = []; a.computeDerived();
     const snap = () => JSON.stringify(a.state.forecast.map(x => [x.품번, x.target, x.orderQty, x.grade, x.available, x.incoming, x.inactiveReason]));
     const before = snap();
-    a.settings.skuGroups = {g1: {name: '세트 A', members: ['SB004', 'SB005', 'SB006'], rep: 'SB005', compat: ['SB004', 'SB006']}};
-    a.computeDerived(); expect(snap()).toBe(before);
-    a.settings.skuGroups = {};
+    a.settings.skuRejected = ['SB004+SB005']; a.computeDerived(); expect(snap()).toBe(before);
+    a.settings.skuGroups = {g1: {name: '없는 품번만', members: ['NOPE1', 'NOPE2'], rep: null, compat: []}}; a.computeDerived(); expect(snap()).toBe(before); // 데이터에 없는 멤버뿐인 그룹은 적용 안 됨
+    expect(a.state.groupStatus.g1.applied).toBe(false);
+    a.settings.skuGroups = {}; a.settings.skuRejected = [];
   });
 });

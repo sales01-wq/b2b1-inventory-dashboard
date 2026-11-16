@@ -43,6 +43,7 @@ export function ProductDetail({go}: {go: (v: 'lookup') => void}) {
                 <Stat label="소진 예상" value={d.depletion === null ? '판매 없음' : `${fmt(d.depletion)}일`} />
                 <Stat label="목표 재고" value={fmt(x.target)} />
               </div>
+              {x.group && <Text type="supporting"><Badge variant="blue" label={`그룹 ${x.group.members.length}개 SKU`} /> 판매 이력 합산 · 재고는 대표 + 호환 확인 SKU 만 포함 ({x.group.members.map((m: {pn: string}) => m.pn).join(', ')})</Text>}
               {x.inactiveReason && <Text type="supporting"><span className="text-warn">{x.inactiveReason}</span> · 마지막 판매일 {x.lastSale ? x.lastSale.toLocaleDateString('ko-KR') : '없음'} — 생산 필요 · 추천에서 제외 (부족 수량은 참고용)</Text>}
               <HStack gap={2} wrap="wrap">
                 <Button label="발주 목록에 담기" size="sm" onClick={() => addToCart(pn, undefined, SCOPE_ALL)} />

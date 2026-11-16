@@ -2,6 +2,7 @@
 import {fmt} from './format';
 import {state, ui, settings} from './store.js';
 import {parseDateStr} from './parse.js';
+import {applyConfirmedGroups} from './groupcalc.js'; // 확정된 상품 그룹 반영 (순환 import 이지만 계산 시점에만 호출)
 
 /* ---------------- Derived computations ---------------- */
 export function quarterLabel(d){ return `${d.getFullYear()} Q${Math.ceil((d.getMonth()+1)/3)}`; }
@@ -54,9 +55,9 @@ export function scopedAvailable(pn, scope){
   return usableAvailable(inv);
 }
 
-export function salesDetailFor(pn){
-  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-6);
-  return state.sales.filter(s=>s.품번===pn && s.실적일자>=cutoff).sort((a,b)=>b.실적일자-a.실적일자);
+export function salesDetailFor(pn){ // pn: 품번 하나 또는 품번 배열(그룹 멤버)
+  const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth()-6); const set = new Set([].concat(pn));
+  return state.sales.filter(s=>set.has(s.품번) && s.실적일자>=cutoff).sort((a,b)=>b.실적일자-a.실적일자);
 }
 
 export const QUARTER_DAYS = 91.25;
@@ -126,7 +127,7 @@ export function scopeForecastItem(x, custs){
   const cut6 = new Date(); cut6.setMonth(cut6.getMonth()-6);
   const sold6 = rows.reduce((s,r)=> r.실적일자>=cut6 ? s+safeNum(r.수량) : s, 0);
   const act = lastSaleInfo(rows); // 선택 거래처 범위의 마지막 판매일
-  const g = x.discontinued || act.reason ? {grade:'데이터부족', ratio:null} : gradeFor({pn:x.품번, available:x.available, incoming:x.incoming, target:prof.target});
+  const g = x.discontinued || act.reason ? {grade:'데이터부족', ratio:null} : gradeFor({pn:x.품번, heroCfg:x.heroCfg, available:x.available, incoming:x.incoming, target:prof.target});
   return {...x, scoped:true, lastSale:act.last, inactiveReason:act.reason, sold6, target:prof.target, orderQty: x.discontinued ? 0 : Math.max(0, prof.target - x.available - x.incoming),
     ratio:g.ratio, grade:g.grade, avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust};
 }
@@ -147,7 +148,7 @@ export function validIncoming(sched){
 /* 위험 판정: 비율 = (가용 + 유효 입고예정) ÷ 목표 재고. 히어로 품목은 설정한 수량 기준을 그대로 사용 */
 export function gradeFor(p){
   const R = getRules();
-  const hero = settings.hero[p.pn];
+  const hero = p.heroCfg || settings.hero[p.pn]; // heroCfg: 그룹 단위 히어로 설정
   const ratio = p.target>0 ? ((p.available+p.incoming)/p.target)*100 : null;
   if(hero && hero.minQty>0){
     let grade = '안전';
@@ -266,6 +267,12 @@ export function computeDerived(){
       avgQuarterly:prof.total12/4, monthTotals:prof.totals, profileMonths:prof.months, returns:prof.returns, spike:prof.spike, peak:prof.peak, byCustomer:prof.byCust,
       hero:isHero, mask:isMask, heroMin:isHero?settings.hero[code].minQty:0, heroWarn:isHero?(settings.hero[code].warnQty||0):0, sched});
   });
+  // 확정된 상품 그룹: 그룹은 대표 SKU 한 줄로 합치고(판매는 합산, 재고는 대표 + 호환 SKU), 나머지 SKU 는 개별 항목(forecastSku)으로만 남김
+  state.salesRowsBySku = salesRowsByProduct; state.forecastSku = forecast.slice();
+  const eff = new Map(salesRowsByProduct);
+  const grouped = applyConfirmedGroups(forecast, salesRowsByProduct, eff);
+  state.salesRowsByProduct = eff; state.groupStatus = grouped.status;
+  forecast.length = 0; forecast.push(...grouped.items);
   forecast.sort((a,b)=>{
     const order = {'위험':0,'주의':1,'안전':2,'데이터부족':3};
     if(order[a.grade]!==order[b.grade]) return order[a.grade]-order[b.grade];
@@ -276,7 +283,7 @@ export function computeDerived(){
   state.forecast = forecast;
   // 히어로 알람: 설정한 수량 이하로 떨어진 히어로 품목
   state.heroAlerts = forecast.filter(x=>x.hero && x.grade==='위험');
-  const fcSet = new Set(forecast.map(x=>x.품번));
+  const fcSet = new Set(state.forecastSku.map(x=>x.품번));
   state.heroMissing = Object.keys(settings.hero).filter(pn=>!fcSet.has(pn));
 }
 
@@ -294,10 +301,11 @@ export function groupOf(g){
 
 const csvEsc = v => { const t=(v===null||v===undefined)?'':String(v); return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t; };
 const scopeText = x => x.scoped ? '선택 거래처 기준' : '전체 거래처 기준';
+const groupText = x => x.group ? '그룹 '+x.group.members.map(m=>m.pn+(m.isRep?'(대표)':m.compat?'(호환)':'')).join('+') : '';
 const flagText = x => x.inactiveReason ? x.inactiveReason : x.spike ? (x.spike.oneMonth ? '판매가 한 달뿐' : '대량 판매 확인') : '';
 function stockCsv(rows, filename){
-  const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요','기준'].join(',')];
-  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,statusLabel(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x),scopeText(x)].map(csvEsc).join(',')));
+  const lines=[['구분','품번','품명','상태','가용재고','입고예정(유효)','목표 재고','부족 수량','확인 필요','기준','그룹'].join(',')];
+  rows.forEach(x=>lines.push([x.brand,x.품번,x.품명,statusLabel(x.grade),x.available,x.incoming,x.target,x.orderQty,flagText(x),scopeText(x),groupText(x)].map(csvEsc).join(',')));
   return {csv:'\uFEFF'+lines.join('\r\n'), filename};
 }
 // port: 다운로드 대신 {csv, filename} 반환 — 실제 저장은 saveCsv()

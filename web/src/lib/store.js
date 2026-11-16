@@ -10,7 +10,7 @@ export const state = {
   masterByProduct: new Map(),
   invByProduct: new Map(), schByProduct: new Map(),
   salesByProduct: new Map(), custQuarterProduct: new Map(),
-  forecast: [], customers: [], quarters: [],
+  forecast: [], forecastSku: [], salesRowsBySku: new Map(), groupStatus: {}, customers: [], quarters: [],
   lastSync: null, loading: false, error: null, fetchMode: null,
 };
 

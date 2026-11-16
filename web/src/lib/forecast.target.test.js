@@ -152,9 +152,9 @@ describe('거래처 다중 선택 · 연도별 월 판매 · 일괄 선택 · �
     expect([...a.ui.forecastSelected].sort()).toEqual(['SB002', 'SB004', 'SB005']);
     ins.setCartQty('SB002', 7);
     const r = ins.addManyToCart([...a.ui.forecastSelected]);
-    expect(r).toEqual({added: 2, existing: 1});
+    expect(r).toEqual({added: 2, existing: 1, warnings: []});
     expect(a.ui.cart.get('SB002')).toBe(7); // 이미 담긴 수량 유지
-    expect(ins.addManyToCart(['SB002', 'SB005'])).toEqual({added: 0, existing: 2});
+    expect(ins.addManyToCart(['SB002', 'SB005'])).toEqual({added: 0, existing: 2, warnings: []});
     a.clearForecastSelect(); expect(a.ui.forecastSelected.size).toBe(0);
     a.ui.cart.clear(); a.ui.forecastGrade = ''; a.ui.forecastCustomers = new Set();
   });
@@ -255,11 +255,11 @@ describe('발주 목록에 담을 때 부족 수량 · 계산 기준 저장', ()
     run(SALES());
     a.ui.forecastCustomers = new Set();
     ins.addManyToCart(['SB005']);
-    expect(a.ui.cart.get('SB005')).toBe(500); expect(meta('SB005')).toEqual({scope: '전체 거래처 기준', calc: 500, inactive: null});
+    expect(a.ui.cart.get('SB005')).toBe(500); expect(meta('SB005')).toEqual({scope: '전체 거래처 기준', calc: 500, inactive: null, group: null});
     ins.removeFromCart('SB005'); expect(a.ui.cartMeta.has('SB005')).toBe(false);
     a.ui.forecastCustomers = new Set(['A', 'B']);
     ins.addToCart('SB005');
-    expect(a.ui.cart.get('SB005')).toBe(300); expect(meta('SB005')).toEqual({scope: '선택 거래처 기준: A, B', calc: 300, inactive: null});
+    expect(a.ui.cart.get('SB005')).toBe(300); expect(meta('SB005')).toEqual({scope: '선택 거래처 기준: A, B', calc: 300, inactive: null, group: null});
     a.ui.forecastCustomers = new Set();
   });
   it('필터를 바꾸거나 다시 담아도 기존 수량 · 기준을 덮어쓰지 않고, 수동 수정은 유지(수정됨 표시)', async () => {
@@ -268,9 +268,9 @@ describe('발주 목록에 담을 때 부족 수량 · 계산 기준 저장', ()
     a.ui.forecastCustomers = new Set(['A']); ins.addToCart('SB005'); // 부족 100, 선택 거래처 기준: A
     ins.setCartQty('SB005', 150); // 수동 수정
     a.ui.forecastCustomers = new Set(); a.forecastModel(); // 필터 전환
-    expect(ins.addToCart('SB005')).toEqual({added: false}); // 다시 담기 = 무시
-    expect(ins.addManyToCart(['SB005'])).toEqual({added: 0, existing: 1});
-    expect(a.ui.cart.get('SB005')).toBe(150); expect(meta('SB005')).toEqual({scope: '선택 거래처 기준: A', calc: 100, inactive: null});
+    expect(ins.addToCart('SB005')).toEqual({added: false, warnings: []}); // 다시 담기 = 무시
+    expect(ins.addManyToCart(['SB005'])).toEqual({added: 0, existing: 1, warnings: []});
+    expect(a.ui.cart.get('SB005')).toBe(150); expect(meta('SB005')).toEqual({scope: '선택 거래처 기준: A', calc: 100, inactive: null, group: null});
     const r = ins.cartRows().find(x => x.pn === 'SB005');
     expect(r).toMatchObject({qty: 150, calc: 100, scope: '선택 거래처 기준: A', edited: true});
     ins.setCartQty('SB005', 100); expect(ins.cartRows()[0].edited).toBe(false);
@@ -289,10 +289,10 @@ describe('발주 목록에 담을 때 부족 수량 · 계산 기준 저장', ()
     const ins = await import('./insights.js'); a.ui.cart.clear(); a.ui.cartMeta.clear();
     run(SALES()); a.ui.forecastCustomers = new Set(['A', 'B']); ins.addToCart('SB005'); a.ui.forecastCustomers = new Set();
     const saved = JSON.parse(localStorage.getItem('inv_order_list'));
-    expect(saved).toEqual([['SB005', 300, {scope: '선택 거래처 기준: A, B', calc: 300, inactive: null}]]);
+    expect(saved).toEqual([['SB005', 300, {scope: '선택 거래처 기준: A, B', calc: 300, inactive: null, group: null}]]);
     const csv = ins.cartCsv().csv;
-    expect(csv.split('\r\n')[0]).toBe('\uFEFF품번,품명,바코드,구분,가용재고,입고예정,담을 때 부족 수량,계산 기준,담을 때 미판매 사유,발주수량');
-    expect(csv).toContain(',300,"선택 거래처 기준: A, B",,300');
+    expect(csv.split('\r\n')[0]).toBe('\uFEFF품번,품명,바코드,구분,가용재고,입고예정,담을 때 부족 수량,계산 기준,담을 때 미판매 사유,담을 때 그룹(대표/구성),경고,발주수량');
+    expect(csv).toContain(',300,"선택 거래처 기준: A, B",,,,300');
     localStorage.setItem('inv_order_list', JSON.stringify([['SB001', 40]])); // 예전에 저장된 형식
     const again = await import('./insights.js?legacy'); const st = await import('./store.js'); // 새로 불러와서 저장소에서 다시 읽음
     expect(st.ui.cart.get('SB001')).toBe(40);
@@ -392,16 +392,16 @@ describe('미판매 품목을 발주 목록에 담을 때 · 히어로 · 품목
     const ins = await import('./insights.js'); a.ui.cart.clear(); a.ui.cartMeta.clear(); reset();
     run([row('A', 'SB002', 500, d(8, 10)), row('B', 'SB004', 100, d(1, 10))]); // SB002 미판매(부족 480), SB004 정상
     ins.addManyToCart(['SB002', 'SB004']);
-    expect(a.ui.cart.get('SB002')).toBe(0); expect(meta('SB002')).toEqual({scope: '전체 거래처 기준', calc: 480, inactive: '6개월 이상 미판매'});
+    expect(a.ui.cart.get('SB002')).toBe(0); expect(meta('SB002')).toEqual({scope: '전체 거래처 기준', calc: 480, inactive: '6개월 이상 미판매', group: null});
     expect(a.ui.cart.get('SB004')).toBe(40); expect(meta('SB004').inactive).toBeNull(); // 정상 품목은 기존 동작 그대로
     let r = ins.cartRows().find(x => x.pn === 'SB002'); expect(r).toMatchObject({qty: 0, calc: 480, inactive: '6개월 이상 미판매', edited: false});
     ins.setCartQty('SB002', 120); r = ins.cartRows().find(x => x.pn === 'SB002'); expect(r).toMatchObject({qty: 120, edited: true, calc: 480});
     ins.setCartQty('SB002', 0); expect(a.ui.cart.get('SB002')).toBe(0); // 미판매로 담은 항목은 0 으로 남음
     ins.setCartQty('SB004', 0); expect(a.ui.cart.has('SB004')).toBe(false); // 일반 품목은 기존처럼 0 이면 빠짐
-    expect(ins.cartCsv().csv).toContain('480,전체 거래처 기준,6개월 이상 미판매,0');
+    expect(ins.cartCsv().csv).toContain('480,전체 거래처 기준,6개월 이상 미판매,,,0');
     // 거래처 범위로 담아도 같음 (선택 범위 기준 미판매)
     ins.removeFromCart('SB002'); a.ui.forecastCustomers = new Set(['A']);
-    ins.addToCart('SB002'); expect(a.ui.cart.get('SB002')).toBe(0); expect(meta('SB002')).toEqual({scope: '선택 거래처 기준: A', calc: 480, inactive: '6개월 이상 미판매'});
+    ins.addToCart('SB002'); expect(a.ui.cart.get('SB002')).toBe(0); expect(meta('SB002')).toEqual({scope: '선택 거래처 기준: A', calc: 480, inactive: '6개월 이상 미판매', group: null});
     // 품목 상세(전체 기준)에서도 같은 규칙
     ins.removeFromCart('SB002'); a.ui.forecastCustomers = new Set(); ins.addToCart('SB002', undefined, ins.SCOPE_ALL);
     expect(a.ui.cart.get('SB002')).toBe(0); expect(meta('SB002').inactive).toBe('6개월 이상 미판매');

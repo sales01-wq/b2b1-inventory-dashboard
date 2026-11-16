@@ -91,7 +91,7 @@ export const ROUTES: RouteDef[] = [
   {
     id: 'skugroups',
     label: '상품 그룹 관리',
-    description: '포장 개정 · 고객 전용 SKU 그룹 후보를 검토하고 대표 SKU · 재고 호환을 설정합니다 (계산에는 아직 반영 전).',
+    description: '포장 개정 · 고객 전용 SKU 그룹 후보를 검토하고 대표 SKU · 재고 호환을 설정합니다 (확정한 그룹은 생산 필요 현황에 반영).',
     section: '업무 도구',
     icon: Squares2X2Icon,
     selectedIcon: SquaresSolid,

@@ -15,8 +15,10 @@ describe('상품 그룹 설정 저장', () => {
     st = await import('../lib/store.js'); S = await import('./settings.js'); ({shared} = await import('./shared.js'));
     Object.assign(shared, {active: true, token: 't', user: {email: 'u@corp.example', isUpdater: true}});
     st.state.salesRowsByProduct = new Map(); st.state.masterByProduct = new Map();
-    st.state.forecast = [item('S1', '세럼 (북미)'), item('S2', '세럼 (글로벌)'), item('S3', '세럼 (북미/유럽)'), item('T1', '세럼 (TARGET)'), item('T2', '세럼 (TARGET 북미)'), item('J1', '세럼 (TJX)')];
+    reseed();
   });
+  // 그룹을 저장하면 계산을 다시 하므로(데이터가 비어 있는 이 테스트에서는 목록이 비워짐) 필요할 때 테스트용 품목을 다시 채움
+  const reseed = () => { st.state.forecast = st.state.forecastSku = [item('S1', '세럼 (북미)'), item('S2', '세럼 (글로벌)'), item('S3', '세럼 (북미/유럽)'), item('T1', '세럼 (TARGET)'), item('T2', '세럼 (TARGET 북미)'), item('J1', '세럼 (TJX)')]; };
   afterAll(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
   it('후보 승인 = 그룹 만들기: 검사 통과하면 한 줄 저장, 대표 · 호환은 멤버 안으로 정리', async () => {
@@ -28,7 +30,7 @@ describe('상품 그룹 설정 저장', () => {
     expect(st.settings.skuGroups[r.id].rep).toBe('S3');
   });
   it('거절: 고객 전용을 일반과 · TARGET 과 TJX 를 묶기, 다른 그룹에 있는 품번, 이름 없음, 1개', async () => {
-    posts.length = 0;
+    reseed(); posts.length = 0;
     expect((await S.createSkuGroup({name: 'x', members: ['T1', 'S2']})).errors.join()).toMatch(/고객 전용/);
     expect((await S.createSkuGroup({name: 'x', members: ['T1', 'J1']})).errors.join()).toMatch(/고객 전용/);
     expect((await S.createSkuGroup({name: 'x', members: ['S1', 'S2']})).errors.join()).toMatch(/이미 다른 그룹에 속한 품번: S1/);
@@ -38,11 +40,11 @@ describe('상품 그룹 설정 저장', () => {
     const ok = await S.createSkuGroup({name: 'TARGET 세럼', members: ['T1', 'T2']}); expect(ok.id).toBeTruthy(); // 같은 종류끼리는 가능
   });
   it('수정: 대표 수동 지정(판매 이력 없어도) · 호환 설정 · 멤버 편집 검사, 삭제', async () => {
-    const id = Object.keys(st.settings.skuGroups).find(k => st.settings.skuGroups[k].name === '세럼');
+    reseed(); const id = Object.keys(st.settings.skuGroups).find(k => st.settings.skuGroups[k].name === '세럼');
     posts.length = 0;
     expect((await S.updateSkuGroup(id, {rep: 'S2', compat: ['S1', 'S3']})).id).toBe(id);
     expect(posts[0].value).toMatchObject({rep: 'S2', compat: ['S1', 'S3']});
-    expect((await S.updateSkuGroup(id, {members: ['S1', 'S2', 'T1']})).errors.join()).toMatch(/고객 전용/); // 편집으로도 섞을 수 없음
+    reseed(); expect((await S.updateSkuGroup(id, {members: ['S1', 'S2', 'T1']})).errors.join()).toMatch(/고객 전용/); // 편집으로도 섞을 수 없음
     expect(st.settings.skuGroups[id].members).toEqual(['S1', 'S2', 'S3']); // 실패하면 그대로
     expect((await S.updateSkuGroup(id, {members: ['S1']})).errors.join()).toMatch(/2개 이상/);
     posts.length = 0; await S.deleteSkuGroup(id);

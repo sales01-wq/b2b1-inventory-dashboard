@@ -23,7 +23,7 @@ import {useHashRoute} from '../app/useHashRoute';
 
 const SEL = '선택 거래처 기준: ';
 const scopeShort = (s: string) => (!s ? '기준 정보 없음' : s.startsWith(SEL) && s.length > SEL.length + 40 ? s.slice(0, SEL.length + 38) + '…' : s); // 전체 이름은 마우스를 올리면 보임
-interface Row {pn: string; qty: number; name: string; brand: string; available: number; incoming: number; scope: string; calc: number | null; inactive: string | null; edited: boolean}
+interface Row {pn: string; qty: number; name: string; brand: string; available: number; incoming: number; group: {id: string; name: string; rep: string; members: string[]; compat: string[]} | null; warnings: string[]; scope: string; calc: number | null; inactive: string | null; edited: boolean}
 
 /** 발주 목록: 담은 품목의 수량을 고쳐서 CSV(엑셀에서 열림)로 내려받음. 이 브라우저에만 저장됨 */
 export function OrderListPage() {
@@ -68,7 +68,7 @@ export function OrderListPage() {
                     <TableCell className="num">{fmt(r.available)}</TableCell>
                     <TableCell className="num">{fmt(r.incoming)}</TableCell>
                     <TableCell className="num muted">{r.calc !== null ? fmt(r.calc) : '-'}</TableCell>
-                    <TableCell><span className="scope-cell" title={r.scope || '기준 정보 없음'}>{scopeShort(r.scope)}</span>{r.inactive && <> <Badge variant="neutral" label={'담을 때 ' + r.inactive} /></>}{r.edited && <> <Badge variant="neutral" label="수량 수정됨" /></>}</TableCell>
+                    <TableCell><span className="scope-cell" title={r.scope || '기준 정보 없음'}>{scopeShort(r.scope)}</span>{r.group && <div className="scope-cell" title={r.group.members.join(', ')}>담을 때 그룹: {r.group.name || r.group.id} · 대표 {r.group.rep} · SKU {r.group.members.length}개</div>}{r.warnings.map(w => <div key={w} className="scope-cell warn-cell" role="alert">⚠ {w}</div>)}{r.inactive && <> <Badge variant="neutral" label={'담을 때 ' + r.inactive} /></>}{r.edited && <> <Badge variant="neutral" label="수량 수정됨" /></>}</TableCell>
                     <TableCell><NumberInput label={`${r.pn} 발주 수량`} isLabelHidden size="sm" min={0} value={r.qty} onChange={v => setCartQty(r.pn, v ?? 0)} /></TableCell>
                     <TableCell>
                       <HStack gap={1}>

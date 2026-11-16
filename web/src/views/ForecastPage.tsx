@@ -210,7 +210,8 @@ export function GradeBadge({grade}: {grade: string}) {
 
 interface Spike {month: {y: number; m: number}; qty: number; second: number; customers: {cust: string; qty: number}[]; oneMonth: boolean}
 interface Peak {month: {y: number; m: number}; qty: number; customers: {cust: string; qty: number}[]}
-interface FRow {mask?: boolean; lastSale: Date | null; inactiveReason: string | null; scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
+interface GroupInfo {id: string; name: string; rep: string; repManual: boolean; compat: string[]; members: {pn: string; name: string; lastSale: Date | null; available: number; incoming: number; compat: boolean; isRep: boolean}[]; missing: string[]}
+interface FRow {group?: GroupInfo; mask?: boolean; lastSale: Date | null; inactiveReason: string | null; scoped?: boolean; discontinued: boolean; 품번: string; 품명: string; brand: string; grade: string; hero: boolean; orderQty: number; target: number; available: number; incoming: number; incomingExcluded: number; returns: number; spike: Spike | null; peak: Peak | null; ratio: number | null}
 
 // 열 너비(px): 고정 레이아웃. 품번/품명 칸은 넓게(품명은 줄바꿈), 숫자 칸은 촘촘하게. 넓은 화면에서는 앞 4칸이 함께 고정됨
 const W = {pn: 278, grade: 100, avail: 76, short: 88, month: 50};
@@ -258,6 +259,7 @@ function ForecastTable({m, shown}: {m: Model; shown: FRow[]}) {
                     <VStack gap={0}>
                       <HStack gap={1} vAlign="center">
                         <ProductLink pn={x.품번} className="nowrap" />
+                        {x.group && <span title={`상품 그룹: ${x.group.name || x.group.id} — 판매 이력 합산 · ${x.group.members.length}개 SKU`}><Badge variant="blue" label={`그룹 ${x.group.members.length}`} /></span>}
                         {x.hero && <span className="hero-mark" title="히어로 품목: 수량 기준으로 판정" role="img" aria-label="히어로 품목"><StarIcon width={14} height={14} aria-hidden /></span>}
                       </HStack>
                       <span className="pn-name pn-wrap">{x.품명}</span>
@@ -301,7 +303,7 @@ function SelectionBar() {
         <HStack gap={2}>
           <Button label="선택 품목 발주 목록에 담기" size="sm" variant="primary" onClick={() => {
             const r = addManyToCart(picked);
-            setMsg(`${fmt(r.added)}개 담음${r.existing > 0 ? `, ${fmt(r.existing)}개는 이미 있어 수량 유지` : ''}`);
+            setMsg(`${fmt(r.added)}개 담음${r.existing > 0 ? `, ${fmt(r.existing)}개는 이미 있어 수량 유지` : ''}${r.warnings.length > 0 ? ` · ⚠ ${r.warnings.join(' / ')}` : ''}`);
           }} />
           <Button label="선택 해제" size="sm" variant="ghost" onClick={() => { act.clearForecastSelect(); setMsg(''); }} />
         </HStack>
@@ -373,12 +375,22 @@ function Detail({x}: {x: FRow}) {
   const sp = x.spike;
   return (
     <Grid columns={{minWidth: 300, repeat: 'fit'}} gap={4}>
+      {x.group && (
+        <VStack gap={2} className="detail-wide">
+          <HStack gap={2} vAlign="center" wrap="wrap"><Heading level={4}>상품 그룹 · {x.group.name || x.group.id}</Heading><Badge variant="blue" label={`그룹 ${x.group.members.length}개 SKU`} />{x.group.repManual && <Badge variant="neutral" label="대표 직접 지정" />}</HStack>
+          <Text type="supporting">판매 이력은 그룹 전체를 합산해 계산하고, 재고 · 입고예정은 대표 SKU 와 호환 확인한 SKU 만 포함합니다. 대표 SKU(표시 품번 · 발주 목록에 담는 품번)는 전체 거래처 기준 최근 판매실적일(실제 출하일 아님)이 가장 늦은 SKU 이며 거래처 필터와 무관하게 고정됩니다.</Text>
+          <MiniTable num={[3, 4]} head={['품번', '품명', '최근 판매실적일', '가용재고', '입고예정', '재고 반영']} rows={x.group.members.map(m => [
+            <>{m.pn}{m.isRep && <> <Badge variant="green" label="대표" /></>}</>, m.name || '-', m.lastSale ? m.lastSale.toLocaleDateString('ko-KR') : '판매 이력 없음', fmt(m.available), m.incoming ? fmt(m.incoming) : '-',
+            m.isRep ? '반영 (대표)' : m.compat ? '반영 (호환 확인)' : '미반영 (별도 표시)'])} />
+          {x.group.missing.length > 0 && <Text type="supporting">현재 데이터에 없는 멤버: {x.group.missing.join(', ')}</Text>}
+        </VStack>
+      )}
       <VStack gap={2}>
         <HStack gap={2} vAlign="center" wrap="wrap"><BrandBadge brand={x.brand} />{x.mask && <Badge variant="neutral" label="마스크" />}{x.hero && <Badge variant="neutral" label="히어로" />}<Button label="발주 목록에 담기" size="sm" variant="secondary" isDisabled={x.orderQty <= 0} onClick={() => addToCart(x.품번)} /></HStack>
         <Heading level={4}>부족 수량 근거 · {x.scoped ? '선택 거래처 기준' : '전체 거래처 기준'}</Heading>
         <MiniTable num={[1]} head={['항목', '수량']} rows={[
           [x.scoped ? '목표 재고 (선택 거래처의 최근 12개월 월 최대 판매)' : '목표 재고 (최근 12개월 월 최대 판매)', fmt(x.target)],
-          ['− 가용재고', fmt(x.available)],
+          [x.group ? '− 가용재고 (대표 + 호환 확인 SKU)' : '− 가용재고', fmt(x.available)],
           ['− 입고예정 (유효)', fmt(x.incoming)],
           [<strong>부족 수량</strong>, <strong>{fmt(x.orderQty)}</strong>],
         ]} />

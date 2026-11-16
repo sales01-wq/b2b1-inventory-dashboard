@@ -53,7 +53,7 @@ export function forecastModel(){
   if(isOverstock){
     const scope = ui.forecastOverstockScope;
     list = list.map(x=>{
-      const avail = scopedAvailable(x.품번, scope);
+      const avail = (x.group ? [x.group.rep, ...x.group.compat] : [x.품번]).reduce((s,pn)=>s+scopedAvailable(pn, scope), 0); // 그룹은 대표 + 호환 SKU 재고 (SKU 마다 한 번)
       return {...x, available:avail};
     }).filter(x=> x.available>0); // 재고가 있는 것만 과잉재고
   } else if(ui.forecastGrade==='미판매'){
@@ -102,7 +102,7 @@ export function forecastModel(){
 /* 펼친 행: 목표 재고 근거(월별 합계) · 거래처별 월 판매 · 최근 판매 20건 · 입고예정 · 반품 · 대량 판매 표시 */
 export function forecastDetail(x){
   const customers = Array.from((x.byCustomer||new Map()).entries()).map(([거래처,months])=>({거래처, months, total:months.reduce((a,b)=>a+b,0)})).sort((a,b)=>b.total-a.total);
-  const details = salesDetailFor(x.품번).slice(0,20);
+  const details = salesDetailFor(x.memberPns||x.품번).slice(0,20); // 그룹이면 멤버 전체의 최근 판매
   const incomingRows = [];
   if(x.sched){
     const ml = state.scheduleMonthLabels;
@@ -226,7 +226,7 @@ export const RULES_INVALID_MSG = '생산 필요 기준은 1~99(%) 사이여야 �
 
 /* 히어로 품목 추가 검사 (4100행). 통과하면 {pn, val}, 아니면 {error} */
 export function heroInput(pnIn, minQty, warnQty){
-  const found = state.forecast.find(x=>x.품번.toLowerCase()===pnIn.toLowerCase());
+  const found = (state.forecastSku||state.forecast).find(x=>x.품번.toLowerCase()===pnIn.toLowerCase()); // 그룹의 이전 SKU 도 히어로로 지정 가능
   if(!found) return {error:'해당 품번을 데이터에서 찾을 수 없습니다.'};
   if(!(minQty>0)) return {error:'생산 필요 수량을 입력해 주세요.'};
   if(warnQty && warnQty<=minQty) return {error:'생산 추천 수량은 생산 필요 수량보다 커야 합니다.'};
@@ -236,7 +236,7 @@ export function heroInput(pnIn, minQty, warnQty){
 /** 마스크 품번 붙여넣기(엑셀 열 복사 포함) 해석: 줄 · 탭 · 쉼표 · 공백으로 나눔, 중복 제거, 현재 데이터에 있는 품번은 그 표기(대소문자)로 맞춤.
  *  데이터에 없는 품번도 저장함(데이터에 들어오면 적용) — notInData 로 알려 줌. 형식이 이상한 항목은 invalid */
 export function maskInput(raw){
-  const known = new Map((state.forecast||[]).map(x=>[x.품번.toLowerCase(), x.품번]));
+  const known = new Map(((state.forecastSku&&state.forecastSku.length?state.forecastSku:state.forecast)||[]).map(x=>[x.품번.toLowerCase(), x.품번]));
   const seen = new Set(), codes = [], invalid = [], notInData = [];
   String(raw||'').split(/[\s,;]+/).map(t=>t.trim()).filter(Boolean).forEach(t=>{
     if(!/^[A-Za-z0-9][A-Za-z0-9._\-]{0,39}$/.test(t)){ invalid.push(t); return; }
@@ -250,7 +250,7 @@ export function maskInput(raw){
 /* renderForecastRules 의 기준표 · 히어로 목록 */
 export function rulesModel(){
   const R = getRules();
-  const fm = new Map((state.forecast||[]).map(x=>[x.품번,x]));
+  const fm = new Map(((state.forecastSku&&state.forecastSku.length?state.forecastSku:state.forecast)||[]).map(x=>[x.품번,x]));
   const heroRows = Object.keys(settings.hero).sort().map(pn=>({pn, h:settings.hero[pn], x:fm.get(pn)}));
   const maskRows = Object.keys(settings.mask||{}).sort().map(pn=>({pn, x:fm.get(pn)}));
   return {R, heroRows, maskRows, alertN:(state.heroAlerts||[]).length};
